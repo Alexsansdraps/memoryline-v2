@@ -9,7 +9,17 @@
  * rafraîchissement.
  */
 import { apiUrl, url } from "../lib/url.ts";
-import { FUSEAU_BOUTIQUE } from "@memoryline/types";
+import {
+  ANNONCE_COURRIER,
+  ETAPES_DU_PARCOURS,
+  FUSEAU_BOUTIQUE,
+  libelleEtape,
+  passageEtape,
+  rangEtape,
+  tonEtape,
+  type EtapeTraitement,
+  type ParcoursTraitement,
+} from "@memoryline/types";
 import ApercuFlottant from "./ApercuFlottant.astro";
 import {
   adminApi,
@@ -41,10 +51,21 @@ if (Astro.request.method === "POST" && estProprietaire) {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
-    if (action === "traiter") {
-      const traite = f.get("fulfilled") === "true";
-      await api.bulkOrders([Number(f.get("id"))], traite ? "fulfil" : "unfulfil");
-      flash = traite ? "Commande marquée traitée." : "Commande remise à traiter.";
+    if (action === "etape") {
+      // L'étape suivante, d'un clic dans la liste (17/11) : la même règle que
+      // la frise de la fiche (courriel compris).
+      const r = await api.changerEtape(Number(f.get("id")), {
+        etape: String(f.get("etape") ?? ""),
+        auteur: Astro.locals.user?.email ?? undefined,
+      });
+      const nom = libelleEtape(r.etape as EtapeTraitement, r.parcours as ParcoursTraitement);
+      flash =
+        `${String(f.get("numero") ?? "Commande")} : « ${nom} ».` +
+        (r.courrier
+          ? r.courrier.parti
+            ? ` Courriel envoyé à ${r.courrier.email}.`
+            : ` Le courriel n'a PAS pu partir vers ${r.courrier.email}.`
+          : "");
     } else if (action === "masse") {
       const ids = String(f.get("ids") ?? "")
         .split(",")
@@ -55,9 +76,19 @@ if (Astro.request.method === "POST" && estProprietaire) {
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
-      if (quoi === "fulfil" || quoi === "unfulfil") {
-        const r = await api.bulkOrders(ids, quoi);
-        flash = `${r.count} commande(s) mise(s) à jour.`;
+      if (quoi === "etape-suivante") {
+        const r = await api.bulkOrders(ids, quoi, undefined, Astro.locals.user?.email ?? undefined);
+        const ecartees = r.ecartees ?? [];
+        flash =
+          `${r.count} commande(s) passée(s) à l'étape suivante` +
+          (r.prevenues ? `, ${r.prevenues} client(s) prévenu(s) par courriel` : "") +
+          "." +
+          (ecartees.length
+            ? ` ${ecartees.length} laissée(s) telle(s) quelle(s) : ${ecartees
+                .map((e) => e.raison)
+                .filter((v, i, t) => t.indexOf(v) === i)
+                .join(" ")}`
+            : "");
       } else if (quoi === "tag" || quoi === "untag") {
         const r = await api.bulkOrders(ids, quoi, tags);
         flash =
@@ -92,22 +123,31 @@ const ONGLETS: {
   filtres: Partial<FiltresCommandes>;
 }[] = [
   { cle: "toutes", label: "Toutes", filtres: {} },
-  {
-    cle: "a-expedier",
-    label: "À expédier",
-    filtres: { financial: "paid", fulfillment: "unfulfilled,partially_fulfilled" },
-  },
-  {
-    cle: "non-traitees",
-    label: "Non traitées",
-    filtres: { fulfillment: "unfulfilled" },
-  },
-  { cle: "impayees", label: "Impayées", filtres: { financial: "pending,authorized" } },
-  {
-    cle: "remboursees",
-    label: "Remboursées",
-    filtres: { financial: "refunded,partially_refunded" },
-  },
+  // Un seul statut, en étapes (17/11) : les onglets suivent les étapes.
+  ...(channel === "salon"
+    ? [
+        { cle: "a-encaisser", label: "À encaisser", filtres: { etape: "a_encaisser" } },
+        { cle: "a-imprimer", label: "À imprimer", filtres: { etape: "a_imprimer,en_partie" } },
+        { cle: "terminees", label: "Terminées", filtres: { etape: "terminee" } },
+      ]
+    : [
+        {
+          cle: "a-preparer",
+          label: "À préparer",
+          filtres: { etape: "en_preparation,en_partie" },
+        },
+        {
+          cle: "en-route",
+          label: "Envoyées ou prêtes",
+          filtres: { etape: "envoyee,prete" },
+        },
+        { cle: "impayees", label: "Impayées", filtres: { etape: "a_encaisser" } },
+        {
+          cle: "remboursees",
+          label: "Remboursées",
+          filtres: { financial: "refunded,partially_refunded" },
+        },
+      ]),
   // Le rangement, et non une corbeille : rien n'y est détruit, et les
   // commandes en sortent entières. Les autres onglets ne les montrent pas.
   // Seule la fiche d'une archivée propose « Supprimer définitivement », et
@@ -133,6 +173,7 @@ const filtres: FiltresCommandes = {
   q: params.get("q") ?? undefined,
   financial: params.get("financial") ?? onglet.filtres.financial,
   fulfillment: params.get("fulfillment") ?? onglet.filtres.fulfillment,
+  etape: params.get("etape") ?? onglet.filtres.etape,
   tag: params.get("tag") ?? undefined,
   from: params.get("from") ?? undefined,
   to: params.get("to") ?? undefined,
@@ -220,29 +261,76 @@ const BADGE_TRAITEMENT: Record<string, { texte: string; classe: string }> = {
   unfulfilled: { texte: "Non traitée", classe: "bg-amber-100 text-amber-900" },
 };
 
+/** L'argent, à part de l'étape : seuls les remboursements se filtrent ici. */
 const FILTRES_PAIEMENT = [
-  ["paid", "Payée"],
-  ["pending", "En attente"],
-  ["authorized", "Autorisée"],
   ["partially_refunded", "Remboursée en partie"],
   ["refunded", "Remboursée"],
-  ["voided", "Annulée"],
 ];
-const FILTRES_TRAITEMENT = [
-  ["unfulfilled", "Non traitée"],
-  ["partially_fulfilled", "Partiellement traitée"],
-  ["fulfilled", "Traitée"],
-];
+/** Les étapes que cette liste peut montrer, dans l'ordre des parcours. */
+const FILTRES_ETAPE: [string, string][] =
+  channel === "salon"
+    ? [
+        ["a_encaisser", "À encaisser"],
+        ["a_imprimer", "À imprimer"],
+        ["en_partie", "Remise en partie"],
+        ["terminee", "Terminée"],
+        ["annulee", "Annulée"],
+      ]
+    : [
+        ["a_encaisser", "En attente de paiement"],
+        ["en_preparation", "En préparation"],
+        ["en_partie", "Envoyée ou retirée en partie"],
+        ["prete", "Prête à retirer"],
+        ["retiree", "Retirée"],
+        ["envoyee", "Envoyée"],
+        ["livree", "Livrée"],
+        ["rien_a_expedier", "Rien à expédier (cartes cadeaux)"],
+        ["annulee", "Annulée"],
+      ];
 
 const paiementCoches = (filtres.financial ?? "").split(",").filter(Boolean);
-const traitementCoches = (filtres.fulfillment ?? "").split(",").filter(Boolean);
+const traitementCoches = (filtres.etape ?? "").split(",").filter(Boolean);
+
+/** La couleur d'une étape, la même que sur la fiche. */
+const CLASSE_TON: Record<string, string> = {
+  neutre: "bg-bo-bg text-bo-muted",
+  a_faire: "bg-amber-100 text-amber-900",
+  en_partie: "bg-orange-100 text-orange-900",
+  en_cours: "bg-sky-100 text-sky-900",
+  fait: "bg-green-100 text-green-900",
+};
+/**
+ * Le statut d'une ligne et l'étape d'après, s'il y en a une à proposer d'un
+ * clic. Une reprise de Shopify (sans étape) garde l'ancien libellé.
+ */
+function statutDeLaLigne(o: OrderRow) {
+  if (!o.etapeTraitement || !o.parcours) return null;
+  const parcours = o.parcours as ParcoursTraitement;
+  const etape = o.etapeTraitement as EtapeTraitement;
+  const rang = rangEtape(parcours, etape);
+  const suivante = rang === null ? undefined : ETAPES_DU_PARCOURS[parcours][Math.floor(rang) + 1];
+  const passage = suivante ? passageEtape(parcours, etape, suivante) : null;
+  return {
+    texte: libelleEtape(etape, parcours),
+    classe: CLASSE_TON[etape === "a_encaisser" ? "a_faire" : tonEtape(etape)]!,
+    suivante:
+      suivante && passage?.ok && !passage.inchange
+        ? {
+            etape: suivante,
+            libelle: libelleEtape(suivante, parcours),
+            courrier: passage.courrier ? ANNONCE_COURRIER[passage.courrier] : null,
+          }
+        : null,
+  };
+}
 const filtreActif =
   Boolean(filtres.q) ||
   Boolean(filtres.tag) ||
   Boolean(filtres.from) ||
   Boolean(filtres.to) ||
   Boolean(params.get("financial")) ||
-  Boolean(params.get("fulfillment"));
+  Boolean(params.get("fulfillment")) ||
+  Boolean(params.get("etape"));
 ---
 
 {flash && (
@@ -266,6 +354,7 @@ const filtreActif =
           onglet: o.cle === "toutes" ? null : o.cle,
           financial: null,
           fulfillment: null,
+          etape: null,
         })}
         class={`rounded-t px-3 py-2 text-sm ${
           o.cle === onglet.cle
@@ -342,7 +431,14 @@ const filtreActif =
       <div
         class="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-bo-border bg-bo-surface p-3 shadow-lg"
       >
-        <p class="mb-1 text-xs font-medium text-bo-muted">Paiement</p>
+        <p class="mb-1 text-xs font-medium text-bo-muted">Statut</p>
+        {FILTRES_ETAPE.map(([v, l]) => (
+          <label class="flex items-center gap-2 py-0.5 text-sm">
+            <input type="checkbox" name="etape" value={v} checked={traitementCoches.includes(v)} />
+            {l}
+          </label>
+        ))}
+        <p class="mt-2 mb-1 text-xs font-medium text-bo-muted">Remboursement</p>
         {FILTRES_PAIEMENT.map(([v, l]) => (
           <label class="flex items-center gap-2 py-0.5 text-sm">
             <input
@@ -350,18 +446,6 @@ const filtreActif =
               name="financial"
               value={v}
               checked={paiementCoches.includes(v!)}
-            />
-            {l}
-          </label>
-        ))}
-        <p class="mt-2 mb-1 text-xs font-medium text-bo-muted">Traitement</p>
-        {FILTRES_TRAITEMENT.map(([v, l]) => (
-          <label class="flex items-center gap-2 py-0.5 text-sm">
-            <input
-              type="checkbox"
-              name="fulfillment"
-              value={v}
-              checked={traitementCoches.includes(v!)}
             />
             {l}
           </label>
@@ -381,6 +465,7 @@ const filtreActif =
           to: null,
           financial: null,
           fulfillment: null,
+          etape: null,
         })}
         class="px-2 py-2 text-sm text-bo-accent hover:underline"
       >
@@ -405,11 +490,17 @@ const filtreActif =
       <span id="bo-compte" class="font-medium"></span>
       {estProprietaire && (
         <>
-          <button type="button" data-bulk="fulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
-            Marquer comme traitées
-          </button>
-          <button type="button" data-bulk="unfulfil" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
-            Remettre à traiter
+          <button
+            type="button"
+            data-bulk="etape-suivante"
+            data-confirme={
+              channel === "salon"
+                ? "Passer les ventes cochées à l'étape suivante ? Aucun courriel ne part : le client est sur place."
+                : "Passer les commandes cochées à l'étape suivante ? Celles qui passent à « Envoyée » ou « Prête à retirer » préviennent leur client par courriel (sans numéro de suivi : pour un colis suivi, passez par sa fiche)."
+            }
+            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+          >
+            Étape suivante
           </button>
           <button type="button" data-bulk="tag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
             Ajouter une étiquette
@@ -469,8 +560,7 @@ const filtreActif =
           <th class="px-4 py-2 font-medium">Commande</th>
           <th class="px-4 py-2 font-medium">Date</th>
           <th class="px-4 py-2 font-medium">Client</th>
-          <th class="px-4 py-2 font-medium">Paiement</th>
-          <th class="px-4 py-2 font-medium">Traitement</th>
+          <th class="px-4 py-2 font-medium">Statut</th>
           <th class="px-4 py-2 font-medium">Articles</th>
           {/* Des boutons, pas une valeur : rien à trier dans cette colonne. */}
           <th class="px-2 py-2 font-medium" data-sans-tri>Impression</th>
@@ -486,6 +576,11 @@ const filtreActif =
             classe: "bg-bo-bg text-bo-muted",
           };
           const t = BADGE_TRAITEMENT[o.statutExpedition ?? "unfulfilled"]!;
+          const statut = statutDeLaLigne(o);
+          const remb =
+            o.statutFinancier === "refunded" || o.statutFinancier === "partially_refunded"
+              ? BADGE_PAIEMENT[o.statutFinancier]!
+              : null;
           return (
             <tr class="border-t border-bo-border hover:bg-bo-bg/50">
               <td class="px-3 py-2 align-top">
@@ -518,25 +613,63 @@ const filtreActif =
                 )}
               </td>
               <td class="px-4 py-2 align-top">
-                <span
-                  class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${p.classe}`}
-                >
-                  <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                  {p.texte}
-                </span>
+                {/* UN statut (17/11) : l'étape de traitement, comme sur la
+                    fiche. Une reprise de Shopify garde son ancien libellé. */}
+                {statut ? (
+                  <span
+                    class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${statut.classe}`}
+                  >
+                    <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                    {statut.texte}
+                  </span>
+                ) : (
+                  <span
+                    class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${p.classe}`}
+                  >
+                    <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
+                    {p.texte} · {t.texte}
+                  </span>
+                )}
+                {remb && (
+                  <span class={`mt-1 block w-fit rounded-full px-2 py-0.5 text-xs ${remb.classe}`}>
+                    {remb.texte}
+                  </span>
+                )}
                 {/* Une vente du stand pas encore réglée (17/11) : Margaux la
                     marque payée d'ici, sans ouvrir la fiche. */}
-                {channel === "salon" &&
-                  (o.statutFinancier ?? "pending") === "pending" &&
-                  o.status === "pending" && (
-                    <form method="POST" action={url(`/commandes/${o.id}`)} class="mt-1">
-                      <input type="hidden" name="_action" value="encaisser" />
-                      <input type="hidden" name="moyen" value="sur_place" />
-                      <button class="rounded border border-bo-border px-2 py-0.5 text-xs hover:bg-bo-bg">
-                        Marquer payée
-                      </button>
-                    </form>
-                  )}
+                {estProprietaire && channel === "salon" && o.etapeTraitement === "a_encaisser" && (
+                  <form method="POST" action={url(`/commandes/${o.id}`)} class="mt-1">
+                    <input type="hidden" name="_action" value="encaisser" />
+                    <input type="hidden" name="moyen" value="sur_place" />
+                    <button class="rounded border border-bo-border px-2 py-0.5 text-xs hover:bg-bo-bg">
+                      Marquer payée
+                    </button>
+                  </form>
+                )}
+                {/* L'étape d'après, d'un clic : l'action du matin. */}
+                {estProprietaire && statut?.suivante && (
+                  <form
+                    method="POST"
+                    class="mt-1"
+                    data-confirmer={
+                      statut.suivante.courrier
+                        ? `${o.number} → « ${statut.suivante.libelle} » ? ${statut.suivante.courrier}`
+                        : undefined
+                    }
+                  >
+                    <input type="hidden" name="_action" value="etape" />
+                    <input type="hidden" name="id" value={o.id} />
+                    <input type="hidden" name="numero" value={o.number} />
+                    <input type="hidden" name="etape" value={statut.suivante.etape} />
+                    <button
+                      class="rounded border border-bo-border px-2 py-0.5 text-xs hover:bg-bo-bg"
+                      title={statut.suivante.courrier ?? "Aucun courriel."}
+                    >
+                      → {statut.suivante.libelle}
+                      {statut.suivante.courrier ? " ✉" : ""}
+                    </button>
+                  </form>
+                )}
                 {/* Payée avec les clés d'essai alors que la boutique encaisse
                     pour de vrai : sans ce mot, elle passe pour une vente. */}
                 {o.payeeEnEssai && (
@@ -546,39 +679,6 @@ const filtreActif =
                   >
                     En ESSAI
                   </span>
-                )}
-              </td>
-              <td class="px-4 py-2 align-top">
-                {/* Un clic bascule : c'est l'action du matin quand on prépare
-                    les colis. Le vendeur lit le statut sans le changer. */}
-                {!estProprietaire ? (
-                  <span
-                    class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${t.classe}`}
-                  >
-                    <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                    {t.texte}
-                  </span>
-                ) : (
-                <form method="POST" class="inline">
-                  <input type="hidden" name="_action" value="traiter" />
-                  <input type="hidden" name="id" value={o.id} />
-                  <input
-                    type="hidden"
-                    name="fulfilled"
-                    value={o.statutExpedition === "fulfilled" ? "false" : "true"}
-                  />
-                  <button
-                    class={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs ${t.classe}`}
-                    title={
-                      o.statutExpedition === "fulfilled"
-                        ? "Remettre dans les commandes à traiter"
-                        : "Marquer comme traitée"
-                    }
-                  >
-                    <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
-                    {t.texte}
-                  </button>
-                </form>
                 )}
               </td>
               <td class="px-4 py-2 whitespace-nowrap align-top text-bo-muted">
@@ -758,6 +858,13 @@ const filtreActif =
     rafraichir();
   });
   cases().forEach((c) => c.addEventListener("change", rafraichir));
+
+  // « → Envoyée ✉ » d'une ligne : l'étape qui écrit au client se confirme.
+  document.querySelectorAll("form[data-confirmer]").forEach((f) => {
+    f.addEventListener("submit", (e) => {
+      if (!confirm(f.getAttribute("data-confirmer"))) e.preventDefault();
+    });
+  });
 
   // Les actions qui écrivent passent par le formulaire (POST), les autres
   // ouvrent simplement une URL avec les identifiants cochés.

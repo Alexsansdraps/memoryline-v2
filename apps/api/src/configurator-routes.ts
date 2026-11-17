@@ -44,6 +44,8 @@ import { commandesQuiEmpechent, enBref } from "./usages-commandes.js";
 import { decorsParLeNom } from "./decors.js";
 import { empriseDuPersonnage, preparerLesEmprises } from "./emprise-personnages.js";
 import {
+  avecBordereauReel,
+  etapeDeLaCommande,
   resumeCommandes,
   statutExpedition,
   statutFinancier,
@@ -4374,6 +4376,15 @@ export function mountConfiguratorRoutes(app: Hono) {
       mouvements,
       statutFinancier: statutFinancier(order, resume.rembourseCents),
       statutExpedition: statutExpedition(resume.articles, resume.expedies),
+      // L'étape de traitement (17/11) : le seul statut que montre la fiche.
+      // Rien pour une reprise de Shopify, traitée là-bas.
+      traitement:
+        order.legacyId != null
+          ? null
+          : await (async () => {
+              const bordereauReel = (await avecBordereauReel([order.id])).has(order.id);
+              return { ...etapeDeLaCommande(order, resume, bordereauReel), bordereauReel };
+            })(),
       rembourseCents: resume.rembourseCents,
       portRemboursableCents: Math.max(0, order.shippingCents - portRendu),
       commandesDuClient: Number(autres?.n ?? 0),

@@ -11,7 +11,18 @@
  * partir des expéditions et des remboursements enregistrés.
  */
 import { apiUrl, url } from "../../lib/url.ts";
-import { FUSEAU_BOUTIQUE, libelleFormat } from "@memoryline/types";
+import {
+  ANNONCE_COURRIER,
+  ETAPES_DU_PARCOURS,
+  FUSEAU_BOUTIQUE,
+  libelleEtape,
+  libelleFormat,
+  passageEtape,
+  rangEtape,
+  tonEtape,
+  type EtapeTraitement,
+  type ParcoursTraitement,
+} from "@memoryline/types";
 import Admin from "../../layouts/Admin.astro";
 import AffichesCommande from "../../components/AffichesCommande.astro";
 import ChampsAdresse from "../../components/ChampsAdresse.astro";
@@ -43,23 +54,24 @@ if (Astro.request.method === "POST" && estProprietaire) {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
-    if (action === "expedier") {
-      // Quantités saisies ligne par ligne : `qte-<id>` porte ce qui part.
-      const items: { orderItemId: number; quantity: number }[] = [];
-      for (const [cle, valeur] of f.entries()) {
-        if (!cle.startsWith("qte-")) continue;
-        const q = Math.max(0, Number(valeur) || 0);
-        if (q > 0) items.push({ orderItemId: Number(cle.slice(4)), quantity: q });
-      }
-      await api.createFulfillment(id, {
-        items,
+    if (action === "etape") {
+      // La frise (17/11) : UN statut, en étapes. L'API décide de ce qui part
+      // (expéditions, courriel) et refuse ce qui ne se fait pas.
+      const r = await api.changerEtape(id, {
+        etape: String(f.get("etape") ?? ""),
         carrier: String(f.get("carrier") ?? ""),
         trackingNumber: String(f.get("trackingNumber") ?? ""),
+        auteur: Astro.locals.user?.email ?? undefined,
       });
-      // Au stand, il n'y a pas de colis : le mot doit dire ce qui s'est passé.
-      flash = f.get("remise")
-        ? "Affiche remise au client."
-        : "Expédition enregistrée.";
+      const nom = libelleEtape(r.etape as EtapeTraitement, r.parcours as ParcoursTraitement);
+      flash = r.inchange
+        ? `La commande est déjà « ${nom} ».`
+        : `Commande passée à « ${nom} ».` +
+          (r.courrier
+            ? r.courrier.parti
+              ? ` Courriel « ${r.courrier.sujet} » envoyé à ${r.courrier.email}.`
+              : ` Le courriel « ${r.courrier.sujet} » n'a PAS pu partir vers ${r.courrier.email}.`
+            : "");
     } else if (action === "archiver-commande") {
       const restaurer = String(f.get("archived") ?? "") === "false";
       await api.archiverCommande(id, !restaurer);
@@ -471,6 +483,45 @@ const badgeTraitement =
   BADGE_TRAITEMENT[detail?.statutExpedition ?? "unfulfilled"]!;
 
 /**
+ * UN seul statut (exigence d'Alexandra, 17/11) : l'étape de traitement,
+ * déduite par l'API (packages/types/src/traitement.ts). « Payée » et
+ * « Traitée / Non traitée » ne s'affichent plus ; l'argent se lit dans le
+ * bloc Paiement. Null : une reprise de Shopify, qui garde ses deux badges.
+ */
+const traitement = detail?.traitement ?? null;
+const parcoursT = (traitement?.parcours ?? "livraison") as ParcoursTraitement;
+const etapeT = (traitement?.etape ?? "panier") as EtapeTraitement;
+const CLASSE_TON: Record<string, string> = {
+  neutre: "bg-bo-bg text-bo-muted",
+  a_faire: "bg-amber-100 text-amber-900",
+  en_partie: "bg-orange-100 text-orange-900",
+  en_cours: "bg-sky-100 text-sky-900",
+  fait: "bg-green-100 text-green-900",
+};
+const badgeEtape = traitement
+  ? {
+      texte: libelleEtape(etapeT, parcoursT),
+      // « À encaisser » est une chose à faire, pas un état neutre.
+      classe: CLASSE_TON[etapeT === "a_encaisser" ? "a_faire" : tonEtape(etapeT)]!,
+    }
+  : null;
+/** Un remboursement se dit à côté de l'étape : c'est de l'argent, pas une étape. */
+const badgeRemboursement =
+  detail?.statutFinancier === "refunded" || detail?.statutFinancier === "partially_refunded"
+    ? BADGE_PAIEMENT[detail.statutFinancier]!
+    : null;
+/** Les étapes de la frise, avec ce que demanderait chacune depuis l'étape actuelle. */
+const etapesFrise = traitement
+  ? ETAPES_DU_PARCOURS[parcoursT].map((e) => ({
+      etape: e,
+      libelle: libelleEtape(e, parcoursT),
+      rang: rangEtape(parcoursT, e)!,
+      passage: passageEtape(parcoursT, etapeT, e, { bordereauReel: traitement.bordereauReel }),
+    }))
+  : [];
+const rangActuel = traitement ? rangEtape(parcoursT, etapeT) : null;
+
+/**
  * Payée avec les clés d'ESSAI alors que la boutique encaisse pour de vrai
  * (apps/api/src/paiements-reglages.ts, payeeEnEssai) : aucun argent n'est
  * arrivé. Après la bascule, rien d'autre sur la fiche ne la distinguerait
@@ -744,12 +795,25 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
         <div>
           <div class="flex flex-wrap items-center gap-2">
             <h2 class="text-xl font-semibold">{order.number}</h2>
-            <span class={`rounded-full px-2 py-0.5 text-xs ${badgePaiement.classe}`}>
-              {badgePaiement.texte}
-            </span>
-            <span class={`rounded-full px-2 py-0.5 text-xs ${badgeTraitement.classe}`}>
-              {badgeTraitement.texte}
-            </span>
+            {badgeEtape ? (
+              <span class={`rounded-full px-2.5 py-0.5 text-sm font-medium ${badgeEtape.classe}`}>
+                {badgeEtape.texte}
+              </span>
+            ) : (
+              <>
+                <span class={`rounded-full px-2 py-0.5 text-xs ${badgePaiement.classe}`}>
+                  {badgePaiement.texte}
+                </span>
+                <span class={`rounded-full px-2 py-0.5 text-xs ${badgeTraitement.classe}`}>
+                  {badgeTraitement.texte}
+                </span>
+              </>
+            )}
+            {badgeEtape && badgeRemboursement && (
+              <span class={`rounded-full px-2 py-0.5 text-xs ${badgeRemboursement.classe}`}>
+                {badgeRemboursement.texte}
+              </span>
+            )}
             {payeeEnEssai && (
               <span
                 class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
@@ -888,6 +952,142 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
         </div>
       )}
 
+      {/* ============================================================== */}
+      {/* La frise : UN statut, en étapes (17/11)                        */}
+      {/* ============================================================== */}
+      {/* L'étape en cours en plein ; les autres étapes du parcours en
+          boutons, en avant comme en arrière. Sous un bouton qui prévient
+          le client, ce qu'il recevra. Lisible sur téléphone : Margaux la
+          regarde au stand. */}
+      {traitement && (
+        <section id="statut" class="mb-6 rounded-lg border border-bo-border bg-bo-surface px-4 py-4">
+          <h3 class="text-xs font-medium tracking-wide text-bo-muted uppercase">Statut</h3>
+          {rangActuel === null ? (
+            <div class="mt-2">
+              <p class="text-base font-semibold">{badgeEtape?.texte}</p>
+              <p class="mt-1 text-sm text-bo-muted">
+                {etapeT === "a_encaisser"
+                  ? auStand
+                    ? "Vente du stand pas encore réglée : marquez-la payée quand le client a payé. Elle passera alors « À imprimer »."
+                    : "Commande pas encore payée : on ne prépare pas ce qui n'est pas réglé. Si l'argent est arrivé hors du site, encaissez-la (bloc Paiement)."
+                  : etapeT === "rien_a_expedier"
+                    ? "Cette commande ne contient que des cartes cadeaux, parties par e-mail : il n'y a rien à préparer."
+                    : etapeT === "annulee"
+                      ? "Commande annulée : plus rien ne se prépare ni ne part."
+                      : "C'est un panier, pas une commande : il n'y a rien à préparer."}
+              </p>
+              {estProprietaire && encaissableAuStand && (
+                <form method="POST" class="mt-3">
+                  <input type="hidden" name="_action" value="encaisser" />
+                  <input type="hidden" name="moyen" value="sur_place" />
+                  <button class="w-full rounded bg-bo-nav px-4 py-3 text-base text-white sm:w-auto">
+                    Marquer payée · {formatPrice(total)} réglés sur place
+                  </button>
+                  <span class="mt-1 block text-xs text-bo-muted">Aucun courriel : le client est là.</span>
+                </form>
+              )}
+            </div>
+          ) : (
+            <ol class="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
+              {etapesFrise.map((e, i) => {
+                const actuelle = e.rang === rangActuel;
+                const faite = rangActuel !== null && e.rang < rangActuel;
+                const p = e.passage;
+                const courrier = p.ok && !p.inchange ? p.courrier : null;
+                const arriere = p.ok && !p.inchange && p.sens === "arriere";
+                const expedier = p.ok && !p.inchange && p.expedier;
+                const confirmer = courrier
+                  ? `Passer la commande à « ${e.libelle} » ? ${ANNONCE_COURRIER[courrier]}`
+                  : p.ok && !p.inchange && p.annulerExpeditions
+                    ? `Revenir à « ${e.libelle} » ? Les expéditions enregistrées seront annulées (aucun courriel ne part).`
+                    : null;
+                return (
+                  <li class="flex items-start gap-2 sm:max-w-xs sm:flex-1">
+                    {i > 0 && <span class="hidden pt-2.5 text-bo-muted sm:inline" aria-hidden="true">→</span>}
+                    <div class="flex-1">
+                      {actuelle ? (
+                        <div
+                          class={`rounded-lg px-4 py-2.5 text-base font-semibold ring-2 ring-bo-ink/20 ${badgeEtape?.classe ?? ""}`}
+                          aria-current="step"
+                        >
+                          {e.libelle}
+                          <span class="block text-xs font-normal opacity-75">Étape en cours</span>
+                        </div>
+                      ) : !estProprietaire || !p.ok ? (
+                        <div
+                          class={`rounded-lg border border-bo-border px-4 py-2.5 text-base ${faite ? "text-bo-ink" : "text-bo-muted"}`}
+                          title={!p.ok ? p.raison : undefined}
+                        >
+                          {faite ? "✓ " : ""}
+                          {e.libelle}
+                          {!p.ok && estProprietaire && (
+                            <span class="mt-1 block text-xs text-bo-muted">{p.raison}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <form method="POST" data-confirmer={confirmer ?? undefined}>
+                          <input type="hidden" name="_action" value="etape" />
+                          <input type="hidden" name="etape" value={e.etape} />
+                          {parcoursT === "livraison" && expedier && (
+                            <div class="mb-2 grid grid-cols-1 gap-2">
+                              <input
+                                name="carrier"
+                                list="bo-transporteurs-etape"
+                                placeholder="Transporteur (Colissimo…)"
+                                value={
+                                  bordereauActif && !bordereauActif.essai
+                                    ? (NOM_TRANSPORTEUR[bordereauActif.transporteur ?? ""] ?? "")
+                                    : ""
+                                }
+                                class="w-full rounded border border-bo-border px-3 py-2 text-sm"
+                              />
+                              <datalist id="bo-transporteurs-etape">
+                                {TRANSPORTEURS.map((t) => <option value={t} />)}
+                              </datalist>
+                              <input
+                                name="trackingNumber"
+                                placeholder="Numéro de suivi (facultatif)"
+                                value={
+                                  bordereauActif && !bordereauActif.essai
+                                    ? (bordereauActif.trackingNumber ?? "")
+                                    : ""
+                                }
+                                class="w-full rounded border border-bo-border px-3 py-2 text-sm"
+                              />
+                            </div>
+                          )}
+                          <button
+                            class={
+                              arriere
+                                ? "w-full rounded-lg border border-bo-border px-4 py-2.5 text-left text-base text-bo-ink hover:bg-bo-bg"
+                                : "w-full rounded-lg bg-bo-nav px-4 py-2.5 text-left text-base text-white hover:opacity-90"
+                            }
+                          >
+                            {faite ? `↩ Revenir à « ${e.libelle} »` : e.libelle}
+                          </button>
+                          <span class="mt-1 block text-xs text-bo-muted">
+                            {courrier
+                              ? ANNONCE_COURRIER[courrier]
+                              : auStand
+                                ? "Aucun courriel : le client est là."
+                                : "Aucun courriel."}
+                          </span>
+                        </form>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+          {etapeT === "en_partie" && (
+            <p class="mt-2 text-xs text-bo-muted">
+              Une partie des articles est déjà partie : l'étape suivante fait partir le reste.
+            </p>
+          )}
+        </section>
+      )}
+
       {/* Les affiches en grand, avant tout le reste : c'est ce qu'on
           vérifie en ouvrant une commande, avant de l'imprimer. */}
       <AffichesCommande items={items} />
@@ -914,14 +1114,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           >
             <header class="flex flex-wrap items-center justify-between gap-2 border-b border-bo-border px-4 py-3">
               <h3 class="font-medium">
-                <span
-                  class={`mr-2 inline-block h-2 w-2 rounded-full align-middle ${
-                    detail?.statutExpedition === "fulfilled"
-                      ? "bg-green-600"
-                      : "bg-amber-500"
-                  }`}
-                />
-                {badgeTraitement.texte}
+                Articles
                 <span class="ml-2 text-sm font-normal text-bo-muted">
                   {nbArticles} article{nbArticles > 1 ? "s" : ""}
                   {resteAExpedier > 0 && ` · ${resteAExpedier} à envoyer`}
@@ -1144,110 +1337,8 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </p>
             )}
 
-            {resteAExpedier > 0 && !annulee && remiseAuStand && (
-              <div class="flex flex-wrap items-center justify-between gap-3 border-t border-bo-border px-4 py-3">
-                <p class="text-sm text-bo-muted">
-                  {resteAExpedier} affiche(s) à remettre au client. Commande prise
-                  au stand : elle se remet en main propre. Si elle doit voyager,
-                  achetez son bordereau ci-dessous.
-                  <span class="mt-1 block text-xs">
-                    « Marquer comme remis » envoie au client un courriel
-                    « Votre affiche est prête » (sans prix) : cliquez-le quand
-                    l'affiche est prête à être retirée, pas forcément après.
-                  </span>
-                </p>
-                <form method="POST">
-                  <input type="hidden" name="_action" value="expedier" />
-                  <input type="hidden" name="remise" value="1" />
-                  <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
-                    Marquer comme remis
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {resteAExpedier > 0 && !annulee && !remiseAuStand && (
-              <details class="border-t border-bo-border">
-                <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
-                  Traiter les articles ({resteAExpedier} en attente)
-                </summary>
-                <form method="POST" class="space-y-3 px-4 pb-4">
-                  <input type="hidden" name="_action" value="expedier" />
-                  <table class="w-full text-sm">
-                    <thead class="text-left text-xs text-bo-muted">
-                      <tr>
-                        <th class="py-1 font-medium">Article</th>
-                        <th class="py-1 font-medium">Reste</th>
-                        <th class="py-1 font-medium">À expédier</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items
-                        .filter((it) => (it.aExpedier ?? 0) > 0)
-                        .map((it) => (
-                          <tr>
-                            <td class="py-1 pr-3">{it.title ?? "Affiche"}</td>
-                            <td class="py-1 pr-3 text-bo-muted">{it.aExpedier}</td>
-                            <td class="py-1">
-                              <input
-                                type="number"
-                                name={`qte-${it.id}`}
-                                min="0"
-                                max={it.aExpedier}
-                                value={it.aExpedier}
-                                class="w-20 rounded border border-bo-border px-2 py-1"
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                  <div class="flex flex-wrap gap-3">
-                    <label class="text-sm">
-                      <span class="mb-1 block text-xs text-bo-muted">Transporteur</span>
-                      <input
-                        name="carrier"
-                        list="bo-transporteurs"
-                        placeholder="Colissimo"
-                        value={
-                          bordereauActif && !bordereauActif.essai
-                            ? (NOM_TRANSPORTEUR[bordereauActif.transporteur ?? ""] ?? "")
-                            : ""
-                        }
-                        class="rounded border border-bo-border px-3 py-2"
-                      />
-                      <datalist id="bo-transporteurs">
-                        {TRANSPORTEURS.map((t) => <option value={t} />)}
-                      </datalist>
-                    </label>
-                    <label class="text-sm">
-                      <span class="mb-1 block text-xs text-bo-muted">
-                        Numéro de suivi
-                      </span>
-                      <input
-                        name="trackingNumber"
-                        placeholder="6A123456789FR"
-                        value={
-                          bordereauActif && !bordereauActif.essai
-                            ? (bordereauActif.trackingNumber ?? "")
-                            : ""
-                        }
-                        class="rounded border border-bo-border px-3 py-2"
-                      />
-                    </label>
-                    <div class="flex items-end">
-                      <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
-                        Enregistrer l'expédition
-                      </button>
-                    </div>
-                  </div>
-                  <p class="text-xs text-bo-muted">
-                    Le lien de suivi est fabriqué tout seul pour Colissimo, Mondial
-                    Relay et Chronopost.
-                  </p>
-                </form>
-              </details>
-            )}
+            {/* Plus de « Marquer comme remis » ni de « Traiter les articles »
+                (17/11) : tout passe par la frise « Statut », en tête. */}
           </section>
 
           {/* ---------------------------------------------------------- */}

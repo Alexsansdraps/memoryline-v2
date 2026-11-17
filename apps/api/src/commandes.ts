@@ -51,10 +51,13 @@ import {
 } from "@memoryline/types";
 import {
   datesApresPassage,
+  ETAPE_PARTIE,
+  ETAPES_DU_PARCOURS,
   etapeDe,
   libelleEtape,
   parcoursDe,
   passageEtape,
+  rangEtape,
   type EtapeTraitement,
   type ParcoursTraitement,
 } from "@memoryline/types";
@@ -62,7 +65,6 @@ import {
   courrierAnnulee,
   courrierExpediee,
   courrierFacture,
-  courrierPreteAuStand,
   courrierPreteAuRetrait,
   courrierRemboursee,
   envoyer as envoyerCourrier,
@@ -428,7 +430,7 @@ export async function resumeCommandes(
  * voyage pas. Un tel colis a son étiquette : on ne revient plus avant
  * « Envoyée », et un retrait qui en a un voyage comme une livraison.
  */
-async function avecBordereauReel(ids: number[]): Promise<Set<number>> {
+export async function avecBordereauReel(ids: number[]): Promise<Set<number>> {
   if (!ids.length) return new Set();
   const rows = await db
     .select({ orderId: schema.bordereaux.orderId })
@@ -447,7 +449,7 @@ async function avecBordereauReel(ids: number[]): Promise<Set<number>> {
  * Le parcours et l'étape d'une commande (packages/types/src/traitement.ts) :
  * la liste, l'export et la frise de la fiche les lisent tous ici.
  */
-function etapeDeLaCommande(
+export function etapeDeLaCommande(
   o: Parameters<typeof lieuDeRetrait>[0] & {
     channel: string;
     status: string;
@@ -1127,65 +1129,45 @@ export function mountOrderRoutes(app: Hono): void {
     const action = String(b.action ?? "");
     if (!ids.length) return c.json({ error: "aucune commande" }, 400);
 
-    if (action === "fulfil" || action === "unfulfil") {
-      const traite = action === "fulfil";
-      /*
-       * L'action groupée PRÉVIENT la cliente, comme le fait le formulaire
-       * d'expédition à l'unité. Deux boutons qui portent le même mot ne
-       * peuvent pas avoir deux effets différents : celui de la fiche envoyait
-       * « votre commande est en route », celui de la liste ne disait rien, et
-       * rien à l'écran ne permettait de deviner lequel des deux on venait de
-       * cliquer. C'est la panne la plus courante du service client — une
-       * cliente qui écrit « où en est ma commande ? » une semaine après
-       * qu'elle est partie.
-       *
-       * Le courrier part SANS transporteur ni numéro de suivi, parce que
-       * `expedierTout` n'en enregistre aucun. Le modèle sait le faire : il
-       * écrit alors « votre affiche est partie, elle arrive » et n'affiche
-       * aucun bouton de suivi. C'est moins qu'un suivi, mais c'est la réponse
-       * à la question que la cliente se pose ; et le silence, lui, n'en est
-       * pas une. Pour un colis suivi, c'est le formulaire de la fiche qu'il
-       * faut ouvrir — lui prend le transporteur et le numéro.
-       */
-      const bilan = traite
-        ? await expedierTout(ids)
-        : { expediees: [], annulees: [] as number[] };
-      if (!traite) await annulerExpeditions(ids);
-      // Les annulées gardent leur date de traitement telle quelle : on ne les
-      // a pas touchées, il n'y a pas de raison de l'écrire.
-      const touchees = ids.filter((id) => !bilan.annulees.includes(id));
-      if (touchees.length)
-        await db
-          .update(schema.orders)
-          .set({ fulfilledAt: traite ? new Date() : null })
-          .where(inArray(schema.orders.id, touchees));
-      if (touchees.length)
-        await db.insert(schema.orderEvents).values(
-          touchees.map((orderId) => ({
-            orderId,
-            kind: "event",
-            message: traite
-              ? "Commande marquée comme traitée (action groupée)."
-              : "Commande remise à traiter (action groupée).",
-          })),
+    /*
+     * Les étapes de traitement (17/11) : une action groupée fait exactement
+     * ce que ferait la frise de la fiche, commande par commande — mêmes
+     * règles, mêmes courriels (packages/types/src/traitement.ts).
+     *   - « etape-suivante » : chaque commande avance d'une étape ;
+     *   - « fulfil » (gardé pour les anciens appels) : jusqu'à l'étape où
+     *     tout est parti (Terminée, Envoyée, Retirée) ;
+     *   - « unfulfil » : retour à la première étape, sans courriel.
+     * Une commande qui n'a pas d'étape à choisir (pas payée, annulée…) ou
+     * qu'une règle retient (bordereau acheté) est comptée à part, avec sa
+     * raison : « 30 traitées » quand deux ne l'étaient pas serait un compte
+     * rendu qui ment par omission.
+     */
+    if (action === "etape-suivante" || action === "fulfil" || action === "unfulfil") {
+      const auteur = typeof b.auteur === "string" ? b.auteur : null;
+      let count = 0;
+      let prevenues = 0;
+      const ecartees: { id: number; raison: string }[] = [];
+      for (const id of ids) {
+        const r = await changerEtape(
+          id,
+          (parcours, de) => {
+            const liste = ETAPES_DU_PARCOURS[parcours];
+            const rang = rangEtape(parcours, de);
+            if (rang === null) return liste[0]!; // passageEtape dira pourquoi
+            if (action === "unfulfil") return liste[0]!;
+            if (action === "fulfil") return ETAPE_PARTIE[parcours];
+            const suivante = liste[Math.floor(rang) + 1];
+            return suivante ?? null;
+          },
+          { auteur },
         );
-      // Un courrier par commande réellement expédiée, et seulement celles-là :
-      // une commande dont tout était déjà parti ne doit pas recevoir un
-      // deuxième « c'est en route ».
-      for (const orderId of bilan.expediees)
-        await previenirDeLExpedition(orderId, {
-          carrier: null,
-          trackingNumber: null,
-          trackingUrl: null,
-        });
-      return c.json({
-        ok: true,
-        count: touchees.length,
-        prevenues: bilan.expediees.length,
-        // Nommer ce qui a été écarté : « 30 traitées » quand deux étaient
-        // annulées est un compte rendu qui ment par omission.
-        annulees: bilan.annulees.length,
-      });
+        if ("erreur" in r) ecartees.push({ id, raison: r.erreur });
+        else if (!r.inchange) {
+          count++;
+          if (r.courrier?.parti) prevenues++;
+        }
+      }
+      return c.json({ ok: true, count, prevenues, ecartees, annulees: 0 });
     }
 
     if (action === "tag" || action === "untag") {
@@ -1519,11 +1501,13 @@ export function mountOrderRoutes(app: Hono): void {
         ".",
     });
 
-    await previenirDeLExpedition(id, {
-      carrier,
-      trackingNumber,
-      trackingUrl: ful!.trackingUrl ?? null,
-    });
+    // Le courriel suit la règle des étapes : l'avis d'expédition pour une
+    // commande qui voyage, rien pour un retrait ni pour le stand.
+    await previenirDeLExpedition(
+      id,
+      { carrier, trackingNumber, trackingUrl: ful!.trackingUrl ?? null },
+      "envoyee",
+    );
     return c.json(ful);
   });
 
@@ -1554,10 +1538,7 @@ export function mountOrderRoutes(app: Hono): void {
       trackingNumber: string | null;
       trackingUrl: string | null;
     },
-    // « ancien » : la règle d'avant les étapes, gardée pour les gestes qui ne
-    // passent pas encore par la frise (formulaire « Expédier », actions
-    // groupées) tant que l'écran n'a pas basculé.
-    quoi: "ancien" | "envoyee" | "prete" = "ancien",
+    quoi: "envoyee" | "prete",
   ): Promise<{ sujet: string; email: string; parti: boolean } | null> {
     if (!mailConfigure()) return null;
     try {
@@ -1576,7 +1557,7 @@ export function mountOrderRoutes(app: Hono): void {
         .where(eq(schema.orders.id, orderId));
       if (!commande?.customerId) return null;
       // Le stand ne reçoit aucun courrier (17/11) : la personne est là.
-      if (quoi !== "ancien" && commande.channel === "salon") return null;
+      if (commande.channel === "salon") return null;
 
       const [client] = await db
         .select({
@@ -1618,15 +1599,12 @@ export function mountOrderRoutes(app: Hono): void {
       // elle attend au lieu choisi, et c'est ce que dit son courrier. Un
       // retrait qui voyage finalement (vrai bordereau) se lit comme une
       // livraison : même règle que la frise (parcoursDe).
-      const lieu =
-        commande.channel === "salon" ? null : lignesDuLieu(lieuDeRetrait(commande, langue));
-      if (quoi !== "ancien") {
-        const retrait = !!lieu && !(await avecBordereauReel([orderId])).has(orderId);
-        if (quoi === "prete" ? !retrait : retrait) return null;
-      }
+      const lieu = lignesDuLieu(lieuDeRetrait(commande, langue));
+      const retrait = !!lieu && !(await avecBordereauReel([orderId])).has(orderId);
+      if (quoi === "prete" ? !retrait : retrait) return null;
 
       const courrier =
-        (quoi === "prete" || quoi === "ancien") && lieu
+        quoi === "prete" && lieu
           ? courrierPreteAuRetrait({
               langue,
               prenomClient: prenom,
@@ -1634,17 +1612,7 @@ export function mountOrderRoutes(app: Hono): void {
               lieu,
               lignes,
             })
-          : quoi === "ancien" && commande.channel === "salon"
-            ? courrierPreteAuStand({
-                langue,
-                prenomClient: prenom,
-                numero: commande.number,
-                // Le nom du stand a été gardé dans la note interne au moment
-                // de la vente : c'est le seul endroit où il vit sur la commande.
-                evenement: commande.note?.replace(/^Stand\s*:\s*/, "").trim() || null,
-                lignes,
-              })
-            : courrierExpediee({
+          : courrierExpediee({
               langue,
               prenomClient: prenom,
               numero: commande.number,

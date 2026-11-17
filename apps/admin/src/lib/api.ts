@@ -1066,6 +1066,9 @@ export interface OrderRow {
   rembourseCents?: number;
   statutFinancier?: StatutFinancier;
   statutExpedition?: StatutExpedition;
+  /** Le parcours et l'étape de traitement (17/11) : le seul statut affiché. */
+  parcours?: string;
+  etapeTraitement?: string;
   /** Payée avec les clés d'ESSAI alors que la boutique encaisse pour de vrai. */
   payeeEnEssai?: boolean;
   tags?: string[] | null;
@@ -1089,6 +1092,8 @@ export interface FiltresCommandes {
   q?: string;
   financial?: string;
   fulfillment?: string;
+  /** Les étapes de traitement (17/11), séparées par des virgules. */
+  etape?: string;
   tag?: string;
   from?: string;
   to?: string;
@@ -1363,6 +1368,8 @@ export interface OrderDetail {
   mouvements?: Mouvement[];
   statutFinancier?: StatutFinancier;
   statutExpedition?: StatutExpedition;
+  /** L'étape de traitement (17/11). Null : reprise de Shopify. */
+  traitement?: { parcours: string; etape: string; bordereauReel: boolean } | null;
   rembourseCents?: number;
   /** Ce qui reste remboursable sur les frais de port. */
   portRemboursableCents?: number;
@@ -2273,17 +2280,42 @@ export function adminApi(request?: Request) {
      */
     bulkOrders: (
       ids: number[],
-      action: "fulfil" | "unfulfil" | "tag" | "untag" | "archiver" | "restaurer",
+      action:
+        | "etape-suivante"
+        | "fulfil"
+        | "unfulfil"
+        | "tag"
+        | "untag"
+        | "archiver"
+        | "restaurer",
       tags?: string[],
+      auteur?: string,
     ) =>
       // `numeros` n'accompagne que l'archivage : nommer ce qui a quitté la
       // liste évite d'avoir à la relire pour savoir ce qu'on vient de ranger.
-      req<{ ok: boolean; count: number; numeros?: string[] }>(
-        "POST",
-        "/admin/orders/bulk",
-        { ids, action, tags },
-        cookie,
-      ),
+      // `ecartees` : les commandes qu'une étape n'a pas pu faire avancer.
+      req<{
+        ok: boolean;
+        count: number;
+        numeros?: string[];
+        prevenues?: number;
+        ecartees?: { id: number; raison: string }[];
+      }>("POST", "/admin/orders/bulk", { ids, action, tags, auteur }, cookie),
+    /**
+     * Fait passer une commande à une étape de traitement (17/11) : la frise
+     * de la fiche. Rend l'étape atteinte et le courriel parti, s'il y en a un.
+     */
+    changerEtape: (
+      id: number,
+      data: { etape: string; carrier?: string; trackingNumber?: string; auteur?: string },
+    ) =>
+      req<{
+        inchange: boolean;
+        parcours: string;
+        de: string;
+        etape: string;
+        courrier: { sujet: string; email: string; parti: boolean } | null;
+      }>("POST", `/admin/orders/${id}/traitement`, data, cookie),
     /** Enregistre une expédition (transporteur + suivi + contenu du colis). */
     createFulfillment: (
       id: number,

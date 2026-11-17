@@ -191,9 +191,9 @@ export type CourrierEtape = "expediee" | "prete_a_retirer";
 /** Ce que la cliente reçoit, dit sous le bouton qui l'envoie. */
 export const ANNONCE_COURRIER: Record<CourrierEtape, string> = {
   expediee:
-    "La cliente recevra l'avis d'expédition « Votre commande est en route », avec le suivi s'il y en a un.",
+    "Le client recevra l'avis d'expédition « Votre commande est en route », avec le suivi s'il y en a un.",
   prete_a_retirer:
-    "La cliente recevra « Votre commande vous attend », avec le lieu où la retirer.",
+    "Le client recevra « Votre commande vous attend », avec le lieu où la retirer.",
 };
 
 /** Pourquoi une commande n'a pas d'étape à choisir. */
