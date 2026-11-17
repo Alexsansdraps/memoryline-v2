@@ -33,6 +33,7 @@ import {
   adminApi,
   type CollectionBo,
   type CollectionEnLigne,
+  type EmplacementMenu,
   type MenuCms,
   type ResumePage,
 } from "../lib/api.ts";
@@ -164,17 +165,18 @@ try {
 
 /*
  * Ce qui complète la liste : les collections (leurs rayons), celles que la
- * boutique sert vraiment, et le menu. Chacun a son repli : un morceau qui ne
- * répond pas laisse sa section vide ou muette, il n'empêche pas d'écrire une
- * page.
+ * boutique sert vraiment, le menu et le pied de page. Chacun a son repli : un
+ * morceau qui ne répond pas laisse sa section vide ou muette, il n'empêche
+ * pas d'écrire une page.
  */
-const [collections, enLigne, menu] = await Promise.all([
+const [collections, enLigne, menu, pied] = await Promise.all([
   api
     .collections()
     .then((r) => r.collections)
     .catch(() => [] as CollectionBo[]),
   api.collectionsEnLigne().catch(() => null as CollectionEnLigne[] | null),
-  api.menu().catch(() => null as MenuCms | null),
+  api.menu("haut").catch(() => null as MenuCms | null),
+  api.menu("pied").catch(() => null as MenuCms | null),
 ]);
 
 // Les pages archivées quittent la liste ordinaire et se retrouvent dans leur
@@ -191,8 +193,8 @@ const idDeCollection = (href: string) =>
   collections.find((c) => `/affiches?collection=${c.slug}` === href);
 
 /** « « Tout voir » sous Affiches personnalisables, « Villes » (masqué) ». */
-function dansLeMenu(href: string): string {
-  return liensVers(menu, href)
+function dansLeMenu(href: string, quelMenu: MenuCms | null): string {
+  return liensVers(quelMenu, href)
     .map(
       (l) =>
         `« ${l.label} »${l.parent ? ` sous ${l.parent}` : ""}${l.visible ? "" : " (masqué)"}`,
@@ -200,9 +202,39 @@ function dansLeMenu(href: string): string {
     .join(", ");
 }
 
-/** Le lien qui prépare une entrée de menu vers cette page, sans rien enregistrer. */
-const lienAjouterAuMenu = (href: string, nom: string) =>
-  `${url("/menu")}?${new URLSearchParams({ ajouter: href, nom }).toString()}`;
+/**
+ * Le lien qui prépare une entrée vers cette page, dans le menu du haut ou
+ * dans une colonne du pied de page, sans rien enregistrer.
+ */
+const lienAjouterAuMenu = (href: string, nom: string, emplacement: EmplacementMenu) =>
+  `${url("/menu")}?${new URLSearchParams({
+    ...(emplacement === "pied" ? { emplacement: "pied" } : {}),
+    ajouter: href,
+    nom,
+  }).toString()}`;
+
+/**
+ * Où une page figure, dans le menu du haut puis au pied de page — ou le lien
+ * qui l'y ajoute. Une ligne par menu, dans la colonne « Menu et pied de page ».
+ */
+function presences(href: string, nom: string) {
+  return [
+    {
+      ou: dansLeMenu(href, menu),
+      prefixe: "Menu : ",
+      ecran: url("/menu"),
+      ajouter: lienAjouterAuMenu(href, nom, "haut"),
+      libelleAjouter: "Ajouter au menu",
+    },
+    {
+      ou: dansLeMenu(href, pied),
+      prefixe: "Pied de page : ",
+      ecran: `${url("/menu")}?emplacement=pied`,
+      ajouter: lienAjouterAuMenu(href, nom, "pied"),
+      libelleAjouter: "Ajouter au pied de page",
+    },
+  ];
+}
 
 const champ =
   "mt-1 w-full rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm";
@@ -246,7 +278,10 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
         Il se compose dans <strong>Menu du site</strong> : ajouter une entrée,
         la renommer, la monter ou la descendre, la masquer ou la retirer — vers
         n'importe quelle page de cet écran, choisie dans une liste. Le lien
-        « Ajouter au menu » d'une ligne y prépare l'entrée pour vous.
+        « Ajouter au menu » d'une ligne y prépare l'entrée pour vous. Les
+        colonnes du bas du site se règlent au même endroit, onglet
+        <strong>Pied de page</strong> : « Ajouter au pied de page » y prépare
+        le lien.
       </p>
     </div>
     <a href={url("/menu")} class={boutonPrincipal}>Ouvrir le menu du site →</a>
@@ -300,14 +335,14 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
           <th class="px-4 py-2 font-medium">Nom de la page</th>
           <th class="px-4 py-2 font-medium">Adresse</th>
           <th class="px-4 py-2 font-medium">Statut</th>
-          <th class="px-4 py-2 font-medium">Dans le menu</th>
+          <th class="px-4 py-2 font-medium">Menu et pied de page</th>
           <th class="px-4 py-2 font-medium">Modifiée le</th>
           <th class="px-2 py-2 w-10"></th>
         </tr>
       </thead>
       <tbody data-rangement="form-ordre-pages">
         {enCours.map((p, i) => {
-          const menuPage = dansLeMenu(`/pages/${p.slug}`);
+          const ouEstElle = presences(`/pages/${p.slug}`, p.title);
           return (
             <tr class="border-t border-bo-border" data-rang-id={p.id}>
               <td class="px-4 py-3 whitespace-nowrap">
@@ -371,16 +406,23 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
                 )}
               </td>
               <td class="px-4 py-3 text-xs">
-                {menuPage ? (
-                  <a href={url("/menu")} class="text-bo-accent hover:underline">{menuPage}</a>
-                ) : (
-                  <a
-                    href={lienAjouterAuMenu(`/pages/${p.slug}`, p.title)}
-                    class="text-bo-muted hover:text-bo-accent hover:underline"
-                  >
-                    Ajouter au menu
-                  </a>
-                )}
+                {ouEstElle.map((x) => (
+                  <span class="block">
+                    {x.ou ? (
+                      <a href={x.ecran} class="text-bo-accent hover:underline">
+                        {x.prefixe}
+                        {x.ou}
+                      </a>
+                    ) : (
+                      <a
+                        href={x.ajouter}
+                        class="text-bo-muted hover:text-bo-accent hover:underline"
+                      >
+                        {x.libelleAjouter}
+                      </a>
+                    )}
+                  </span>
+                ))}
               </td>
               <td class="px-4 py-3 text-bo-muted">{dateCourte(p.updatedAt)}</td>
               <td class="px-2 py-3 text-right">
@@ -424,13 +466,13 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
           <th class="px-4 py-2 font-medium">Page</th>
           <th class="px-4 py-2 font-medium">Adresse</th>
           <th class="px-4 py-2 font-medium">Se règle dans</th>
-          <th class="px-4 py-2 font-medium">Dans le menu</th>
+          <th class="px-4 py-2 font-medium">Menu et pied de page</th>
           <th class="px-4 py-2"></th>
         </tr>
       </thead>
       <tbody>
         {PAGES_DE_LA_BOUTIQUE.map((d) => {
-          const menuPage = dansLeMenu(d.href);
+          const ouEstElle = presences(d.href, d.nom);
           return (
             <tr class="border-t border-bo-border">
               <td class="px-4 py-3">
@@ -448,16 +490,23 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
                 )}
               </td>
               <td class="px-4 py-3 text-xs">
-                {menuPage ? (
-                  <a href={url("/menu")} class="text-bo-accent hover:underline">{menuPage}</a>
-                ) : (
-                  <a
-                    href={lienAjouterAuMenu(d.href, d.nom)}
-                    class="text-bo-muted hover:text-bo-accent hover:underline"
-                  >
-                    Ajouter au menu
-                  </a>
-                )}
+                {ouEstElle.map((x) => (
+                  <span class="block">
+                    {x.ou ? (
+                      <a href={x.ecran} class="text-bo-accent hover:underline">
+                        {x.prefixe}
+                        {x.ou}
+                      </a>
+                    ) : (
+                      <a
+                        href={x.ajouter}
+                        class="text-bo-muted hover:text-bo-accent hover:underline"
+                      >
+                        {x.libelleAjouter}
+                      </a>
+                    )}
+                  </span>
+                ))}
               </td>
               <td class="px-4 py-3 text-right whitespace-nowrap">
                 <a
@@ -499,14 +548,14 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
           <th class="px-4 py-2 font-medium">Rayon</th>
           <th class="px-4 py-2 font-medium">Adresse</th>
           <th class="px-4 py-2 font-medium">Sur le site</th>
-          <th class="px-4 py-2 font-medium">Dans le menu</th>
+          <th class="px-4 py-2 font-medium">Menu et pied de page</th>
           <th class="px-4 py-2"></th>
         </tr>
       </thead>
       <tbody>
         {rayons.map((d) => {
           const collection = idDeCollection(d.href);
-          const menuPage = dansLeMenu(d.href);
+          const ouEstElle = presences(d.href, d.nom);
           return (
             <tr class="border-t border-bo-border">
               <td class="px-4 py-3">
@@ -543,16 +592,23 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
                 )}
               </td>
               <td class="px-4 py-3 text-xs">
-                {menuPage ? (
-                  <a href={url("/menu")} class="text-bo-accent hover:underline">{menuPage}</a>
-                ) : (
-                  <a
-                    href={lienAjouterAuMenu(d.href, d.nom)}
-                    class="text-bo-muted hover:text-bo-accent hover:underline"
-                  >
-                    Ajouter au menu
-                  </a>
-                )}
+                {ouEstElle.map((x) => (
+                  <span class="block">
+                    {x.ou ? (
+                      <a href={x.ecran} class="text-bo-accent hover:underline">
+                        {x.prefixe}
+                        {x.ou}
+                      </a>
+                    ) : (
+                      <a
+                        href={x.ajouter}
+                        class="text-bo-muted hover:text-bo-accent hover:underline"
+                      >
+                        {x.libelleAjouter}
+                      </a>
+                    )}
+                  </span>
+                ))}
               </td>
               <td class="px-4 py-3 text-right whitespace-nowrap">
                 {d.enLigne && (

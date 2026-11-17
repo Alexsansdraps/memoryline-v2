@@ -41,9 +41,10 @@ import {
   isNull,
   notInArray,
   sql as raw,
+  type SQL,
 } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
-import type { BlocPage } from "./db/schema.js";
+import type { BlocPage, EmplacementMenu } from "./db/schema.js";
 import { ordreDesCollections } from "./collections.js";
 import { cibleDuLien, menuSuitLOrdre } from "./menu-ordre.js";
 import { supprimerPourToujours } from "./suppression.js";
@@ -173,6 +174,14 @@ const REFERENCES_MAX = 20;
 
 /** Un menu plus grand que cela ne tient pas dans un bandeau de site. */
 const ENTREES_MENU_MAX = 200;
+
+/**
+ * Les colonnes de liens que le pied de page sait mettre en page, à côté du
+ * logo et de la colonne « Compte » : au-delà, elles ne tiennent plus côte à
+ * côte sur un écran d'ordinateur (Base.astro, côté site). Seules les colonnes
+ * visibles comptent : une colonne masquée se prépare sans rien déranger.
+ */
+export const COLONNES_PIED_MAX = 4;
 
 /**
  * Une saisie que l'on refuse, avec la phrase à montrer à la propriétaire.
@@ -1170,8 +1179,62 @@ async function lireChampsPage(
 /*  Relecture du menu                                                         */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Les deux menus du site, rangés dans la même table : le bandeau du haut, et
+ * le pied de page (17/11). Chaque route du menu prend `?emplacement=` ;
+ * absent, c'est le haut, comme avant que le pied de page existe.
+ */
+const EMPLACEMENTS: readonly EmplacementMenu[] = ["haut", "pied"];
+
+/** Le nom d'un menu dans une phrase pour la boutique. */
+const NOM_DU_MENU: Record<EmplacementMenu, string> = {
+  haut: "le menu",
+  pied: "le pied de page",
+};
+
+/** Une phrase qui commence par ce nom : « Le pied de page n'a pas… ». */
+const enTete = (texte: string): string => texte.charAt(0).toUpperCase() + texte.slice(1);
+
+/** Le menu demandé par `?emplacement=` : le haut s'il est absent. */
+export function lireEmplacement(v: string | undefined): EmplacementMenu {
+  const brut = (v ?? "").trim().toLowerCase();
+  if (!brut) return "haut";
+  const connu = EMPLACEMENTS.find((e) => e === brut);
+  // Deviner reviendrait à écrire dans l'autre menu : on refuse.
+  if (!connu)
+    throw new SaisieRefusee(
+      `Le menu « ${brut.slice(0, 20)} » n'existe pas : c'est « haut » ou « pied ». Rechargez la page et reprenez.`,
+    );
+  return connu;
+}
+
+/**
+ * La condition de TOUTE requête des routes du menu : les lignes d'un seul
+ * menu, plus ce qu'on demande. C'est elle qui garantit qu'enregistrer le pied
+ * de page n'archive, ne déplace ni ne touche une entrée du haut, et
+ * inversement (tests/menu-emplacements.test.ts vérifie qu'aucune requête des
+ * routes du menu ne s'en passe).
+ */
+export function duMenu(emplacement: EmplacementMenu, ...conditions: SQL[]): SQL {
+  return and(eq(schema.menuItems.emplacement, emplacement), ...conditions)!;
+}
+
+/**
+ * Ce que l'enregistrement d'un menu range aux archives : ses lignes encore en
+ * place qui ne sont plus dans l'arbre. Jamais une ligne de l'autre menu, et
+ * jamais une ligne déjà rangée — sa date d'archivage ne bouge pas.
+ */
+export function aRanger(emplacement: EmplacementMenu, gardees: readonly number[]): SQL {
+  const dejaRangees = isNull(schema.menuItems.archivedAt);
+  return gardees.length
+    ? duMenu(emplacement, notInArray(schema.menuItems.id, [...gardees]), dejaRangees)
+    : // Un menu volontairement vidé : le site gardera ses liens de secours,
+      // et tout ce qu'il contenait part aux archives.
+      duMenu(emplacement, dejaRangees);
+}
+
 /** Une entrée de menu telle que le back-office la renvoie. */
-interface EntreeVoulue {
+export interface EntreeVoulue {
   id: number | null;
   label: string;
   href: string;
@@ -1181,7 +1244,12 @@ interface EntreeVoulue {
 }
 
 /** Relit une entrée du menu. Les sous-entrées ne sont lues qu'au premier niveau. */
-function lireEntree(brut: unknown, profondeur: number, vus: Set<number>): EntreeVoulue {
+function lireEntree(
+  brut: unknown,
+  profondeur: number,
+  vus: Set<number>,
+  emplacement: EmplacementMenu,
+): EntreeVoulue {
   const e = objet(brut, "Le menu");
 
   const label = String(e.label ?? "").trim().slice(0, 80);
@@ -1189,7 +1257,12 @@ function lireEntree(brut: unknown, profondeur: number, vus: Set<number>): Entree
     throw new SaisieRefusee(
       "Une entrée de menu doit porter un nom. Nommez-la, ou retirez-la du menu.",
     );
-  const href = adresse(e.href, `L'entrée « ${label} »`);
+  // Le titre d'une colonne du pied de page peut se passer d'adresse : il
+  // nomme la colonne, ce sont ses liens qui mènent quelque part. Partout
+  // ailleurs, une entrée sans adresse reste refusée.
+  const titreDeColonne =
+    emplacement === "pied" && profondeur === 0 && !String(e.href ?? "").trim();
+  const href = titreDeColonne ? "" : adresse(e.href, `L'entrée « ${label} »`);
 
   const id = identifiantExistant(e.id, `L'entrée « ${label} »`);
   // La même entrée envoyée deux fois, une fois ici et une fois ailleurs dans
@@ -1226,8 +1299,46 @@ function lireEntree(brut: unknown, profondeur: number, vus: Set<number>): Entree
     // de devoir recommencer l'enregistrement.
     visible: ouiNon(e.visible, `L'affichage de « ${label} » dans le menu`, true),
     translations: lireTraductionsMenu(e.translations, label),
-    enfants: enfantsBruts.map((enfant) => lireEntree(enfant, profondeur + 1, vus)),
+    enfants: enfantsBruts.map((enfant) =>
+      lireEntree(enfant, profondeur + 1, vus, emplacement),
+    ),
   };
+}
+
+/**
+ * Relit l'arbre complet d'UN menu, tel que le back-office l'envoie, sans rien
+ * demander à la base. Ce qui ne se lit pas, ou ne tiendrait pas sur le site,
+ * est refusé avec sa phrase.
+ */
+export function lireArbreMenu(
+  brut: unknown,
+  emplacement: EmplacementMenu,
+): { voulues: EntreeVoulue[]; vus: Set<number> } {
+  // Une requête sans arbre n'est pas un menu vide voulu : c'est une requête
+  // qu'on n'a pas su lire. L'appliquer effacerait toute la navigation.
+  if (!Array.isArray(brut))
+    throw new SaisieRefusee(
+      `${enTete(NOM_DU_MENU[emplacement])} n'a pas pu être lu. Rechargez la page et reprenez la modification.`,
+    );
+
+  const vus = new Set<number>();
+  const voulues = brut.map((e) => lireEntree(e, 0, vus, emplacement));
+  const total = voulues.length + voulues.reduce((n, e) => n + e.enfants.length, 0);
+  if (total > ENTREES_MENU_MAX)
+    throw new SaisieRefusee(
+      `${enTete(NOM_DU_MENU[emplacement])} ne peut pas contenir plus de ${ENTREES_MENU_MAX} entrées.`,
+    );
+
+  // Une entrée de premier niveau du pied de page est une colonne du site.
+  if (emplacement === "pied") {
+    const colonnes = voulues.filter((e) => e.visible).length;
+    if (colonnes > COLONNES_PIED_MAX)
+      throw new SaisieRefusee(
+        `Le pied de page affiche au plus ${COLONNES_PIED_MAX} colonnes, et ${colonnes} sont visibles. ` +
+          "Masquez-en une (décochez « Visible »), ou rangez ses liens dans une autre colonne.",
+      );
+  }
+  return { voulues, vus };
 }
 
 export function mountCms(app: Hono): void {
@@ -1236,13 +1347,22 @@ export function mountCms(app: Hono): void {
   /* ---------------------------------------------------------------------- */
 
   /**
-   * La navigation du site, telle qu'elle doit s'afficher.
+   * La navigation du site, telle qu'elle doit s'afficher : le bandeau du
+   * haut, ou le pied de page avec `?emplacement=pied`. Une entrée de premier
+   * niveau du pied de page est une colonne : son libellé en est le titre (son
+   * adresse est souvent vide), ses sous-entrées en sont les liens.
    *
    * Rien de masqué n'en sort, et une sous-entrée dont l'entrée principale est
    * masquée s'en va avec elle : elle n'a pas de place au premier niveau, et
    * l'y remonter donnerait un menu que personne n'a voulu.
    */
   app.get("/menu", async (c) => {
+    let emplacement: EmplacementMenu;
+    try {
+      emplacement = lireEmplacement(c.req.query("emplacement"));
+    } catch (erreur) {
+      return reponseErreur(c, erreur, "Le menu n'a pas pu être lu.");
+    }
     const langue = langueDemandee(c);
     const auStand = demandeDuStand(c);
     // Les pages réservées à la tablette du stand : leur lien au menu ne se
@@ -1271,7 +1391,8 @@ export function mountCms(app: Hono): void {
       })
       .from(schema.menuItems)
       .where(
-        and(
+        duMenu(
+          emplacement,
           eq(schema.menuItems.visible, true),
           // Un lien retiré du menu est archivé, pas effacé : il ne revient
           // sur le site que lorsqu'on le restaure au back-office.
@@ -1298,6 +1419,10 @@ export function mountCms(app: Hono): void {
     }
 
     return c.json({
+      // Le menu rendu, dit en toutes lettres : le site ne prend pour pied de
+      // page qu'une réponse qui se dit « pied ». Une API d'avant le pied de
+      // page ignorerait `?emplacement=` et rendrait le menu du haut.
+      emplacement,
       entrees: lignes
         .filter((l) => l.parentId === null)
         .map((l) => ({
@@ -1698,17 +1823,27 @@ export function mountCms(app: Hono): void {
       estArchive: (p) => p.archivedAt !== null,
       empeche: async (p) => {
         const cible = `page:${p.slug.toLowerCase()}`;
+        // Les deux menus : un lien du pied de page condamné ne se répare pas
+        // mieux qu'un lien du haut.
         const liens = (
           await db
-            .select({ label: schema.menuItems.label, href: schema.menuItems.href })
+            .select({
+              label: schema.menuItems.label,
+              href: schema.menuItems.href,
+              emplacement: schema.menuItems.emplacement,
+            })
             .from(schema.menuItems)
             .where(isNull(schema.menuItems.archivedAt))
         ).filter((l) => cibleDuLien(l.href) === cible);
-        if (liens.length)
+        if (liens.length) {
+          const enHaut = liens.some((l) => l.emplacement === "haut");
+          const enPied = liens.some((l) => l.emplacement === "pied");
+          const ou = enHaut && enPied ? "le menu et le pied de page" : enPied ? "le pied de page" : "le menu";
           return (
-            `« ${p.title} » est encore dans le menu du site (${quelquesNoms(liens.map((l) => l.label))}) : ` +
-            `retirez ${liens.length > 1 ? "ces liens" : "ce lien"} depuis l'écran « Menu », puis supprimez la page. Elle reste archivée.`
+            `« ${p.title} » est encore dans ${ou} du site (${quelquesNoms(liens.map((l) => l.label))}) : ` +
+            `retirez ${liens.length > 1 ? "ces liens" : "ce lien"} depuis l'écran « Menu du site », puis supprimez la page. Elle reste archivée.`
           );
+        }
         const redirections = (
           await db
             .select({ fromPath: schema.redirects.fromPath, toPath: schema.redirects.toPath })
@@ -1736,16 +1871,24 @@ export function mountCms(app: Hono): void {
   /* ---------------------------------------------------------------------- */
 
   /**
-   * Le menu entier, entrées masquées comprises — mais pas les archivées.
+   * Le menu entier, entrées masquées comprises — mais pas les archivées. Le
+   * haut, ou le pied de page avec `?emplacement=pied` : jamais les deux.
    *
    * Les liens retirés du menu partent dans `archives`, à part : l'écran les
    * montre sous le menu, avec un bouton « Restaurer ». Les mêler à l'arbre les
    * ferait réenregistrer dans le menu au premier « Enregistrer ».
    */
   app.get("/admin/menu", async (c) => {
+    let emplacement: EmplacementMenu;
+    try {
+      emplacement = lireEmplacement(c.req.query("emplacement"));
+    } catch (erreur) {
+      return reponseErreur(c, erreur, "Le menu n'a pas pu être lu.");
+    }
     const toutes = await db
       .select()
       .from(schema.menuItems)
+      .where(duMenu(emplacement))
       .orderBy(asc(schema.menuItems.position), asc(schema.menuItems.id));
     const lignes = toutes.filter((l) => l.archivedAt === null);
 
@@ -1795,12 +1938,18 @@ export function mountCms(app: Hono): void {
   });
 
   /**
-   * Réécrit le menu entier.
+   * Réécrit UN menu entier : le haut, ou le pied de page avec
+   * `?emplacement=pied`.
    *
    * Le menu se pense comme un tout : on y ajoute une entrée, on en déplace deux
    * et on en retire une dans le même geste. La requête porte donc l'arbre
    * complet, l'ordre du tableau fait la position, et ce qui n'y figure plus
    * disparaît.
+   *
+   * « Tout » veut dire tout CE menu. Chaque requête ci-dessous passe par
+   * `duMenu` : enregistrer le pied de page n'archive, ne déplace ni ne touche
+   * une entrée du haut, et inversement. Une entrée de l'autre menu envoyée ici
+   * est refusée comme une entrée disparue, au lieu de changer de menu.
    *
    * D'où la transaction, qui n'est pas une précaution de style : réécrit à
    * moitié, le menu laisserait la boutique sans navigation, ou avec deux fois
@@ -1809,25 +1958,14 @@ export function mountCms(app: Hono): void {
   app.post("/admin/menu", async (c) => {
     const corps = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     try {
-      // Une requête sans arbre n'est pas un menu vide voulu : c'est une requête
-      // qu'on n'a pas su lire. L'appliquer effacerait toute la navigation.
-      if (!Array.isArray(corps.entrees))
-        throw new SaisieRefusee(
-          "Le menu n'a pas pu être lu. Rechargez la page et reprenez la modification.",
-        );
-
-      const vus = new Set<number>();
-      const voulues = (corps.entrees as unknown[]).map((e) => lireEntree(e, 0, vus));
-      const total = voulues.length + voulues.reduce((n, e) => n + e.enfants.length, 0);
-      if (total > ENTREES_MENU_MAX)
-        throw new SaisieRefusee(
-          `Le menu ne peut pas contenir plus de ${ENTREES_MENU_MAX} entrées.`,
-        );
+      const emplacement = lireEmplacement(c.req.query("emplacement"));
+      const { voulues, vus } = lireArbreMenu(corps.entrees, emplacement);
 
       await db.transaction(async (tx) => {
         const existantes = await tx
           .select({ id: schema.menuItems.id })
-          .from(schema.menuItems);
+          .from(schema.menuItems)
+          .where(duMenu(emplacement));
         const connues = new Set(existantes.map((l) => l.id));
         for (const id of vus)
           if (!connues.has(id))
@@ -1844,6 +1982,7 @@ export function mountCms(app: Hono): void {
           position: number,
         ): Promise<number> => {
           const donnees = {
+            emplacement,
             parentId,
             label: entree.label,
             href: entree.href,
@@ -1859,7 +1998,7 @@ export function mountCms(app: Hono): void {
             await tx
               .update(schema.menuItems)
               .set(donnees)
-              .where(eq(schema.menuItems.id, entree.id));
+              .where(duMenu(emplacement, eq(schema.menuItems.id, entree.id)));
             return entree.id;
           }
           const [creee] = await tx
@@ -1890,17 +2029,12 @@ export function mountCms(app: Hono): void {
         // Archiver, et non supprimer : un lien retiré du menu se retrouve dans
         // « Liens retirés du menu », d'où il se restaure. La date d'archivage
         // déjà posée n'est pas réécrite — sinon toute la liste des archives
-        // se redaterait d'aujourd'hui à chaque enregistrement du menu.
-        const ranger = { archivedAt: new Date() };
-        const dejaRangees = isNull(schema.menuItems.archivedAt);
-        if (gardees.length)
-          await tx
-            .update(schema.menuItems)
-            .set(ranger)
-            .where(and(notInArray(schema.menuItems.id, gardees), dejaRangees));
-        // Un menu volontairement vidé : la boutique gardera ses liens de
-        // secours, et tout ce qu'il contenait part aux archives.
-        else await tx.update(schema.menuItems).set(ranger).where(dejaRangees);
+        // se redaterait d'aujourd'hui à chaque enregistrement du menu. Et
+        // seulement dans CE menu (aRanger).
+        await tx
+          .update(schema.menuItems)
+          .set({ archivedAt: new Date() })
+          .where(aRanger(emplacement, gardees));
       });
 
       return c.json({ ok: true });
@@ -1924,11 +2058,15 @@ export function mountCms(app: Hono): void {
    *
    * Chacun revient à sa place d'avant, celle que sa `position` a gardée. Si le
    * menu a changé entre-temps, les flèches de l'écran le remettent où il faut.
+   *
+   * Dans son menu seulement (`?emplacement=`) : un lien du pied de page ne se
+   * restaure pas depuis l'écran du haut, ni l'inverse.
    */
   app.post("/admin/menu/:id/restaurer", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id)) return c.notFound();
     try {
+      const emplacement = lireEmplacement(c.req.query("emplacement"));
       await db.transaction(async (tx) => {
         const [ligne] = await tx
           .select({
@@ -1937,7 +2075,7 @@ export function mountCms(app: Hono): void {
             archivedAt: schema.menuItems.archivedAt,
           })
           .from(schema.menuItems)
-          .where(eq(schema.menuItems.id, id));
+          .where(duMenu(emplacement, eq(schema.menuItems.id, id)));
         if (!ligne)
           throw new SaisieRefusee(
             "Ce lien n'existe plus. Rechargez la page et reprenez.",
@@ -1951,7 +2089,8 @@ export function mountCms(app: Hono): void {
             .select({ id: schema.menuItems.id })
             .from(schema.menuItems)
             .where(
-              and(
+              duMenu(
+                emplacement,
                 eq(schema.menuItems.parentId, ligne.id),
                 eq(schema.menuItems.archivedAt, ligne.archivedAt),
               ),
@@ -1962,7 +2101,7 @@ export function mountCms(app: Hono): void {
         await tx
           .update(schema.menuItems)
           .set({ archivedAt: null })
-          .where(inArray(schema.menuItems.id, [...aRendre]));
+          .where(duMenu(emplacement, inArray(schema.menuItems.id, [...aRendre])));
       });
       return c.json({ ok: true });
     } catch (erreur) {
@@ -1984,22 +2123,33 @@ export function mountCms(app: Hono): void {
    * vérifie avant, puis de nouveau dans la transaction (un enregistrement du
    * menu a pu l'y rattacher entre-temps) — ce second refus prend la forme
    * qu'aurait celui de la base, et la transaction annule tout.
+   *
+   * Dans son menu seulement (`?emplacement=`), comme la restauration.
    */
   app.delete("/admin/menu/:id", async (c) => {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id) || id <= 0) return c.notFound();
+    let emplacement: EmplacementMenu;
+    try {
+      emplacement = lireEmplacement(c.req.query("emplacement"));
+    } catch (erreur) {
+      return reponseErreur(c, erreur, "Ce lien n'a pas pu être supprimé.");
+    }
+    const ici = NOM_DU_MENU[emplacement];
     const sousLiensVivants = (lecteur: Pick<typeof db, "select">) =>
       lecteur
         .select({ label: schema.menuItems.label })
         .from(schema.menuItems)
-        .where(and(eq(schema.menuItems.parentId, id), isNull(schema.menuItems.archivedAt)));
+        .where(
+          duMenu(emplacement, eq(schema.menuItems.parentId, id), isNull(schema.menuItems.archivedAt)),
+        );
     return supprimerPourToujours(c, {
       lire: async () =>
         (
           await db
             .select({ id: schema.menuItems.id, label: schema.menuItems.label, archivedAt: schema.menuItems.archivedAt })
             .from(schema.menuItems)
-            .where(eq(schema.menuItems.id, id))
+            .where(duMenu(emplacement, eq(schema.menuItems.id, id)))
         )[0] ?? null,
       estArchive: (l) => l.archivedAt !== null,
       empeche: async (l) => {
@@ -2007,24 +2157,28 @@ export function mountCms(app: Hono): void {
         if (!vivants.length) return null;
         const plus = vivants.length > 1;
         return (
-          `« ${l.label} » a encore ${plus ? "des sous-liens" : "un sous-lien"} dans le menu ` +
+          `« ${l.label} » a encore ${plus ? "des sous-liens" : "un sous-lien"} dans ${ici} ` +
           `(${quelquesNoms(vivants.map((v) => v.label))}) : ${plus ? "ils partiraient" : "il partirait"} avec elle. ` +
-          `Déplacez-${plus ? "les" : "le"} ou retirez-${plus ? "les" : "le"} du menu d'abord. Le lien reste dans les liens retirés.`
+          `Déplacez-${plus ? "les" : "le"} ou retirez-${plus ? "les" : "le"} ${emplacement === "pied" ? "du pied de page" : "du menu"} d'abord. Le lien reste dans les liens retirés.`
         );
       },
       supprimer: async () => {
         await db.transaction(async (tx) => {
           await tx
             .delete(schema.menuItems)
-            .where(and(eq(schema.menuItems.parentId, id), isNotNull(schema.menuItems.archivedAt)));
+            .where(
+              duMenu(emplacement, eq(schema.menuItems.parentId, id), isNotNull(schema.menuItems.archivedAt)),
+            );
           if ((await sousLiensVivants(tx)).length)
             throw Object.assign(new Error("Un sous-lien est revenu dans le menu."), { code: "23503" });
           await tx
             .delete(schema.menuItems)
-            .where(and(eq(schema.menuItems.id, id), isNotNull(schema.menuItems.archivedAt)));
+            .where(
+              duMenu(emplacement, eq(schema.menuItems.id, id), isNotNull(schema.menuItems.archivedAt)),
+            );
         });
       },
-      utilisePar: "des sous-liens encore dans le menu",
+      utilisePar: `des sous-liens encore dans ${ici}`,
     });
   });
 }

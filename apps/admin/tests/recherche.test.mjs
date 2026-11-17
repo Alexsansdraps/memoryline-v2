@@ -93,10 +93,14 @@ test("chaque entrée du menu est un écran de l'index, sous son libellé", () =>
   for (const groupe of MENU)
     for (const entree of groupe.entrees)
       for (const e of [entree, ...(entree.children ?? [])]) {
-        const ecran = INDEX.ecrans.find((x) => x.route === e.href);
+        // Une entrée avec une requête ouvre un ONGLET d'un écran du menu
+        // (« Pied de page » : /menu?emplacement=pied) : l'écran doit exister,
+        // et il garde le libellé de sa propre entrée.
+        const [route, requete] = e.href.split("?");
+        const ecran = INDEX.ecrans.find((x) => x.route === route);
         assert.ok(ecran, `écran absent : ${e.href}`);
-        assert.equal(ecran.titre, e.label);
         assert.equal(ecran.dansLeMenu, true);
+        if (!requete) assert.equal(ecran.titre, e.label);
       }
 });
 

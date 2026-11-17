@@ -77,6 +77,11 @@ export interface PromoRule {
   translations?: TraductionsDe<"name">;
   /** Non nul = archivée : rangée dans « Promotions archivées », ne s'applique plus. */
   archivedAt?: string | null;
+  /**
+   * Combien de commandes payées ont utilisé son code (annulées et
+   * remboursées en entier exclues). Null pour une promotion sans code.
+   */
+  utilisations?: number | null;
 }
 
 /**
@@ -339,6 +344,16 @@ export interface MenuCms {
   /** Les liens retirés du menu, restaurables. Absent des anciennes réponses. */
   archives?: LienArchive[];
 }
+
+/**
+ * Les deux menus du site : « haut », le bandeau, et « pied », les colonnes
+ * du pied de page. Chacun se lit et s'enregistre seul : enregistrer l'un ne
+ * touche jamais l'autre (apps/api/src/cms.ts).
+ */
+export type EmplacementMenu = "haut" | "pied";
+
+/** La requête qui désigne un menu, pour chaque route du menu. */
+const requeteMenu = (emplacement: EmplacementMenu) => `?emplacement=${emplacement}`;
 
 /** Ce qu'un import ferait, ou vient de faire, sur une fiche produit. */
 export interface LigneImport {
@@ -1779,6 +1794,16 @@ export interface CarteCadeau {
   disabledAt: string | null;
   /** Nombre de fois où la carte a servi à payer quelque chose. */
   utilisations: number;
+  /** Vendue en ligne (17/11) : la commande qui l'a achetée. Null = vendue au BO. */
+  orderId?: number | null;
+  numeroCommande?: string | null;
+  /** Son destinataire, quand elle a été vendue en ligne. */
+  recipientEmail?: string | null;
+  recipientName?: string | null;
+  /** Le petit mot de l'acheteuse (détail d'une carte). */
+  message?: string | null;
+  /** Quand le courriel du destinataire est parti. */
+  sentAt?: string | null;
 }
 
 /**
@@ -3336,20 +3361,35 @@ export function adminApi(request?: Request) {
     /** Supprime pour de bon une page ARCHIVÉE ; refusée (409) tant que le menu ou une redirection y mène. */
     supprimerPage: (id: number) =>
       req<SuppressionFaite>("DELETE", `/admin/pages/${id}`, undefined, cookie),
-    /** Le menu du site, entrées masquées comprises — et les liens retirés. */
-    menu: () => req<MenuCms>("GET", "/admin/menu", undefined, cookie),
     /**
-     * Remplace TOUT l'arbre du menu : l'ordre du tableau fait la position.
-     * Ce qui n'y figure plus part aux archives, d'où il se restaure.
+     * Le menu du site (le haut, ou le pied de page), entrées masquées
+     * comprises — et les liens retirés.
      */
-    enregistrerMenu: (entrees: unknown[]) =>
-      req<{ ok: true }>("POST", "/admin/menu", { entrees }, cookie),
-    /** Remet dans le menu un lien qui en avait été retiré. */
-    restaurerLienMenu: (id: number) =>
-      req<{ ok: true }>("POST", `/admin/menu/${id}/restaurer`, {}, cookie),
+    menu: (emplacement: EmplacementMenu = "haut") =>
+      req<MenuCms>("GET", `/admin/menu${requeteMenu(emplacement)}`, undefined, cookie),
+    /**
+     * Remplace TOUT l'arbre de CE menu : l'ordre du tableau fait la position.
+     * Ce qui n'y figure plus part aux archives, d'où il se restaure. L'autre
+     * menu n'est pas touché.
+     */
+    enregistrerMenu: (entrees: unknown[], emplacement: EmplacementMenu = "haut") =>
+      req<{ ok: true }>("POST", `/admin/menu${requeteMenu(emplacement)}`, { entrees }, cookie),
+    /** Remet dans son menu un lien qui en avait été retiré. */
+    restaurerLienMenu: (id: number, emplacement: EmplacementMenu = "haut") =>
+      req<{ ok: true }>(
+        "POST",
+        `/admin/menu/${id}/restaurer${requeteMenu(emplacement)}`,
+        {},
+        cookie,
+      ),
     /** Supprime pour de bon un lien retiré du menu, avec ses sous-liens rangés. */
-    supprimerLienMenu: (id: number) =>
-      req<SuppressionFaite>("DELETE", `/admin/menu/${id}`, undefined, cookie),
+    supprimerLienMenu: (id: number, emplacement: EmplacementMenu = "haut") =>
+      req<SuppressionFaite>(
+        "DELETE",
+        `/admin/menu/${id}${requeteMenu(emplacement)}`,
+        undefined,
+        cookie,
+      ),
 
     /* --- Ordre d'affichage de chaque page de liste --------------------- */
     /** Les affiches actives d'un genre, dans l'ordre où la boutique les montre. */

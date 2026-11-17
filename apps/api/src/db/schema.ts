@@ -2472,6 +2472,12 @@ export const pages = pgTable(
 );
 
 /**
+ * Les deux menus du site : « haut », le bandeau en tête de chaque page, et
+ * « pied », les colonnes de liens du pied de page (17/11).
+ */
+export type EmplacementMenu = "haut" | "pied";
+
+/**
  * Une entrée du menu principal, avec ses sous-entrées.
  *
  * Un seul niveau de profondeur, et ce n'est pas une limite technique : le
@@ -2481,16 +2487,30 @@ export const pages = pgTable(
  * Retirer une entrée du menu l'ARCHIVE, sous-entrées comprises : « Affiches
  * personnalisables » sans ses sous-entrées n'aurait aucun sens. La cascade de
  * la clé étrangère ne joue donc plus — plus rien ne s'efface ici.
+ *
+ * La même table porte le pied de page (`emplacement` = « pied ») : une
+ * entrée de premier niveau y est une colonne, son libellé en est le titre,
+ * et ses sous-entrées en sont les liens.
  */
 export const menuItems = pgTable(
   "menu_item",
   {
     id: serial("id").primaryKey(),
+    /**
+     * Le menu de la ligne : « haut » ou « pied ». Chaque menu s'enregistre
+     * seul (cms.ts) : enregistrer l'un ne touche jamais une ligne de l'autre.
+     * Une sous-entrée est toujours dans le menu de son parent.
+     */
+    emplacement: text("emplacement").$type<EmplacementMenu>().notNull().default("haut"),
     /** Null = entrée de premier niveau. */
     parentId: integer("parent_id").references((): AnyPgColumn => menuItems.id, {
       onDelete: "cascade",
     }),
     label: text("label").notNull(),
+    /**
+     * Vide seulement pour le titre d'une colonne du pied de page : il nomme
+     * la colonne, ce sont ses liens qui mènent quelque part.
+     */
     href: text("href").notNull(),
     position: integer("position").notNull().default(0),
     /** Masquée : préparée dans le back-office, absente du site. */
@@ -2510,7 +2530,11 @@ export const menuItems = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (t) => [index("menu_item_parent_idx").on(t.parentId, t.position)],
+  (t) => [
+    index("menu_item_parent_idx").on(t.parentId, t.position),
+    // Une autre valeur ferait une ligne qu'aucun des deux menus ne montre.
+    check("menu_item_emplacement_check", sql`${t.emplacement} in ('haut', 'pied')`),
+  ],
 );
 
 /**

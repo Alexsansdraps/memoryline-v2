@@ -181,7 +181,18 @@ export const MENU: GroupeNav[] = [
       // l'accueil, la vidéo de la personnalisation et le pied de page.
       { href: "/contenu", label: "Accueil et pied de page", icon: "✏️", owner: true },
       { href: "/pages", label: "Pages du site", icon: "📄", owner: true },
-      { href: "/menu", label: "Menu du site", icon: "🧭", owner: true },
+      {
+        href: "/menu",
+        label: "Menu du site",
+        icon: "🧭",
+        owner: true,
+        // Les colonnes de liens du bas du site (17/11) : le même écran, à
+        // l'onglet « Pied de page ». Une entrée à elles, parce que c'est sous
+        // ce nom que la boutique les cherche.
+        children: [
+          { href: "/menu?emplacement=pied", label: "Pied de page", icon: "⬇️", owner: true },
+        ],
+      },
       // Les adresses du site, comme les pages et le menu : où mène une
       // ancienne adresse (celles de Shopify, surtout). Shopify les range
       // aussi à côté de ses menus, d'où vient la cliente.

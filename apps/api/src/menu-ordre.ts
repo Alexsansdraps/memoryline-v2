@@ -15,7 +15,7 @@
  * paysages » échangent leur place si on les a échangées. Rien n'est ajouté,
  * rien n'est retiré, et l'écran « Menu du site » montre le résultat.
  */
-import { asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 
 /** Une transaction ouverte par `db.transaction`. */
@@ -58,6 +58,7 @@ export async function menuSuitLOrdre(
   const lignes = await tx
     .select({
       id: schema.menuItems.id,
+      emplacement: schema.menuItems.emplacement,
       parentId: schema.menuItems.parentId,
       href: schema.menuItems.href,
       position: schema.menuItems.position,
@@ -65,14 +66,20 @@ export async function menuSuitLOrdre(
     .from(schema.menuItems)
     // Un lien retiré du menu garde sa place d'avant : il la retrouvera s'il
     // est restauré, on ne la lui change pas pendant son absence.
-    .where(isNull(schema.menuItems.archivedAt))
+    // Le menu du HAUT seulement (17/11) : « Ranger aussi dans le menu du site »
+    // ne déplace pas les liens du pied de page, qui se rangent dans leur onglet.
+    .where(and(isNull(schema.menuItems.archivedAt), eq(schema.menuItems.emplacement, "haut")))
     .orderBy(asc(schema.menuItems.position), asc(schema.menuItems.id));
 
-  const freresPar = new Map<number | null, typeof lignes>();
+  // Les frères se comptent DANS un menu : les entrées de premier niveau du
+  // haut et les colonnes du pied de page (17/11) n'ont pas de parent, mais
+  // elles ne s'échangent jamais leurs places.
+  const freresPar = new Map<string, typeof lignes>();
   for (const l of lignes) {
-    const freres = freresPar.get(l.parentId);
+    const cle = `${l.emplacement}:${l.parentId ?? "premier-niveau"}`;
+    const freres = freresPar.get(cle);
     if (freres) freres.push(l);
-    else freresPar.set(l.parentId, [l]);
+    else freresPar.set(cle, [l]);
   }
 
   let deplaces = 0;

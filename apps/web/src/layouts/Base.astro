@@ -130,18 +130,21 @@ const MENU_DE_SECOURS: EntreeMenuPublique[] = [
 ];
 
 /*
- * Le menu et la baseline du pied de page partent ENSEMBLE.
+ * Le menu, le pied de page et sa baseline partent ENSEMBLE.
  *
  * Ils étaient demandés l'un après l'autre, à trente lignes d'écart : deux
  * allers-retours pour deux informations qui ne dépendent pas l'une de
- * l'autre, sur CHAQUE page du site. Ensemble, ils n'en coûtent qu'un.
+ * l'autre, sur CHAQUE page du site. Ensemble, ils n'en coûtent qu'un. Les
+ * colonnes du pied de page (BO › Menu du site › Pied de page, 17/11) partent
+ * avec eux : un appel de plus, mais dans le même aller-retour.
  *
  * Chacun garde son repli : un menu qui ne répond pas laisse celui d'origine,
  * une baseline absente laisse celle du dictionnaire. Une page publique ne
  * tombe jamais parce qu'un ornement n'a pas pu être lu.
  */
-const [reponseMenu, reponseReglages, reglagesFrancais] = await Promise.all([
+const [reponseMenu, reponsePied, reponseReglages, reglagesFrancais] = await Promise.all([
   api.menu(langue, Astro.locals.stand).catch(() => null),
+  api.menu(langue, Astro.locals.stand, "pied").catch(() => null),
   // La baseline dans la langue de la page : l'écran « Contenu du site » la
   // fait traduire, comme les textes de l'accueil. En français, la lecture
   // est exactement celle d'avant.
@@ -255,20 +258,27 @@ let baseline = tr("pied.baseline");
 /** Le compte Instagram de la boutique, s'il est réglé : un lien sous cette phrase. */
 const instagram = await instagramDeLaBoutique();
 
+/** Une colonne de liens du pied de page : son titre, puis ses liens. */
+interface ColonnePied {
+  titre: string;
+  /** Vide le plus souvent : le titre nomme la colonne, il ne mène nulle part. */
+  href: string;
+  liens: { href: string; texte: string }[];
+}
+
 /**
- * Les liens du pied de page.
+ * Les colonnes d'origine du pied de page, écrites ici avant que le
+ * back-office les règle (17/11). Elles restent en repli, et la migration 0086
+ * les a recopiées en base telles quelles.
  *
  * Les pages libres du site vivent sous « /pages/{adresse} » — préfixe
  * volontaire, documenté dans pages/[...lang]/pages/[slug].astro : posée à la
  * racine, cette route se glissait devant les accueils traduits. « Contact »
  * fait exception, c'est une page à elle.
  *
- * Ces pages sont en cours d'écriture au back-office. Un lien qui pointe vers
- * l'une d'elles avant qu'elle existe ne casse rien : la route rend une page
- * introuvable, qui porte le menu, le pied de page et de quoi rebondir. C'est
- * le seul comportement possible ici — aucune route publique ne dit quelles
- * pages sont publiées, et interroger les cinq une par une coûterait cinq
- * allers-retours sur CHAQUE page du site.
+ * Un lien qui pointe vers l'une d'elles avant qu'elle existe ne casse rien :
+ * la route rend une page introuvable, qui porte le menu, le pied de page et
+ * de quoi rebondir.
  */
 const liensBoutique = [
   { href: "/affiches", texte: tr("nav.affiches") },
@@ -283,6 +293,52 @@ const liensAide = [
   { href: "/pages/confidentialite", texte: tr("pied.confidentialite") },
   { href: "/pages/cookies", texte: tr("pied.cookies") },
 ];
+const PIED_DE_SECOURS: ColonnePied[] = [
+  { titre: tr("pied.navigation"), href: "", liens: liensBoutique },
+  { titre: tr("pied.aide"), href: "", liens: liensAide },
+];
+
+/**
+ * Les colonnes du pied de page, telles que le back-office les range (Menu du
+ * site › Pied de page) : une par entrée de premier niveau, son titre puis
+ * ses liens, libellés déjà traduits par l'API.
+ *
+ * Quatre au plus, à côté du logo et de « Compte » : c'est ce que la grille
+ * met en page, et l'API refuse d'en enregistrer davantage. Une colonne sans
+ * lien ni adresse n'aurait qu'un titre : elle n'est pas dessinée. S'il ne
+ * reste rien (pied de page vidé, API muette), les colonnes d'origine
+ * reviennent : le site n'a jamais un pied de page vide.
+ *
+ * Seule une réponse qui se dit « pied » compte : une API d'avant le pied de
+ * page (le temps d'une mise en ligne) rendrait le menu du haut à sa place.
+ */
+const COLONNES_PIED_MAX = 4;
+const colonnesDuBo: ColonnePied[] = (
+  reponsePied?.emplacement === "pied" ? reponsePied.entrees : []
+)
+  .map((e) => ({
+    titre: e.label,
+    href: e.href,
+    liens: e.enfants.map((l) => ({ href: l.href, texte: l.label })),
+  }))
+  .filter((c) => c.liens.length > 0 || c.href !== "")
+  .slice(0, COLONNES_PIED_MAX);
+const colonnesPied = colonnesDuBo.length ? colonnesDuBo : PIED_DE_SECOURS;
+
+/**
+ * La grille du pied de page : le logo, les colonnes, puis « Compte », soit
+ * de trois à six blocs. Un bloc par ligne sur téléphone, deux sur tablette.
+ * Sur ordinateur, jusqu'à quatre côte à côte ; à cinq ou six, deux rangées
+ * de trois, puis une seule rangée sur un grand écran. Les classes sont
+ * écrites en entier : Tailwind ne génère que celles qu'il lit.
+ */
+const GRILLE_PIED: Record<number, string> = {
+  3: "lg:grid-cols-3",
+  4: "lg:grid-cols-4",
+  5: "lg:grid-cols-3 xl:grid-cols-5",
+  6: "lg:grid-cols-3 xl:grid-cols-6",
+};
+const grillePied = GRILLE_PIED[colonnesPied.length + 2] ?? "lg:grid-cols-4";
 
 /**
  * Destination du lien « Compte » : le tableau de bord si une session est
@@ -1068,7 +1124,9 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           Un pied de page est une liste de liens, pas un texte suivi — il n'a
           pas besoin d'une largeur de lecture. */}
       <div class="w-full px-4 py-12 sm:px-6 lg:px-10">
-        <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Le logo, les colonnes du back-office (une à quatre), puis
+            « Compte » : `grillePied` règle le nombre de colonnes. */}
+        <div class={`grid gap-10 sm:grid-cols-2 ${grillePied}`}>
           <div>
             <img
               src={logoEnTete.src}
@@ -1107,37 +1165,36 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             )}
           </div>
 
-          <nav aria-labelledby="pied-boutique">
-            <h2 id="pied-boutique" class="text-sm font-semibold">
-              {tr("pied.navigation")}
-            </h2>
-            <ul class="mt-4 space-y-2 text-sm text-ink-soft">
-              {liensBoutique.map((l) => (
-                <li>
+          {/* Une colonne par entrée de premier niveau du pied de page. Son
+              titre ne mène nulle part, sauf si le back-office lui a donné
+              une adresse. Les identifiants suivent le rang : uniques, quels
+              que soient les titres. */}
+          {colonnesPied.map((colonne, i) => (
+            <nav aria-labelledby={`pied-colonne-${i + 1}`}>
+              <h2 id={`pied-colonne-${i + 1}`} class="text-sm font-semibold">
+                {colonne.href ? (
                   <a
-                    href={adresseMenu(l.href)}
-                    class="hover:text-terracotta transition-colors">{l.texte}</a
+                    href={adresseMenu(colonne.href)}
+                    class="hover:text-terracotta transition-colors">{colonne.titre}</a
                   >
-                </li>
-              ))}
-            </ul>
-          </nav>
-
-          <nav aria-labelledby="pied-aide">
-            <h2 id="pied-aide" class="text-sm font-semibold">
-              {tr("pied.aide")}
-            </h2>
-            <ul class="mt-4 space-y-2 text-sm text-ink-soft">
-              {liensAide.map((l) => (
-                <li>
-                  <a
-                    href={adresseMenu(l.href)}
-                    class="hover:text-terracotta transition-colors">{l.texte}</a
-                  >
-                </li>
-              ))}
-            </ul>
-          </nav>
+                ) : (
+                  colonne.titre
+                )}
+              </h2>
+              {colonne.liens.length > 0 && (
+                <ul class="mt-4 space-y-2 text-sm text-ink-soft">
+                  {colonne.liens.map((l) => (
+                    <li>
+                      <a
+                        href={adresseMenu(l.href)}
+                        class="hover:text-terracotta transition-colors">{l.texte}</a
+                      >
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </nav>
+          ))}
 
           <nav aria-labelledby="pied-compte">
             <h2 id="pied-compte" class="text-sm font-semibold">

@@ -141,8 +141,11 @@ export async function maillageDeLaFiche(
         schema.collections.name,
         schema.collections.translations,
       ),
-    // Le menu tel que le site le montre (GET /menu) : visible, non archivé,
-    // dans l'ordre du back-office.
+    // Le menu du haut tel que le site le montre (GET /menu) : visible, non
+    // archivé, dans l'ordre du back-office. Pas le pied de page (17/11) :
+    // c'est le bandeau qui range une affiche dans son rayon, et les deux
+    // menus mêlés par position feraient passer une colonne du pied avant
+    // la seconde entrée du haut.
     db
       .select({
         id: schema.menuItems.id,
@@ -150,7 +153,13 @@ export async function maillageDeLaFiche(
         href: schema.menuItems.href,
       })
       .from(schema.menuItems)
-      .where(and(eq(schema.menuItems.visible, true), isNull(schema.menuItems.archivedAt)))
+      .where(
+        and(
+          eq(schema.menuItems.emplacement, "haut"),
+          eq(schema.menuItems.visible, true),
+          isNull(schema.menuItems.archivedAt),
+        ),
+      )
       .orderBy(asc(schema.menuItems.position), asc(schema.menuItems.id)),
   ]);
 

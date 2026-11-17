@@ -295,13 +295,6 @@ export interface ProductDetail {
   voisinesDe?: "rayon" | "genre";
 }
 
-/**
- * Une entrée du menu du haut, telle que le back-office l'a rangée.
- *
- * Le libellé arrive DÉJÀ traduit : c'est l'API qui applique la langue et le
- * repli sur le français, pour que la boutique n'ait pas à connaître la forme
- * du dictionnaire.
- */
 /** Un bloc d'une page écrite au back-office, déjà résolu par l'API. */
 export interface BlocPagePublic {
   type: string;
@@ -320,6 +313,17 @@ export interface PageCms {
   languesTraduites?: string[];
 }
 
+/**
+ * Une entrée du menu du haut, ou du pied de page, telle que le back-office
+ * l'a rangée.
+ *
+ * Le libellé arrive DÉJÀ traduit : c'est l'API qui applique la langue et le
+ * repli sur le français, pour que la boutique n'ait pas à connaître la forme
+ * du dictionnaire.
+ *
+ * Au pied de page, une entrée de premier niveau est une colonne : `href` y
+ * est vide quand son titre ne mène nulle part.
+ */
 export interface EntreeMenuPublique {
   id: number;
   label: string;
@@ -502,9 +506,22 @@ export const api = {
    * Le menu du haut, dans la langue du visiteur. `stand` : en mode stand, il
    * garde aussi les liens vers les pages réservées au stand ; hors stand, ils
    * n'y sont pas.
+   *
+   * `emplacement` « pied » : le pied de page, avec les mêmes règles. Une
+   * entrée de premier niveau y est une colonne (son libellé en est le titre,
+   * son adresse est souvent vide), et ses sous-entrées en sont les liens.
    */
-  menu: (langue?: string, stand = false) =>
-    get<{ entrees: EntreeMenuPublique[] }>(`/menu${requeteLangueStand(langue, stand)}`),
+  menu: (langue?: string, stand = false, emplacement: "haut" | "pied" = "haut") => {
+    const requete = requeteLangueStand(langue, stand);
+    // Le haut garde exactement l'adresse d'avant le pied de page.
+    const suite =
+      emplacement === "haut" ? requete : `${requete ? `${requete}&` : "?"}emplacement=pied`;
+    // `emplacement` : le menu que l'API a vraiment rendu (absent avant le
+    // pied de page, quand elle ignorait la demande).
+    return get<{ emplacement?: "haut" | "pied"; entrees: EntreeMenuPublique[] }>(
+      `/menu${suite}`,
+    );
+  },
   product: (slug: string, langue?: string) =>
     get<ProductDetail>(
       `/products/${slug}${langue && langue !== "fr" ? `?lang=${langue}` : ""}`,
