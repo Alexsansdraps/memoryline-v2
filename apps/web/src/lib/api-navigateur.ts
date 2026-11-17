@@ -25,6 +25,41 @@
 export const PUBLIC_API_URL =
   import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
 
+/**
+ * La page est-elle en mode stand ? Le serveur le dit sur <html data-stand="1">
+ * (Base.astro), d'après l'ADRESSE seule (?stand=1) : plus de cookie depuis le
+ * 17/11 (« sur memoryline.fr on ne doit plus être en mode stand »).
+ */
+export function enModeStand(): boolean {
+  return typeof document !== "undefined" && document.documentElement.dataset.stand === "1";
+}
+
+/**
+ * L'en-tête qui dit à l'API qu'un appel vient de la tablette en mode stand
+ * (apps/api/src/cadres.ts, requeteDuStand) : le panier garde ses cadres, et
+ * se range parmi ceux du stand.
+ */
+export function enteteStand(): Record<string, string> {
+  return enModeStand() ? { "X-Stand": "1" } : {};
+}
+
+/**
+ * Une adresse du site qui garde le mode stand quand on y est : la tablette
+ * passe de page en page sans en sortir. Une adresse d'un autre site, ou qui
+ * dit déjà ce qu'elle veut (`stand=0` pour en sortir), ne change pas.
+ */
+export function avecStand(adresse: string): string {
+  if (!enModeStand()) return adresse;
+  try {
+    const u = new URL(adresse, window.location.href);
+    if (u.origin !== window.location.origin || u.searchParams.has("stand")) return adresse;
+    u.searchParams.set("stand", "1");
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return adresse;
+  }
+}
+
 /** Clé localStorage du panier (UUID par navigateur). */
 const CART_ID_KEY = "ml_cart_id";
 
@@ -77,7 +112,7 @@ export async function lirePanier<T extends { status?: string | null }>(
   cartId: string,
 ): Promise<T | null> {
   const chemin = `/cart/${cartId}`;
-  const res = await fetch(`${PUBLIC_API_URL}${chemin}`);
+  const res = await fetch(`${PUBLIC_API_URL}${chemin}`, { headers: enteteStand() });
   if (!res.ok) throw new Error(`API ${chemin} -> ${res.status}`);
   const panier = (await res.json()) as T;
   // Payé, ou annulé (recette du 17/11) : ce n'est plus un panier.
@@ -109,7 +144,7 @@ export async function ajouterAuPanier<T>(
     const chemin = `/cart/${id}/items`;
     const res = await fetch(`${PUBLIC_API_URL}${chemin}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...enteteStand() },
       body: JSON.stringify(ligne),
     });
     if (!res.ok) {

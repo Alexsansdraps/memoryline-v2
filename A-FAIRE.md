@@ -20,6 +20,11 @@
 > - une grille de page peut montrer jusqu'à 200 affiches (48 par défaut). La page du stand montre les 80 affiches de la collection du marché (0081), dans l'ordre de la collection : l'Alsace y est déjà (Mulhouse, Colmar, Kaysersberg, Riquewihr…) ; Margaux règle l'ordre dans Produits › Ordre d'affichage ;
 > - la page d'un rayon a une liste « Lieux » où l'on tape pour chercher (accents ignorés). Sans JavaScript, le menu d'origine reste.
 >
+> **17/11, fin d'après-midi** :
+> - **Recherche instantanée.** Sur grand écran, le panneau sous le champ de l'en-tête montre jusqu'à 24 vignettes. Sur téléphone, la loupe ouvre une recherche plein écran, sur 2 colonnes. Un clic ou Entrée mène à la fiche, sans page de résultats. La page /recherche reste pour le cas sans JavaScript, et se met aussi à jour en tapant. Le code est dans `apps/web/src/lib/recherche-instantanee.ts`.
+> - **Le mode stand ne vit plus que dans l'adresse (`?stand=1`)**, sans cookie. `memoryline.fr` sans le paramètre est le site normal. Base.astro ajoute `stand=1` aux liens et aux formulaires au moment où on les suit, `avecStand()` fait de même pour les îlots, et l'API reconnaît la tablette par l'en-tête `X-Stand: 1` (cadres.ts). Plus besoin de rouvrir le lien chaque matin ; garder le lien complet reste nécessaire.
+> - **Grands bandeaux** (bandeaux visuels) : masqués en mode stand, comme le bandeau d'annonce.
+>
 > **Reste, dans l'ordre** :
 > 1. **Webhook Stripe live** : passer son URL à https://memoryline.fr/api/payments/stripe/webhook, puis BO › Paiements › « Vérifier ». PayPal n'a rien à faire : pas de webhook, capture par le serveur.
 > 2. **Le stand.** BO › Ventes stand › « Nouveau code » › « Ouvrir ». Ouvrir le nouveau lien sur la tablette.

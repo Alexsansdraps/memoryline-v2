@@ -35,7 +35,10 @@ interface Props {
 }
 const { pages, langue } = Astro.props;
 
-const bandeaux = await bandeauxVisuels(pages, langue);
+// Au stand, pas de bandeau (17/11) : la tablette montre les affiches, pas
+// les offres ni les annonces du site — comme le bandeau d'annonce, déjà
+// retiré en mode stand (Base.astro).
+const bandeaux = Astro.locals.stand ? [] : await bandeauxVisuels(pages, langue);
 
 /**
  * L'adresse du lien, prête à être cliquée. Une adresse du site reçoit le

@@ -417,20 +417,22 @@ export const onRequest = defineMiddleware(async (context, next) => {
   /*
    * Le mode stand.
    *
-   * Il s'ouvre par l'adresse — `?stand=1` — et se retient ensuite dans un
-   * cookie : sans cela, la tablette perdrait le mode au premier lien cliqué,
-   * et la vendeuse verrait réapparaître les prix du site en pleine vente.
-   * `?stand=0` le referme, ce qui est le seul moyen de revenir au site normal
-   * sur une tablette qu'on veut prêter.
+   * Il vit dans l'adresse — `?stand=1` — et nulle part ailleurs : la même
+   * adresse sans lui est le site normal. Les liens de la tablette le gardent
+   * (Base.astro), sans quoi la vendeuse verrait réapparaître les prix du site
+   * en pleine vente.
    *
-   * Le cookie ne porte AUCUN droit : il ne fait qu'enlever des montants de
+   * Le mode ne porte AUCUN droit : il ne fait qu'enlever des montants de
    * l'affichage. Ce qui autorise vraiment à enregistrer une vente, c'est le
    * code du stand, qui voyage dans un en-tête au moment de valider — jamais
    * dans l'adresse, où il resterait dans l'historique de la tablette.
    */
+  // Le mode stand se lit dans l'ADRESSE, et seulement là (17/11 : « sur
+  // memoryline.fr on ne doit plus être en mode stand ; pas de cookie »). La
+  // tablette garde ?stand=1 de page en page : Base.astro l'ajoute aux liens
+  // et aux formulaires, avecStand() aux changements de page des îlots.
   const demande = context.url.searchParams.get("stand");
-  const cookieStand = context.cookies.get(COOKIE_STAND)?.value === "1";
-  const stand = demande === null ? cookieStand : demande !== "0";
+  const stand = demande !== null && demande !== "0";
   context.locals.stand = stand;
 
   let reponse = await next();
@@ -452,27 +454,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
       headers: reponse.headers,
     });
 
-  /*
-   * Seule la TABLETTE retient le mode d'une page à l'autre : son adresse porte
-   * le code du stand (BO › Ventes stand, « /?stand=1&code=… »), ou le cookie
-   * est déjà là et se renouvelle. Un simple « ?stand=1 » — une page réservée
-   * au stand ouverte depuis le back-office pour la relire — ne vaut que pour
-   * la page affichée : la personne qui la regarde ne doit pas se retrouver
-   * sur tout le site sans prix pendant une journée (Alexandra, 13/11 : « le
-   * mode stand n'est pas à activer/désactiver »).
-   */
-  const tablette = context.url.searchParams.has("code") || cookieStand;
-  if (demande !== null) {
-    if (stand && tablette)
-      context.cookies.set(COOKIE_STAND, "1", {
-        path: "/",
-        httpOnly: false,
-        sameSite: "lax",
-        // Une journée de salon, pas davantage : une tablette oubliée en mode
-        // stand rouvrirait la boutique sans prix des semaines plus tard.
-        maxAge: 60 * 60 * 24,
-      });
-    else if (!stand) context.cookies.delete(COOKIE_STAND, { path: "/" });
-  }
+  // L'ancien cookie du mode stand (jusqu'au 17/11) : retiré là où il traîne
+  // encore, pour qu'il ne serve plus jamais à rien.
+  if (context.cookies.has(COOKIE_STAND)) context.cookies.delete(COOKIE_STAND, { path: "/" });
   return reponse;
 });

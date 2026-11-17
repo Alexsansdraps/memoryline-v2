@@ -406,8 +406,7 @@ export default function CommandeStand(props: {
  *
  * C'est l'écran que la vendeuse regarde en rendant la tablette : le numéro se
  * lit de loin, et « Client suivant » repart du catalogue avec un panier vide.
- * Le lien repose `?stand=1` : il renouvelle pour une journée le mode stand de
- * la tablette, qu'un salon de deux jours aurait sinon laissé expirer.
+ * Le lien porte `?stand=1` : le mode stand vit dans l'adresse (17/11).
  */
 export function ConfirmationStand(props: {
   langue?: Langue;

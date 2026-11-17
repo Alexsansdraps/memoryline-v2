@@ -21,9 +21,9 @@ declare namespace App {
      * site, c'est le même vu autrement — deux interfaces séparées finissent
      * toujours par diverger, et c'est celle qu'on regarde le moins qui casse.
      *
-     * Posé par `?stand=1` dans l'adresse, retenu ensuite dans un cookie pour
-     * que la tablette n'ait pas à traîner le paramètre de lien en lien.
-     * `?stand=0` le retire.
+     * Lu dans l'adresse seule (`?stand=1`), sans cookie depuis le 17/11 : la
+     * même adresse sans lui est le site normal. Les liens de la tablette le
+     * gardent (Base.astro).
      */
     stand: boolean;
     /**

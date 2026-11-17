@@ -49,12 +49,14 @@ const API_URL =
 import {
   PUBLIC_API_URL,
   ajouterAuPanier,
+  enteteStand,
   getCartId,
   lirePanier,
   oublierCartId,
 } from "./api-navigateur.ts";
 export {
   PUBLIC_API_URL,
+  avecStand,
   getCartId,
   nouveauCartId,
   reprendreCartId,
@@ -860,7 +862,7 @@ export interface Cart {
 }
 
 async function browserGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${PUBLIC_API_URL}${path}`);
+  const res = await fetch(`${PUBLIC_API_URL}${path}`, { headers: enteteStand() });
   if (!res.ok) throw new Error(`API ${path} -> ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -872,7 +874,7 @@ async function browserSend<T>(
 ): Promise<T> {
   const res = await fetch(`${PUBLIC_API_URL}${path}`, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...enteteStand() },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {

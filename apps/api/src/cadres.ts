@@ -14,7 +14,6 @@
  * sert à ce que la cliente le voie AVANT de payer, et pas à la caisse.
  */
 import type { Context } from "hono";
-import { getCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
 import {
   REGLAGE_CADRES_SITE,
@@ -22,13 +21,6 @@ import {
 } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 
-/**
- * Le cookie du mode stand, posé par le site (apps/web/src/middleware.ts).
- *
- * Il arrive jusqu'ici parce que le site et l'API partagent la même adresse —
- * le proxy sert l'API sous /api, en développement comme en production.
- */
-const COOKIE_STAND = "ml_stand";
 
 /**
  * Cette requête vient-elle d'une tablette en mode stand ?
@@ -38,7 +30,10 @@ const COOKIE_STAND = "ml_stand";
  * dans les statistiques (configurator-routes.ts, `panierModifie`).
  */
 export function requeteDuStand(c: Context): boolean {
-  return getCookie(c, COOKIE_STAND) === "1";
+  // L'en-tête « X-Stand: 1 », envoyé par la page quand son ADRESSE porte
+  // ?stand=1 (apps/web/src/lib/api-navigateur.ts, enteteStand). Plus de
+  // cookie depuis le 17/11 : le mode stand ne survit pas à l'adresse.
+  return c.req.header("x-stand") === "1";
 }
 
 /** Le site propose-t-il les cadres ? Lu à chaque fois : un seul SELECT. */

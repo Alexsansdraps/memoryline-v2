@@ -10,6 +10,7 @@ import type {
 } from "@memoryline/types";
 import {
   PUBLIC_API_URL,
+  avecStand,
   browserApi,
   getCartId,
   type OrderItem,
@@ -177,7 +178,7 @@ export default function ConfiguratorIsland(
       // replace : l'entrée « fenêtre ouverte » de la fiche (ProductConfigurator)
       // ne reste pas dans l'historique, « précédent » depuis le panier
       // revient en un appui sur la fiche.
-      window.location.replace(ligne.cadreRetire ? `${panier}?cadres=retires` : panier);
+      window.location.replace(avecStand(ligne.cadreRetire ? `${panier}?cadres=retires` : panier));
     } catch (e) {
       // Une phrase dans la langue de la fiche : l'erreur brute (« Error: API
       // POST /cart/… -> 400 … ») s'affichait telle quelle, en jargon et en
@@ -191,11 +192,11 @@ export default function ConfiguratorIsland(
     // Étape 1 « Retour » : en édition on revient au panier ; en ajout on
     // ferme simplement la modale (reste sur la fiche produit).
     if (mode === "edit") {
-      window.location.replace(lien(langue, "/panier"));
+      window.location.replace(avecStand(lien(langue, "/panier")));
     } else if (props.onCancel) {
       props.onCancel();
     } else {
-      window.location.href = lien(langue, "/affiches");
+      window.location.href = avecStand(lien(langue, "/affiches"));
     }
   }
 

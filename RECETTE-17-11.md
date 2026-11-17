@@ -60,7 +60,7 @@ Petits défauts vus, **non corrigés** (pas gênants pour jeudi) :
 
 **Consignes au stand** :
 - pas d'écriture chinoise, japonaise ni coréenne sur une affiche ;
-- **rouvrir le lien de la tablette chaque matin** ;
+- ~~rouvrir le lien de la tablette chaque matin~~ : plus nécessaire depuis le 17/11 au soir, le mode stand vit dans l'adresse (garder le lien complet) ;
 - **ne valider aucune vente d'essai** : elle serait réelle.
 
 ---

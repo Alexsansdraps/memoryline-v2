@@ -121,9 +121,11 @@ const titre = assezLong
       class="mt-6 flex max-w-xl gap-2"
     >
       <input
+        id="ml-recherche-page-q"
         type="search"
         name="q"
         value={saisie}
+        autofocus={!saisie}
         autocomplete="off"
         placeholder={tr("recherche.champ")}
         aria-label={tr("recherche.champ")}
@@ -159,7 +161,7 @@ const titre = assezLong
         trouvée » juste au-dessus de « Aucune affiche ne correspond » dit deux
         fois la même chose, et se décline mal — le français met zéro au
         singulier, l'anglais et l'espagnol au pluriel. */}
-    <p class="mt-4 text-ink-soft">
+    <p id="ml-recherche-compte" class="mt-4 text-ink-soft" aria-live="polite">
       {
         !saisie
           ? tr("recherche.invite")
@@ -172,6 +174,8 @@ const titre = assezLong
     </p>
   </section>
 
+  {/* Tout ce qui suit est remplacé à chaque lettre tapée (script en bas). */}
+  <div id="ml-recherche-resultats">
   {
     error && (
       <p class="mx-auto max-w-[1600px] px-4 text-terracotta-deep sm:px-6 lg:px-10">
@@ -257,4 +261,63 @@ const titre = assezLong
       )
     }
   </section>
+  </div>
+
+  <script is:inline>
+    // La recherche INSTANTANÉE de cette page : les résultats se mettent à
+    // jour à chaque lettre, sans appuyer sur « Rechercher » (17/11 : « il faut
+    // que ce soit dynamique »). C'est la page elle-même, rendue par le
+    // serveur pour la nouvelle saisie, qui remplace la grille : mêmes
+    // vignettes, même ordre, et l'adresse suit, pour qu'un retour ou un
+    // partage retrouve la même liste. Sans JavaScript, le bouton suffit.
+    (function () {
+      var champ = document.getElementById("ml-recherche-page-q");
+      var compte = document.getElementById("ml-recherche-compte");
+      var zone = document.getElementById("ml-recherche-resultats");
+      if (!champ || !compte || !zone) return;
+      var minuterie;
+      var enCours = null;
+      champ.addEventListener("input", function () {
+        clearTimeout(minuterie);
+        var q = champ.value.trim();
+        // Une seule lettre : on attend la suivante.
+        if (q.length === 1) return;
+        minuterie = setTimeout(function () {
+          if (enCours) enCours.abort();
+          enCours = new AbortController();
+          // Les autres paramètres restent (?stand=1 au stand) ; la page, elle,
+          // repart de la première.
+          var parametres = new URLSearchParams(location.search);
+          parametres.delete("page");
+          if (q) parametres.set("q", q);
+          else parametres.delete("q");
+          var suite = parametres.toString();
+          var adresse = location.pathname + (suite ? "?" + suite : "");
+          fetch(adresse, { signal: enCours.signal })
+            .then(function (r) {
+              return r.text();
+            })
+            .then(function (html) {
+              if (champ.value.trim() !== q) return;
+              var doc = new DOMParser().parseFromString(html, "text/html");
+              var nouvelleZone = doc.getElementById("ml-recherche-resultats");
+              var nouveauCompte = doc.getElementById("ml-recherche-compte");
+              if (!nouvelleZone || !nouveauCompte) return;
+              zone.innerHTML = nouvelleZone.innerHTML;
+              compte.innerHTML = nouveauCompte.innerHTML;
+              // Les vignettes arrivent d'un coup : pas d'apparition animée.
+              zone.querySelectorAll(".ml-apparition").forEach(function (e) {
+                e.classList.add("est-visible");
+              });
+              history.replaceState(null, "", adresse);
+              document.title = doc.title;
+            })
+            .catch(function () {
+              // Hors ligne ou requête annulée : la grille d'avant reste, et
+              // le bouton « Rechercher » marche toujours.
+            });
+        }, 220);
+      });
+    })();
+  </script>
 </Base>

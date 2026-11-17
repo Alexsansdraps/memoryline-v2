@@ -2,7 +2,7 @@
 import type { CleUi, Langue } from "../i18n/utils.ts";
 import { createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
-import { ajouterAuPanier, getCartId } from "../lib/api-navigateur.ts";
+import { ajouterAuPanier, avecStand, getCartId } from "../lib/api-navigateur.ts";
 import { messageAjoutRefuse } from "../lib/ajout-panier.ts";
 
 /**
@@ -105,7 +105,7 @@ export default function AddToCartButton(
         config,
         langue: props.langue ?? "fr",
       });
-      window.location.href = props.adressePanier;
+      window.location.href = avecStand(props.adressePanier);
     } catch (e) {
       // Dans la langue de la page, jamais le texte brut de l'API.
       setError(messageAjoutRefuse(e, tr));

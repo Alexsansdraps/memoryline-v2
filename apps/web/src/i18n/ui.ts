@@ -109,6 +109,9 @@ export const ui = {
     "recherche.conseil":
       "Vérifiez l'orthographe, ou essayez le nom d'une ville.",
     "recherche.tout_voir": "Voir toutes les affiches",
+    "recherche.instant.preciser": "{n} affiches correspondent : précisez la recherche pour voir les autres.",
+    "recherche.instant.fermer": "Fermer",
+    "recherche.instant.cherche": "Recherche…",
     /* Prix barré */
     "promo.ancien_prix": "Ancien prix",
     "promo.reduction": "de réduction",
@@ -838,6 +841,9 @@ export const ui = {
     "recherche.aucun": "No poster matches this search.",
     "recherche.conseil": "Check the spelling, or try the name of a city.",
     "recherche.tout_voir": "See all posters",
+    "recherche.instant.preciser": "{n} posters match: refine your search to see the others.",
+    "recherche.instant.fermer": "Close",
+    "recherche.instant.cherche": "Searching…",
     "promo.ancien_prix": "Previous price",
     "promo.reduction": "off",
     "pied.navigation": "The shop",
@@ -1520,6 +1526,9 @@ export const ui = {
     "recherche.conseil":
       "Prüfen Sie die Schreibweise, oder versuchen Sie den Namen einer Stadt.",
     "recherche.tout_voir": "Alle Poster ansehen",
+    "recherche.instant.preciser": "{n} Poster passen: Verfeinern Sie die Suche, um die anderen zu sehen.",
+    "recherche.instant.fermer": "Schließen",
+    "recherche.instant.cherche": "Suche…",
     "promo.ancien_prix": "Vorheriger Preis",
     "promo.reduction": "Rabatt",
     "pied.navigation": "Der Shop",
@@ -2210,6 +2219,9 @@ export const ui = {
     "recherche.conseil":
       "Controlla l'ortografia, oppure prova con il nome di una città.",
     "recherche.tout_voir": "Vedi tutti i poster",
+    "recherche.instant.preciser": "{n} poster corrispondono: affina la ricerca per vedere gli altri.",
+    "recherche.instant.fermer": "Chiudi",
+    "recherche.instant.cherche": "Ricerca…",
     "promo.ancien_prix": "Prezzo precedente",
     "promo.reduction": "di sconto",
     "pied.navigation": "Il negozio",
@@ -2892,6 +2904,9 @@ export const ui = {
     "recherche.conseil":
       "Comprueba la ortografía, o prueba con el nombre de una ciudad.",
     "recherche.tout_voir": "Ver todas las láminas",
+    "recherche.instant.preciser": "{n} láminas coinciden: afina la búsqueda para ver las demás.",
+    "recherche.instant.fermer": "Cerrar",
+    "recherche.instant.cherche": "Buscando…",
     "promo.ancien_prix": "Precio anterior",
     "promo.reduction": "de descuento",
     "pied.navigation": "La tienda",

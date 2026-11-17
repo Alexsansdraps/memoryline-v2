@@ -332,7 +332,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 ---
 
 <!doctype html>
-<html lang={langue}>
+<html lang={langue} data-stand={Astro.locals.stand ? "1" : undefined}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -384,6 +384,61 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         dans l'historique d'une tablette qui passe de main en main, n'est plus
         un code. Rien n'est vérifié ici : l'étape de validation le soumet au
         stand avant de s'en servir. */}
+    {/* Le mode stand vit dans l'adresse (?stand=1), sans cookie (17/11) :
+        chaque lien et chaque formulaire de la page le garde, au moment où on
+        le suit. Les îlots qui changent de page par programme passent par
+        avecStand() (lib/api-navigateur.ts). Un lien vers un autre site, ou
+        qui dit déjà « stand=0 » pour en sortir, ne change pas. */}
+    {
+      Astro.locals.stand && (
+        <script is:inline>
+          (function () {
+            function garder(adresse) {
+              try {
+                var u = new URL(adresse, window.location.href);
+                if (u.origin !== window.location.origin) return null;
+                if (u.searchParams.has("stand")) return null;
+                u.searchParams.set("stand", "1");
+                return u.href;
+              } catch (e) {
+                return null;
+              }
+            }
+            function surLien(e) {
+              var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+              if (!a || a.hasAttribute("download")) return;
+              var brut = a.getAttribute("href") || "";
+              if (!brut || brut.charAt(0) === "#" || /^(mailto|tel|javascript):/i.test(brut)) return;
+              var nouvelle = garder(a.href);
+              if (nouvelle) a.href = nouvelle;
+            }
+            document.addEventListener("click", surLien, true);
+            document.addEventListener("auxclick", surLien, true);
+            document.addEventListener(
+              "submit",
+              function (e) {
+                var f = e.target;
+                if (!f || f.tagName !== "FORM") return;
+                var methode = (f.getAttribute("method") || "get").toLowerCase();
+                if (methode === "get") {
+                  if (!f.querySelector('input[name="stand"]')) {
+                    var champ = document.createElement("input");
+                    champ.type = "hidden";
+                    champ.name = "stand";
+                    champ.value = "1";
+                    f.appendChild(champ);
+                  }
+                } else {
+                  var action = garder(f.action || window.location.href);
+                  if (action) f.action = action;
+                }
+              },
+              true,
+            );
+          })();
+        </script>
+      )
+    }
     {
       Astro.locals.stand && (
         <script is:inline>
@@ -661,7 +716,24 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             Windows. À 170 px, la phrase se coupait. Le cadre bleu et le gras
             sont dans global.css (`ml-recherche`), partagés avec le champ de
             la page de recherche. */}
-        <div class="hidden w-[clamp(230px,18vw,360px)] lg:block">
+        <div class="relative hidden w-[clamp(230px,18vw,360px)] lg:block">
+          {/* La recherche instantanée (lib/recherche-instantanee.ts) : les
+              affiches trouvées s'affichent ici, en grandes vignettes, à
+              chaque lettre. Entrée mène toujours à la page de résultats. */}
+          <div
+            id="ml-q-panneau"
+            hidden
+            data-langue={langue}
+            data-fiche={lien(langue, "/affiches")}
+            data-aucun={tr("recherche.aucun")}
+            data-plus={tr("recherche.instant.preciser")}
+            data-cherche={tr("recherche.instant.cherche")}
+            class="absolute right-0 top-full z-50 mt-2 max-h-[78vh] w-[min(52rem,94vw)] overflow-y-auto border border-ink/15 bg-paper p-4 shadow-xl"
+          >
+            <p data-etat class="text-sm text-ink-soft" hidden></p>
+            <ul class="grid grid-cols-4 gap-x-3 gap-y-5"></ul>
+            <p data-plus hidden class="mt-4 border-t border-ink/10 pt-3 text-center text-sm text-ink-soft"></p>
+          </div>
           <form
             method="get"
             action={lien(langue, "/recherche")}
@@ -702,10 +774,14 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 
         {/* Les icônes, à la suite du champ, contre le bord droit. */}
         <div class="flex shrink-0 items-center justify-end gap-3 text-sm max-[359px]:gap-2 sm:gap-4">
+          {/* La loupe ouvre la recherche en plein écran (ml-q-ecran, plus
+              bas) ; sans JavaScript, elle mène à la page de recherche. */}
           <a
+            id="ml-q-loupe"
             href={lien(langue, "/recherche")}
             class="inline-flex items-center hover:text-terracotta transition-colors lg:hidden"
             aria-label={tr("recherche.titre")}
+            aria-controls="ml-q-ecran"
           >
             <svg
               width="22"
@@ -1055,6 +1131,60 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       </div>
     </footer>
     <CookieBanner langue={langue} />
+
+    {/* La recherche en plein écran des téléphones et tablettes, ouverte par
+        la loupe de l'en-tête (lib/recherche-instantanee.ts). Les vignettes
+        sur deux colonnes, assez grandes pour choisir ; un toucher mène à la
+        fiche. Champ en 16 px : en dessous, l'iPhone zoome sur la page. */}
+    <div
+      id="ml-q-ecran"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-label={tr("recherche.titre")}
+      class="fixed inset-0 z-[70] flex flex-col bg-paper lg:hidden"
+    >
+      <div class="flex items-center gap-2 border-b border-ink/10 px-3 py-3">
+        <input
+          id="ml-q-ecran-champ"
+          type="search"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          enterkeyhint="go"
+          placeholder={tr("recherche.champ")}
+          aria-label={tr("recherche.champ")}
+          class="ml-recherche ml-recherche-champ min-w-0 flex-1 bg-paper px-4 py-3 text-base focus:outline-none"
+        />
+        <button
+          type="button"
+          data-fermer
+          class="shrink-0 px-2 py-3 text-sm font-semibold hover:text-terracotta transition-colors"
+        >
+          {tr("recherche.instant.fermer")}
+        </button>
+      </div>
+      <div
+        id="ml-q-ecran-panneau"
+        data-langue={langue}
+        data-fiche={lien(langue, "/affiches")}
+        data-aucun={tr("recherche.aucun")}
+        data-plus={tr("recherche.instant.preciser")}
+        data-cherche={tr("recherche.instant.cherche")}
+        class="flex-1 overflow-y-auto px-3 pb-8 pt-4"
+      >
+        <p data-etat class="text-sm text-ink-soft" hidden></p>
+        <ul class="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3"></ul>
+        <p data-plus hidden class="mt-6 text-center text-sm text-ink-soft"></p>
+      </div>
+    </div>
+
+    {/* La recherche instantanée : en-tête sur grand écran, plein écran sur
+        téléphone. */}
+    <script>
+      import { brancherRechercheInstantanee } from "../lib/recherche-instantanee.ts";
+      brancherRechercheInstantanee();
+    </script>
 
     <script is:inline>
       // Apparition au défilement : chaque élément marqué se révèle quand il
