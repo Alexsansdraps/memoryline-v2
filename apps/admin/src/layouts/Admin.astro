@@ -122,8 +122,19 @@ const badgeCaisse =
   </head>
   <body class="min-h-screen">
     <div class="flex min-h-screen">
+      {/* Sur téléphone (17/11, « le BO va pas du tout en mobile ») : le menu
+          se range hors de l'écran et s'ouvre par le bouton ☰ de l'en-tête,
+          par-dessus la page. À partir de 768 px, il reste à gauche comme
+          avant. */}
+      <div
+        id="bo-voile"
+        hidden
+        class="fixed inset-0 z-40 bg-black/50 md:hidden"
+        aria-hidden="true"
+      />
       <aside
-        class="w-60 shrink-0 bg-bo-nav text-white/90 flex flex-col"
+        id="bo-menu-lateral"
+        class="fixed inset-y-0 left-0 z-50 flex w-64 max-w-[85vw] -translate-x-full flex-col bg-bo-nav text-white/90 transition-transform duration-200 md:static md:z-auto md:w-60 md:max-w-none md:shrink-0 md:translate-x-0 data-[ouvert]:translate-x-0"
       >
         <div
           class="flex items-center justify-between gap-2 border-b border-white/10 px-5 py-4"
@@ -333,19 +344,44 @@ const badgeCaisse =
             appliquer();
           })();
         </script>
+        <div class="border-t border-white/10 px-5 py-3 text-sm md:hidden">
+          {Astro.locals.user && (
+            <p class="mb-2 truncate text-white/50">{Astro.locals.user.email}</p>
+          )}
+          <div class="flex flex-wrap gap-x-4 gap-y-1">
+            {Astro.locals.user && (
+              <a href={url("/mot-de-passe")} class="text-white/80 hover:text-white">
+                Mon mot de passe
+              </a>
+            )}
+            <form method="POST" action={url("/logout")}>
+              <button class="text-white/80 hover:text-white">Déconnexion</button>
+            </form>
+          </div>
+        </div>
       </aside>
 
       <div class="flex-1 min-w-0">
         <header
-          class="h-14 bg-bo-surface border-b border-bo-border flex items-center gap-4 px-6"
+          class="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-bo-border bg-bo-surface px-3 md:static md:gap-4 md:px-6"
         >
+          <button
+            type="button"
+            id="bo-ouvrir-menu"
+            class="-ml-1 shrink-0 rounded px-2 py-1 text-xl leading-none hover:bg-bo-bg md:hidden"
+            aria-label="Ouvrir le menu"
+            aria-controls="bo-menu-lateral"
+            aria-expanded="false"
+          >
+            ☰
+          </button>
           {/* Le titre garde la priorité sur la largeur : le champ de recherche
               prend TOUTE la place restante (flex-1 part de zéro, sans largeur
               maximale : demande de la boutique, la recherche est l'outil
               qu'on utilise le plus), et le titre ne se coupe qu'à la toute
               fin, sur une fenêtre étroite, au lieu de pousser la déconnexion
               hors de l'écran. */}
-          <h1 class="min-w-0 truncate text-base font-semibold">{title}</h1>
+          <h1 class="min-w-0 max-w-[45%] truncate text-base font-semibold md:max-w-none">{title}</h1>
           {/* La recherche est réservée à la propriétaire, comme la route qui
               la sert : un vendeur n'a pas à fouiller les commandes du site ni
               les fiches clients. Absente plutôt que grisée, pour ne pas
@@ -408,13 +444,13 @@ const badgeCaisse =
               </div>
             )
           }
-          <div class="ml-auto flex shrink-0 items-center gap-3 text-sm text-bo-muted">
+          <div class="ml-auto flex shrink-0 items-center gap-2 text-sm text-bo-muted md:gap-3">
             {
               badgeCaisse && (
                 <a
                   href={url("/paiements")}
                   title={`${badgeCaisse.titre} Cliquez pour changer de mode.`}
-                  class={`whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold no-underline ${badgeCaisse.classe}`}
+                  class={`hidden whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold no-underline sm:inline-block ${badgeCaisse.classe}`}
                 >
                   {badgeCaisse.texte}
                 </a>
@@ -456,13 +492,14 @@ const badgeCaisse =
                 </button>
               </div>
             </details>
-            {Astro.locals.user && <span>{Astro.locals.user.email}</span>}
+            {/* Sur téléphone, le compte passe dans le menu ☰ (bas du menu). */}
+            {Astro.locals.user && <span class="hidden lg:inline">{Astro.locals.user.email}</span>}
             {Astro.locals.user && (
-              <a href={url("/mot-de-passe")} class="text-bo-accent hover:underline">
+              <a href={url("/mot-de-passe")} class="hidden text-bo-accent hover:underline md:inline">
                 Mon mot de passe
               </a>
             )}
-            <form method="POST" action={url("/logout")}>
+            <form method="POST" action={url("/logout")} class="hidden md:block">
               <button class="text-bo-accent hover:underline">Déconnexion</button>
             </form>
           </div>
@@ -471,12 +508,43 @@ const badgeCaisse =
             avec les autres modules, en bas de page. */}
         {/* Pleine largeur : les écrans du back-office sont des tableaux et
             des grilles de vignettes, une colonne de texte les étranglait. */}
-        <main class="p-6">
+        <main class="p-3 md:p-6">
           <slot />
         </main>
       </div>
     </div>
 
+    <script is:inline>
+      // Le menu ☰ sur téléphone : ouvert par le bouton, fermé par le voile,
+      // par Échap ou en suivant un lien du menu.
+      (function () {
+        var menu = document.getElementById("bo-menu-lateral");
+        var voile = document.getElementById("bo-voile");
+        var bouton = document.getElementById("bo-ouvrir-menu");
+        if (!menu || !voile || !bouton) return;
+        function regler(ouvert) {
+          if (ouvert) menu.setAttribute("data-ouvert", "");
+          else menu.removeAttribute("data-ouvert");
+          voile.hidden = !ouvert;
+          bouton.setAttribute("aria-expanded", ouvert ? "true" : "false");
+          document.body.style.overflow = ouvert ? "hidden" : "";
+        }
+        bouton.addEventListener("click", function () {
+          regler(!menu.hasAttribute("data-ouvert"));
+        });
+        voile.addEventListener("click", function () { regler(false); });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && menu.hasAttribute("data-ouvert")) regler(false);
+        });
+        menu.addEventListener("click", function (e) {
+          var lien = e.target instanceof Element ? e.target.closest("a[href]") : null;
+          if (lien) regler(false);
+        });
+        window.addEventListener("resize", function () {
+          if (window.innerWidth >= 768 && menu.hasAttribute("data-ouvert")) regler(false);
+        });
+      })();
+    </script>
     <script is:inline>
       // Bascule d'apparence. « Système » ne fige rien : la page suit ensuite
       // le réglage du poste, y compris s'il change en cours de journée.
