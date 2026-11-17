@@ -13,9 +13,11 @@ import {
   inArray,
   isNull,
   ne,
+  notInArray,
   or,
   sql as sqlOp,
 } from "drizzle-orm";
+import { HORS_VENTES } from "./statuts-vente.js";
 import type { Column, SQL } from "drizzle-orm";
 import { resolve, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -2595,9 +2597,13 @@ app.get("/admin/stats", async (c) => {
       db.select({ n: count() }).from(schema.orders),
       db.select({ n: count() }).from(schema.orderItems),
     ]);
+  // Les vraies commandes seulement (17/11) : un panier EST une commande
+  // « draft » dans ce schéma, et la tuile « Commandes en ligne » comptait le
+  // panier en cours d'une visiteuse. Même règle que les statistiques.
   const byChannel = await db
     .select({ channel: schema.orders.channel, n: count() })
     .from(schema.orders)
+    .where(notInArray(schema.orders.status, HORS_VENTES))
     .groupBy(schema.orders.channel);
   return c.json({
     products: products!.n,

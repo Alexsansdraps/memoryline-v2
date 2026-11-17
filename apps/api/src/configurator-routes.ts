@@ -154,6 +154,23 @@ import { prenomPourCourrier } from "./prenom.js";
 
 // --- Helpers -----------------------------------------------------------------
 
+/**
+ * Un fond qu'on vient d'ajouter : ses images légères (aperçu du configurateur
+ * en 1400 px, vignette en 400 px) sont calculées tout de suite, en tâche de
+ * fond, pour que la première cliente n'attende pas la conversion d'un SVG de
+ * 10 Mo (17/11). La route /assets les fabrique une à la fois (index.ts,
+ * unSvgALaFois) ; une erreur ici ne change rien : elles se feront à la
+ * première visite.
+ */
+function preparerVersionsLegeres(url: string): void {
+  const fichier = url.match(/\/assets\/([^/?#]+)$/)?.[1];
+  if (!fichier) return;
+  const ici = `http://127.0.0.1:${process.env.API_PORT ?? 3000}/assets/${fichier}`;
+  void (async () => {
+    for (const l of [1400, 400]) await fetch(`${ici}?l=${l}`).then((r) => r.arrayBuffer()).catch(() => undefined);
+  })();
+}
+
 /** Slugifie un nom client pour un nom de fichier sûr mais lisible (§15.3). */
 function slugifyName(name: string): string {
   return (
@@ -5362,6 +5379,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         })),
       );
 
+    for (const f of fonds) preparerVersionsLegeres(f);
     return c.json({ ...product, variants: lignes, images, backgrounds: fonds });
   });
 
@@ -5386,6 +5404,7 @@ export function mountConfiguratorRoutes(app: Hono) {
         position: (maxPos?.p ?? -1) + 1,
       })
       .returning();
+    preparerVersionsLegeres(url);
     return c.json(row);
   });
 
