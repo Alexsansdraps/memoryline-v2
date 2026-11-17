@@ -152,7 +152,31 @@ if (!auStand) {
         phone: a.phone,
         parDefaut: a.isDefaultShipping,
       }))}
-    />
+    >
+      {/* Le temps que la caisse arrive (script et panier) : sa silhouette,
+          plutôt qu'une page blanche (17/11). */}
+      <div
+        slot="fallback"
+        class="grid items-start gap-8 lg:grid-cols-[1fr_320px]"
+        aria-busy="true"
+        aria-label={tr("panier.chargement")}
+      >
+        <div class="space-y-4">
+          <div class="ml-skeleton h-7 w-52" />
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="ml-skeleton h-12" />
+            <div class="ml-skeleton h-12" />
+          </div>
+          <div class="ml-skeleton h-12" />
+          <div class="ml-skeleton mt-8 h-7 w-36" />
+          <div class="ml-skeleton h-12" />
+          <div class="ml-skeleton h-16" />
+          <div class="ml-skeleton h-16" />
+          <div class="ml-skeleton h-16" />
+        </div>
+        <div class="ml-skeleton h-72" />
+      </div>
+    </CheckoutIsland>
     )}
   </section>
 </Base>

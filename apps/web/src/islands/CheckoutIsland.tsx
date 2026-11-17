@@ -1366,6 +1366,30 @@ export default function CheckoutIsland(props: {
           {tr("commande.retour.refuse")}
         </p>
       </Show>
+      {/* Le panier se lit : la silhouette de la caisse, et non une page
+          blanche (17/11). */}
+      <Show when={cart.loading}>
+        <div
+          class="grid items-start gap-8 lg:grid-cols-[1fr_320px]"
+          aria-busy="true"
+          aria-label={tr("panier.chargement")}
+        >
+          <div class="space-y-4">
+            <div class="ml-skeleton h-7 w-52" />
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="ml-skeleton h-12" />
+              <div class="ml-skeleton h-12" />
+            </div>
+            <div class="ml-skeleton h-12" />
+            <div class="ml-skeleton mt-8 h-7 w-36" />
+            <div class="ml-skeleton h-12" />
+            <div class="ml-skeleton h-16" />
+            <div class="ml-skeleton h-16" />
+            <div class="ml-skeleton h-16" />
+          </div>
+          <div class="ml-skeleton h-72" />
+        </div>
+      </Show>
       <Show when={cart() && cart()!.items.length === 0}>
         <div class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-8 text-center">
           <p class="text-ink-soft">{tr("panier.vide")}</p>
@@ -1465,7 +1489,16 @@ export default function CheckoutIsland(props: {
                 fallback={
                   /* Rien tant que le catalogue n'est pas arrivé : une liste
                      vide en cours de chargement n'est pas un refus. */
-                  <Show when={!catalogue.loading}>
+                  <Show
+                    when={!catalogue.loading}
+                    fallback={
+                      <div class="space-y-3" aria-busy="true">
+                        <div class="ml-skeleton h-16" />
+                        <div class="ml-skeleton h-16" />
+                        <div class="ml-skeleton h-16" />
+                      </div>
+                    }
+                  >
                     <p class="text-sm text-terracotta-deep">
                       {poidsColis() > 0
                         ? tr("livraison.aucune_pour_ce_poids")

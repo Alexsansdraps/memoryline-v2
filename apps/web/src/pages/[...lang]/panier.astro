@@ -82,6 +82,27 @@ const auStand = Astro.locals.stand;
       client:only="solid-js"
       langue={langue}
       stand={auStand}
-    />
+    >
+      {/* Le temps que le panier arrive : sa silhouette, plutôt qu'une page
+          blanche (17/11). */}
+      <div slot="fallback" class="space-y-4" aria-busy="true" aria-label={tr("panier.chargement")}>
+        <div class="flex gap-4 rounded-2xl border border-ink/10 p-4">
+          <div class="ml-skeleton h-28 w-20 shrink-0" />
+          <div class="flex-1 space-y-3 py-1">
+            <div class="ml-skeleton h-4 w-2/3" />
+            <div class="ml-skeleton h-4 w-1/4" />
+            <div class="ml-skeleton h-8 w-32" />
+          </div>
+        </div>
+        <div class="flex gap-4 rounded-2xl border border-ink/10 p-4">
+          <div class="ml-skeleton h-28 w-20 shrink-0" />
+          <div class="flex-1 space-y-3 py-1">
+            <div class="ml-skeleton h-4 w-2/3" />
+            <div class="ml-skeleton h-4 w-1/4" />
+            <div class="ml-skeleton h-8 w-32" />
+          </div>
+        </div>
+      </div>
+    </CartIsland>
   </section>
 </Base>
