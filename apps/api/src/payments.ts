@@ -386,11 +386,11 @@ const RAISONS: Record<string, string> = {
     "PayPal ne retrouve pas ce paiement. Il a peut-être expiré : refaites la commande.",
   INSTRUMENT_DECLINED:
     "Le moyen de paiement du client a été refusé. C'est au client de réessayer avec un autre.",
-  // Vu le 17/11, au premier remboursement en réel : PayPal retient souvent
-  // l'argent des premières ventes d'un compte, et ne rembourse que depuis le
-  // solde disponible ou une banque liée.
+  // Vu le 17/11, au premier remboursement en réel : le solde contenait la
+  // vente MOINS les frais de PayPal, et PayPal, qui ne rend pas ses frais,
+  // doit rendre au client tout ce qu'il a payé. Il manquait les frais.
   REFUND_FAILED_INSUFFICIENT_FUNDS:
-    "Le solde du compte PayPal de la boutique ne suffit pas pour rembourser (l'argent des premières ventes est souvent retenu quelques jours par PayPal). Liez un compte bancaire au compte PayPal, ou ajoutez de l'argent au solde, puis recommencez. Vous pouvez aussi rembourser depuis paypal.com, puis enregistrer le remboursement ici en décochant « rendre l'argent ».",
+    "Le solde du compte PayPal de la boutique ne couvre pas ce remboursement : PayPal a gardé ses frais sur la vente, et rendre la totalité au client demande un peu plus que ce qui est arrivé sur le compte. Liez un compte bancaire au compte PayPal (il y prendra la différence) ou ajoutez quelques euros au solde, puis recommencez. Sinon, remboursez un peu moins avec le montant libre.",
   TRANSACTION_REFUSED:
     "PayPal refuse ce remboursement pour ce paiement. Regardez la transaction sur paypal.com (Activité) : elle est peut-être encore en attente, ou déjà remboursée.",
   CAPTURE_FULLY_REFUNDED:
