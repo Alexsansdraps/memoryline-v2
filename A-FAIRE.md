@@ -7,6 +7,8 @@
 > - **Vérifié** : certificat Let's Encrypt de memoryline.fr ; www, http et l'ancien nom du VPS en 301/308 vers https://memoryline.fr, chemin gardé ; robots.txt « Allow: / » ; pages en « index, follow », canoniques en memoryline.fr.
 > - **Piège** : un copier-coller depuis le chat change `www.memoryline.fr` en lien Markdown `[www.memoryline.fr](https://…)`, jusque dans le .env. Contrôler avec `grep '^DOMAINE_WWW=' .env | tr '.' ' '`.
 >
+> **Le marché de Noël de Mulhouse commence le VENDREDI 20/11** (Alexandra, 17/11). Tout ce qui touche au stand doit être prêt le 19 au soir : page du stand, collection, les 15 affiches prêtes à imprimer, et un essai sur la tablette sans valider de vente.
+>
 > **Reste, dans l'ordre** :
 > 1. **Webhook Stripe live** : passer son URL à https://memoryline.fr/api/payments/stripe/webhook, puis BO › Paiements › « Vérifier ». PayPal n'a rien à faire : pas de webhook, capture par le serveur.
 > 2. **Le stand.** BO › Ventes stand › « Nouveau code » › « Ouvrir ». Ouvrir le nouveau lien sur la tablette.
