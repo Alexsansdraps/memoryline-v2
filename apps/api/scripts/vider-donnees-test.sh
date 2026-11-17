@@ -22,10 +22,18 @@
 #   - les sessions du back-office (tout le monde se reconnecte) ;
 #   - le compteur des factures, pour que la première vraie soit F2026-0001 ;
 #   - les stands d'essai (nom contenant « essai » ou « test »), et tous les
-#     stands sont FERMÉS : un stand ouvert serait proposé au retrait sur place ;
+#     stands sont FERMÉS : leur code a circulé pendant les essais, et un stand
+#     ouvert enregistre des ventes sans paiement. Le vrai stand se ROUVRE à la
+#     main (BO › Ventes stand : « Nouveau code », puis « Ouvrir »), et la
+#     tablette prend la nouvelle adresse « /?stand=1&code=… » ;
 #   - les caches recalculables : aperçus des commandes, PDF d'impression.
 #
 # CE QUI RESTE :
+#   - les commandes payées POUR DE VRAI (paiement « live » encaissé), et leur
+#     cliente : la boutique encaisse en réel depuis le 16/11 au soir, et une
+#     vente réelle est une pièce comptable qu'il faut pouvoir rembourser depuis
+#     sa fiche (WEB-0016, l'essai d'Alexandra). La première vraie commande
+#     prendra donc le numéro suivant (WEB-0017), pas WEB-0001 ;
 #   - le catalogue (affiches, fonds, personnages, pièces, cadres, collections),
 #     les réglages, les pages, les menus, la livraison, les promotions ;
 #   - tout ce qui vient de Shopify (colonne legacy_id) : historique des
@@ -58,10 +66,31 @@ psql_base() {
   $COMPOSE exec -T db psql -v ON_ERROR_STOP=1 -U memoryline -d memoryline "$@"
 }
 
+# Posé à la fin d'un vidage réussi : ce script ne se lance qu'UNE fois. Comme
+# aucune commande ne vient de Shopify, « legacy_id IS NULL » désigne aussi
+# TOUTES les vraies commandes à venir : relancé après l'ouverture, il
+# viderait la vraie boutique.
+MARQUE="sauvegardes/VIDAGE-FAIT"
+
+# Quoi qu'il arrive après l'arrêt de l'API (étape 2), elle redémarre et la
+# page de maintenance s'en va : sans cela, une erreur à l'étape 3 ou 4
+# laissait la boutique en panne (set -e arrête le script avant l'étape 5).
+API_ARRETEE=0
+remettre_en_route() {
+  if [ "$API_ARRETEE" = 1 ]; then
+    echo "→ Le script s'est arrêté en route : redémarrage de l'API…" >&2
+    $COMPOSE up -d api ||
+      echo "✗ L'API n'a PAS redémarré. À la main : $COMPOSE up -d api" >&2
+    rm -f maintenance/ACTIVE
+  fi
+}
+trap remettre_en_route EXIT
+
 echo "=== Ce que la base contient aujourd'hui ==="
 psql_base -P footer=off <<'SQL'
-SELECT 'Commandes et paniers à supprimer' AS quoi, count(*) AS nombre FROM "order" WHERE legacy_id IS NULL
-UNION ALL SELECT '  dont payées ou réglées', count(*) FROM "order" WHERE legacy_id IS NULL AND status <> 'draft'
+SELECT 'Commandes et paniers à supprimer' AS quoi, count(*) AS nombre FROM "order" o WHERE o.legacy_id IS NULL AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
+UNION ALL SELECT '  dont payées ou réglées (en essai)', count(*) FROM "order" o WHERE o.legacy_id IS NULL AND o.status <> 'draft' AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
+UNION ALL SELECT 'Ventes RÉELLES gardées (paiement live)', count(*) FROM "order" o WHERE o.legacy_id IS NULL AND EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
 UNION ALL SELECT 'Commandes Shopify gardées', count(*) FROM "order" WHERE legacy_id IS NOT NULL
 UNION ALL SELECT 'Clientes à supprimer', count(*) FROM customer WHERE legacy_id IS NULL
 UNION ALL SELECT 'Clientes Shopify gardées', count(*) FROM customer WHERE legacy_id IS NOT NULL
@@ -86,6 +115,52 @@ SELECT 'Carte cadeau' AS quoi, status, balance_cents / 100.0 AS solde_euros, coa
   FROM gift_card ORDER BY id;
 SELECT 'Stand gardé' AS quoi, nom, CASE WHEN archived_at IS NULL THEN 'actif' ELSE 'archivé' END AS etat
   FROM stand WHERE NOT (nom ILIKE '%essai%' OR nom ILIKE '%test%') ORDER BY id;
+SELECT 'Promotion' AS quoi, name AS nom, type, coalesce(code, '(automatique)') AS code,
+       CASE WHEN archived_at IS NOT NULL THEN 'archivée' WHEN active THEN 'ACTIVE' ELSE 'éteinte' END AS etat
+  FROM promo_rule ORDER BY id;
+SELECT 'Page' AS quoi, slug, title AS titre, status AS etat, affichage
+  FROM page WHERE archived_at IS NULL ORDER BY id;
+SELECT 'Lieu de retrait' AS quoi, nom, CASE WHEN active THEN 'proposé à la caisse' ELSE 'éteint' END AS etat
+  FROM pickup_point WHERE archived_at IS NULL ORDER BY position, id;
+SELECT 'Bandeau' AS quoi, left(message, 60) AS message, CASE WHEN active THEN 'ACTIF' ELSE 'éteint' END AS etat
+  FROM announcement_banner WHERE archived_at IS NULL ORDER BY id;
+SELECT 'Réglage' AS quoi, key AS cle, left(value::text, 70) AS valeur
+  FROM setting
+ WHERE key LIKE 'relance.%' OR key LIKE 'configurateur.video.%' ORDER BY key;
+SQL
+
+echo
+echo "=== Ce qui part : les commandes passées (hors paniers), par canal et par mode de paiement ==="
+psql_base -P footer=off <<'SQL'
+SELECT o.channel AS canal, o.status AS etat, coalesce(p.mode, '(sans paiement en ligne)') AS paiement,
+       count(*) AS nombre, to_char(max(o.created_at), 'DD/MM HH24:MI') AS derniere
+  FROM "order" o
+  LEFT JOIN LATERAL (
+    SELECT coalesce(mode, '.env') AS mode FROM payment
+     WHERE order_id = o.id AND status = 'succeeded' ORDER BY id DESC LIMIT 1
+  ) p ON true
+ WHERE o.legacy_id IS NULL AND o.status <> 'draft' AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
+ GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+SQL
+
+echo
+echo "=== Ce qui RESTE : les ventes payées pour de vrai (paiement live) ==="
+psql_base -P footer=off <<'SQL'
+SELECT o.number AS commande, o.status AS etat, round(o.total_cents / 100.0, 2) AS total_euros,
+       to_char(o.created_at AT TIME ZONE 'Europe/Paris', 'DD/MM HH24:MI') AS le
+  FROM "order" o
+ WHERE o.legacy_id IS NULL AND EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
+ ORDER BY o.id;
+SQL
+
+echo
+echo "=== Bordereaux SendCloud encore ouverts : à ANNULER depuis la fiche de la commande AVANT de vider ==="
+echo "    (après, la boutique ne connaît plus leur numéro d'envoi : il faudrait les annuler chez SendCloud)"
+psql_base -P footer=off <<'SQL'
+SELECT o.number AS commande, b.statut, CASE WHEN b.essai THEN 'essai (gratuit)' ELSE 'RÉEL (facturé)' END AS nature,
+       coalesce(b.shipment_id, '') AS envoi_sendcloud, coalesce(b.tracking_number, '') AS suivi
+  FROM bordereau b JOIN "order" o ON o.id = b.order_id
+ WHERE b.statut IN ('en_cours', 'achete') ORDER BY b.id;
 SQL
 
 echo
@@ -110,10 +185,27 @@ if [ "$reponse" != "VIDER" ]; then
   exit 1
 fi
 
-echo "1/5 · Sauvegarde de la base et des fichiers…"
-bash apps/api/scripts/sauvegarder.sh
+if [ -e "$MARQUE" ]; then
+  echo "REFUS : le vidage a déjà été fait ($(cat "$MARQUE"))." >&2
+  echo "Ce qui est en base depuis est la VRAIE boutique. Rien n'a été modifié." >&2
+  exit 1
+fi
 
-echo "2/5 · Arrêt de l'API pendant le vidage…"
+# Un nom À PART : sauvegarder.sh nomme sa copie d'après le jour, et la mise
+# en ligne qui suit le vidage (même jour) l'écraserait avec la base vidée.
+AVANT="$(date +%Y-%m-%d)-avant-vidage"
+if [ -e "sauvegardes/base/$AVANT.sql.gz" ]; then
+  echo "REFUS : sauvegardes/base/$AVANT.sql.gz existe déjà (un vidage a commencé aujourd'hui ?)." >&2
+  echo "Elle ne sera pas écrasée. Rien n'a été modifié." >&2
+  exit 1
+fi
+echo "1/5 · Sauvegarde de la base et des fichiers (sauvegardes/base/$AVANT.sql.gz)…"
+bash apps/api/scripts/sauvegarder.sh "$AVANT"
+
+echo "2/5 · Arrêt de l'API pendant le vidage (page de maintenance affichée)…"
+mkdir -p maintenance
+touch maintenance/ACTIVE
+API_ARRETEE=1
 $COMPOSE stop api
 
 echo "3/5 · Vidage de la base (une seule transaction : tout ou rien)…"
@@ -126,10 +218,16 @@ DELETE FROM ia_relais_photo;
 -- Commandes, paniers et ventes de stand. Le reste suit en cascade : lignes,
 -- journal, paiements, encaissements, expéditions, bordereaux, remboursements,
 -- fichiers d'impression.
-DELETE FROM "order" WHERE legacy_id IS NULL;
+-- SAUF les ventes payées pour de vrai (paiement live) : voir « CE QUI RESTE ».
+DELETE FROM "order" o
+ WHERE o.legacy_id IS NULL
+   AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded');
 
 -- Clientes (adresses, sessions et jetons suivent en cascade).
-DELETE FROM customer WHERE legacy_id IS NULL;
+-- Sauf celles d'une vente gardée.
+DELETE FROM customer c
+ WHERE c.legacy_id IS NULL
+   AND NOT EXISTS (SELECT 1 FROM "order" o WHERE o.customer_id = c.id);
 
 -- Lettre d'information, relances, sessions du back-office.
 DELETE FROM lettre;
@@ -146,7 +244,8 @@ DELETE FROM session;
 DELETE FROM facture_compteur
  WHERE NOT EXISTS (SELECT 1 FROM "order" WHERE invoice_number IS NOT NULL);
 
--- Stands : tous fermés, ceux d'essai supprimés s'ils n'ont plus de vente.
+-- Stands : tous fermés (le vrai se rouvre au BO, avec un code neuf), ceux
+-- d'essai supprimés s'ils n'ont plus de vente.
 UPDATE stand SET ouvert = false, closed_at = now() WHERE ouvert;
 DELETE FROM stand
  WHERE (nom ILIKE '%essai%' OR nom ILIKE '%test%')
@@ -163,6 +262,9 @@ UPDATE poster_view SET archived_at = now()
 -- Réglages d'avant la table des stands : plus lus, et l'un porte un ancien code.
 DELETE FROM setting WHERE key IN ('salon.code', 'salon.evenement', 'salon.ouvert');
 SQL
+# La base est vidée : la marque se pose TOUT DE SUITE (une panne à l'étape 4
+# ne doit pas permettre un second lancement, qui viderait la vraie boutique).
+date '+le %d/%m/%Y à %H:%M' > "$MARQUE"
 
 echo "4/5 · Fichiers des essais (photos IA, aperçus, PDF d'impression)…"
 # Par le conteneur : ces fichiers ont été écrits par l'API, et n'appartiennent
@@ -172,15 +274,38 @@ $COMPOSE run --rm --no-deps --entrypoint sh api -c \
 
 echo "5/5 · Redémarrage de l'API…"
 $COMPOSE up -d api
+API_ARRETEE=0
+# La page de maintenance reste jusqu'à ce que l'API réponde (une minute et
+# demie au plus), comme dans mettre-en-ligne.sh.
+for _ in $(seq 1 45); do
+  if $COMPOSE exec -T api node -e "fetch('http://localhost:3000/health').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))" </dev/null 2>/dev/null; then
+    break
+  fi
+  sleep 2
+done
+rm -f maintenance/ACTIVE
 
 echo
 echo "=== Après le vidage ==="
 psql_base -P footer=off <<'SQL'
-SELECT 'Commandes' AS quoi, count(*) AS nombre FROM "order"
-UNION ALL SELECT 'Clientes', count(*) FROM customer
+SELECT 'Commandes d''essai restantes (attendu 0)' AS quoi, count(*) AS nombre FROM "order" o WHERE o.legacy_id IS NULL AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
+UNION ALL SELECT 'Ventes réelles gardées', count(*) FROM "order" o WHERE o.legacy_id IS NULL AND EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded')
+UNION ALL SELECT 'Clientes (celles des ventes gardées)', count(*) FROM customer WHERE legacy_id IS NULL
 UNION ALL SELECT 'Générations IA', count(*) FROM ai_generation
 UNION ALL SELECT 'Stands ouverts', count(*) FROM stand WHERE ouvert
 UNION ALL SELECT 'Compteur de factures', count(*) FROM facture_compteur;
 SQL
+RESTE=$(psql_base -At <<'SQL'
+SELECT count(*) FROM "order" o WHERE o.legacy_id IS NULL AND NOT EXISTS (SELECT 1 FROM payment p WHERE p.order_id = o.id AND p.mode = 'live' AND p.status = 'succeeded');
+SQL
+)
+if [ "$RESTE" != "0" ]; then
+  echo "✗ Il reste $RESTE commande(s) d'essai : ne pas basculer le domaine, regarder pourquoi." >&2
+  exit 1
+fi
 echo
-echo "Terminé. La sauvegarde d'avant le vidage est dans sauvegardes/."
+echo "Terminé. La sauvegarde d'avant le vidage : sauvegardes/base/$AVANT.sql.gz"
+echo "À emporter tout de suite, depuis l'ordinateur :"
+echo "    scp debian@51.255.34.187:~/memoryline/sauvegardes/base/$AVANT.sql.gz ."
+echo "Reste à faire à la main : rouvrir le stand (BO › Ventes stand, code neuf),"
+echo "et trier ce que la liste « À trier à la main » a montré."

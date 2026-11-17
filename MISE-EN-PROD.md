@@ -11,11 +11,13 @@ Le serveur de test (OVH, 51.255.34.187) **devient** la vraie boutique. Rien ne d
 
 ## Jour J, dans l'ordre
 
+> **17/11 : ce résumé est DÉPASSÉ.** La boutique encaisse déjà pour de vrai (étapes 0 et 5 faites le 16/11), et l'ordre « DNS puis reconstruction » ci-dessous est faux : on construit d'abord, on change le DNS ensuite. **Suivre `RECETTE-17-11.md` § 3**, relu et vérifié. Ce qui suit reste pour mémoire.
+
 Le résumé des étapes détaillées plus bas. L'ordre compte.
 
 **Pourquoi cet ordre** (AUDIT-SEO.md, IDX-1) : le site de test répond « `Disallow: /` » et « noindex », et ces valeurs sont figées à la construction. Si `memoryline.fr` pointait sur le serveur avant la reconstruction en réel, Google lirait ce robots.txt et pourrait le garder en cache jusqu'à 24 h, sans explorer ni le nouveau site ni les 301 des anciennes adresses. Le DNS change donc **en même temps** que la reconstruction, jamais avant.
 
-- **La veille** : baisser à 300 s la durée de vie (TTL) des enregistrements `memoryline.fr` et `www` chez le registrar, pour que la bascule se propage en quelques minutes. Exporter les redirections de Shopify et les importer (§ 7). Publier la page « affiches-personnalisables » et importer le fichier SEO corrigé (§ 6).
+- **La veille** : baisser à 300 s la durée de vie (TTL) des enregistrements `memoryline.fr` et `www` chez le registrar, pour que la bascule se propage en quelques minutes. Exporter les redirections de Shopify et les importer (§ 7). Publier la page « affiches-personnalisables ». **Ne pas** importer les fichiers SEO de Shopify (§ 6).
 
 0. **`APP_SECRET`** dans le `.env` du serveur (§ 3), **avant** la première clé saisie au BO : les clés de BO › Réglages › Paiements sont chiffrées avec elle, et sans elle (ou plus courte que 32 caractères) la colonne « Pour de vrai » de l'écran reste fermée. Puis redémarrer (`docker compose -f docker-compose.prod.yml up -d --force-recreate`). Ne plus jamais la changer.
 1. **Vider la base de test** (§ 2) : `apps/api/scripts/vider-donnees-test.sh` sans argument (il montre seulement), puis `--vider`. **Avant** les vrais courriels : dès qu'ils partent, la relance de panier écrirait aux adresses de test. Les clés saisies au BO et leur journal survivent au vidage (tables à part).
@@ -125,7 +127,7 @@ Ensuite, supprimer du serveur les anciennes copies `.env.avant-*`, qui contienne
 
 Le DNS change **au moment de la reconstruction** (Jour J, étape 3), pas avant : voir « Pourquoi cet ordre » en haut.
 
-- [ ] Chez le registrar de memoryline.fr : enregistrement **A** `memoryline.fr` → `51.255.34.187` (et AAAA si le serveur a une IPv6). **Supprimer les anciens enregistrements Shopify**, sinon le certificat ne s'obtient pas.
+- [ ] Chez le registrar de memoryline.fr : **MODIFIER** la cible des deux lignes **A** (`memoryline.fr` et `www`) de `23.227.38.65` en `51.255.34.187`, TTL 300. Ne rien supprimer, ne rien ajouter (pas de AAAA pour l'instant, pas de CNAME pour www), ne toucher à aucune autre ligne (NS, MX, TXT, `send`, `rsend`, `resend._domainkey`, `_dmarc`).
 - [ ] `www.memoryline.fr` (Shopify le redirige aujourd'hui vers le domaine nu, des liens le portent), **en même temps** : faire pointer l'enregistrement `www` vers le serveur (A, ou CNAME vers `memoryline.fr`). `DOMAINE_WWW=www.memoryline.fr` est déjà dans le `.env` (Jour J, étape 2). `Caddyfile.prod` est prêt : il obtient le certificat du www et redirige en 301, en un saut, vers la même adresse sur `memoryline.fr`.
 - [ ] Une fois le DNS propagé : `https://memoryline.fr` s'ouvre avec le cadenas (Caddy obtient le certificat tout seul).
 - [ ] Si le serveur a un pare-feu (celui de l'IP chez OVH, ou `ufw`) : ouvrir **l'UDP 443** en plus du TCP 80 et 443. C'est le port de HTTP/3, que `docker-compose.prod.yml` publie désormais. Fermé, rien ne casse : les navigateurs restent en HTTP/2.
