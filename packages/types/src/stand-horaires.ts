@@ -222,7 +222,7 @@ const MOTS: Record<
     ferme: "Fermé",
     avant: (d) => `À venir chercher au plus tard le ${d}.`,
     aHeure: (h) => `à ${h}`,
-    identite: "Une carte d'identité vous sera demandée pour retirer votre commande.",
+    identite: "Une preuve d'identité vous sera demandée pour retirer votre commande.",
   },
   en: {
     periode: (d, f) => `From ${d} to ${f}.`,
@@ -231,7 +231,7 @@ const MOTS: Record<
     ferme: "Closed",
     avant: (d) => `To be collected by ${d} at the latest.`,
     aHeure: (h) => `at ${h}`,
-    identite: "An ID card will be required to collect your order.",
+    identite: "Proof of identity will be required to collect your order.",
   },
   de: {
     periode: (d, f) => `Von ${d} bis ${f}.`,
@@ -240,7 +240,7 @@ const MOTS: Record<
     ferme: "Geschlossen",
     avant: (d) => `Abholung spätestens am ${d}.`,
     aHeure: (h) => `um ${h}`,
-    identite: "Bei der Abholung wird ein Personalausweis verlangt.",
+    identite: "Bei der Abholung wird ein Identitätsnachweis verlangt.",
   },
   it: {
     periode: (d, f) => `Dal ${d} al ${f}.`,
@@ -249,7 +249,7 @@ const MOTS: Record<
     ferme: "Chiuso",
     avant: (d) => `Da ritirare entro ${d}.`,
     aHeure: (h) => `alle ${h}`,
-    identite: "Per ritirare l'ordine sarà richiesta una carta d'identità.",
+    identite: "Per ritirare l'ordine sarà richiesto un documento d'identità.",
   },
   es: {
     periode: (d, f) => `Del ${d} al ${f}.`,

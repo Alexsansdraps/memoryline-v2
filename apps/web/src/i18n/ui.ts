@@ -300,8 +300,8 @@ export const ui = {
     "livraison.jour_ferme": "Fermé",
     "livraison.aujourdhui": "Aujourd'hui",
     "livraison.a_heure": "à {heure}",
-    "livraison.stand_compris": "J'ai bien compris que je dois venir chercher ma commande au stand **au plus tard le {date}, avec ma carte d'identité.**",
-    "livraison.stand_identite": "Une carte d'identité vous sera demandée pour retirer votre commande.",
+    "livraison.stand_compris": "J'ai bien compris que je dois venir chercher ma commande au stand **au plus tard le {date}, avec une preuve d'identité.**",
+    "livraison.stand_identite": "Une preuve d'identité vous sera demandée pour retirer votre commande.",
     "livraison.stand_compris_requis": "Cochez la case : vous viendrez chercher votre commande au stand avant sa fermeture.",
     "livraison.point_relais": "Point relais",
     "livraison.point_relais_aide":
@@ -1036,8 +1036,8 @@ export const ui = {
     "livraison.jour_ferme": "Closed",
     "livraison.aujourdhui": "Today",
     "livraison.a_heure": "at {heure}",
-    "livraison.stand_compris": "I understand that I must collect my order at the stand **by {date} at the latest, bringing my ID card.**",
-    "livraison.stand_identite": "An ID card will be required to collect your order.",
+    "livraison.stand_compris": "I understand that I must collect my order at the stand **by {date} at the latest, bringing proof of identity.**",
+    "livraison.stand_identite": "Proof of identity will be required to collect your order.",
     "livraison.stand_compris_requis": "Please tick the box: you will collect your order at the stand before it closes.",
     "livraison.point_relais": "Pickup point",
     "livraison.point_relais_aide":
@@ -1739,8 +1739,8 @@ export const ui = {
     "livraison.jour_ferme": "Geschlossen",
     "livraison.aujourdhui": "Heute",
     "livraison.a_heure": "um {heure}",
-    "livraison.stand_compris": "Ich habe verstanden, dass ich meine Bestellung **spätestens am {date} mit meinem Personalausweis am Stand abholen muss.**",
-    "livraison.stand_identite": "Bei der Abholung wird ein Personalausweis verlangt.",
+    "livraison.stand_compris": "Ich habe verstanden, dass ich meine Bestellung **spätestens am {date} mit einem Identitätsnachweis am Stand abholen muss.**",
+    "livraison.stand_identite": "Bei der Abholung wird ein Identitätsnachweis verlangt.",
     "livraison.stand_compris_requis": "Bitte kreuzen Sie das Kästchen an: Sie holen Ihre Bestellung vor Schließung des Stands ab.",
     "livraison.point_relais": "Paketshop",
     "livraison.point_relais_aide":
@@ -2446,8 +2446,8 @@ export const ui = {
     "livraison.jour_ferme": "Chiuso",
     "livraison.aujourdhui": "Oggi",
     "livraison.a_heure": "alle {heure}",
-    "livraison.stand_compris": "Ho capito che devo ritirare il mio ordine allo stand **entro {date}, con la mia carta d'identità.**",
-    "livraison.stand_identite": "Per ritirare l'ordine sarà richiesta una carta d'identità.",
+    "livraison.stand_compris": "Ho capito che devo ritirare il mio ordine allo stand **entro {date}, con un documento d'identità.**",
+    "livraison.stand_identite": "Per ritirare l'ordine sarà richiesto un documento d'identità.",
     "livraison.stand_compris_requis": "Spunta la casella: ritirerai il tuo ordine allo stand prima della chiusura.",
     "livraison.point_relais": "Punto di ritiro",
     "livraison.point_relais_aide":
