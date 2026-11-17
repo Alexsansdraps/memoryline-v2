@@ -15,6 +15,18 @@ export const IMPORT_DIR = isAbsolute(RAW_IMPORT_DIR)
   ? RAW_IMPORT_DIR
   : resolve(REPO_ROOT, RAW_IMPORT_DIR);
 
+/**
+ * Le dossier d'un import : IMPORT_DIR s'il est donné, sinon `defaut`. Un
+ * chemin relatif part de la racine du dépôt (/app dans le conteneur).
+ *
+ * Chaque import a son dossier par défaut : la reprise de l'historique lit
+ * data/exports/shopify, l'import complet l'ancien export Matrixify.
+ */
+export function dossierImport(defaut: string): string {
+  const brut = process.env.IMPORT_DIR?.trim() || defaut;
+  return isAbsolute(brut) ? brut : resolve(REPO_ROOT, brut);
+}
+
 /** Lit un CSV Shopify en tableau d'objets (clé = en-tête). */
 export function readCsv(filename: string): Record<string, string>[] {
   const path = join(IMPORT_DIR, filename);

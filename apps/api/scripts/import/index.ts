@@ -24,12 +24,14 @@ async function importRedirects(report: ImportReport) {
 }
 
 async function main() {
-  // Cet import repart de tables vides : sans ce verrou, la même commande
-  // lancée avec l'adresse de la base du serveur effacerait la boutique et
-  // ses ventes (cf. scripts/garde-base.ts).
+  // Cet import vide le catalogue avant de le réimporter : sans ce verrou, la
+  // même commande lancée avec l'adresse de la base du serveur effacerait la
+  // boutique (cf. scripts/garde-base.ts). Les clientes et les commandes, elles,
+  // ne sont plus vidées : leur reprise ajoute ce qui manque, sans rien effacer
+  // (orders.ts). Une commande déjà passée garde ses lignes, mais perd leur
+  // lien vers une affiche recréée par le catalogue.
   await confirmerAvantDeVider("L'import de la boutique", [
     "le catalogue : collections, affiches, formats, images, fonds",
-    "les clientes, leurs commandes, leurs lignes et leurs paiements",
     "la bibliothèque des pièces de personnages",
     "les redirections d'adresses",
   ]);
@@ -43,8 +45,8 @@ async function main() {
   console.log("• Bibliothèque assets + fonds (Files.csv)…");
   await importAssets(report);
 
-  console.log("• Clients + commandes (web + salon, snapshots perso)…");
-  await importCustomersAndOrders(report);
+  console.log("• Clientes et commandes (reprise sans effacement)…");
+  await importCustomersAndOrders(report, IMPORT_DIR);
 
   console.log("• Redirections 301…");
   await importRedirects(report);
