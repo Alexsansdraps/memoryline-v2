@@ -2270,6 +2270,8 @@ export function adminApi(request?: Request) {
         shippingCents?: number;
         /** Un montant libre, à la place des articles et du port. */
         amountCents?: number;
+        /** Tout ce qui reste : les articles restants et le port restant. */
+        tout?: boolean;
         reason?: string;
         note?: string;
         restock?: boolean;

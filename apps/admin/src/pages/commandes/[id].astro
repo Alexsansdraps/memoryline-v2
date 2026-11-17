@@ -95,31 +95,55 @@ if (Astro.request.method === "POST" && estProprietaire) {
       await api.cancelFulfillment(Number(f.get("fulfillmentId")));
       flash = "Expédition annulée.";
     } else if (action === "rembourser") {
-      const items: { orderItemId: number; quantity: number }[] = [];
-      for (const [cle, valeur] of f.entries()) {
-        if (!cle.startsWith("remb-")) continue;
-        const q = Math.max(0, Number(valeur) || 0);
-        if (q > 0) items.push({ orderItemId: Number(cle.slice(5)), quantity: q });
+      // UN SEUL endroit pour rendre de l'argent (Alexandra, 17/11 : « il faut
+      // un seul endroit, par défaut le champ rembourse tout, on peut mettre un
+      // pourcentage ou un chiffre libre »). Le montant part en euros ou en
+      // pourcentage du reste ; tout le reste, c'est « tout rembourser », par
+      // les articles (chaque ligne marquée rendue). La case « Annuler aussi la
+      // commande » fait l'annulation dans le même geste.
+      const resteCents = Math.max(0, Number(f.get("resteCents")) || 0);
+      const saisi = Number(String(f.get("montant") ?? "").replace(",", "."));
+      const montantCents =
+        f.get("unite") === "pct"
+          ? Math.round((resteCents * Math.min(100, Math.max(0, saisi || 0))) / 100)
+          : Math.round((saisi || 0) * 100);
+      const tout = resteCents > 0 && montantCents === resteCents;
+      const viaPsp = f.get("viaPsp") === "on";
+      const reason = String(f.get("reason") ?? "");
+      const note = String(f.get("noteRemb") ?? "");
+      const author = Astro.locals.user?.email ?? undefined;
+      if (f.get("annulerAussi") === "on") {
+        const motif = String(f.get("motif") ?? "");
+        const motifLibre = String(f.get("motifLibre") ?? "");
+        if (tout) {
+          // Tout rendre et annuler : exactement l'annulation avec remboursement.
+          const r = await api.annulerCommande(id, { motif, motifLibre, rembourser: true, viaPsp, note, author });
+          flash = `Commande ${r.numero} annulée, ${formatPrice(r.rembourseCents)} remboursés.`;
+        } else {
+          const r1 = await api.refundOrder(id, { amountCents: montantCents, reason, note, viaPsp, author });
+          const r2 = await api.annulerCommande(id, { motif, motifLibre, rembourser: false, note, author });
+          flash =
+            `Remboursement de ${formatPrice(r1.amountCents)} enregistré, commande ${r2.numero} annulée.` +
+            (r2.resteADevoir > 0
+              ? ` ${formatPrice(r2.resteADevoir)} restent encaissés : ils ne sont pas rendus à la cliente.`
+              : "");
+        }
+      } else {
+        const r = await api.refundOrder(
+          id,
+          tout
+            ? { tout: true, reason, note, viaPsp, author }
+            : { amountCents: montantCents, reason, note, viaPsp, author },
+        );
+        flash = `Remboursement de ${formatPrice(r.amountCents)} enregistré.`;
       }
-      const r = await api.refundOrder(id, {
-        items,
-        shippingCents: Math.round(Number(f.get("portEuros") ?? 0) * 100) || 0,
-        // Le montant libre (16/11) : l'API refuse qu'on le mêle aux articles.
-        amountCents: Math.round(Number(String(f.get("montantLibre") ?? "").replace(",", ".")) * 100) || 0,
-        reason: String(f.get("reason") ?? ""),
-        note: String(f.get("noteRemb") ?? ""),
-        restock: f.get("restock") === "on",
-        viaPsp: f.get("viaPsp") === "on",
-        author: Astro.locals.user?.email ?? undefined,
-      });
-      flash = `Remboursement de ${formatPrice(r.amountCents)} enregistré.`;
     } else if (action === "annuler") {
       const r = await api.annulerCommande(id, {
         motif: String(f.get("motif") ?? ""),
         motifLibre: String(f.get("motifLibre") ?? ""),
-        rembourser: f.get("rembourser") === "on",
+        // L'argent ne se rend plus d'ici : bloc « Rembourser » (17/11).
+        rembourser: false,
         restock: f.get("restockAnnul") === "on",
-        viaPsp: f.get("viaPspAnnul") === "on",
         note: String(f.get("noteAnnul") ?? ""),
         author: Astro.locals.user?.email ?? undefined,
       });
@@ -1779,112 +1803,105 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </details>
             )}
 
-            {encaisse && (resteARembourser > 0 || portRemboursable > 0) && (
+            {/* Rembourser : le SEUL endroit où l'on rend de l'argent (17/11).
+                Le montant part plein — tout ce qui reste —, se règle en euros
+                ou en pourcentage du reste, et l'annulation se coche ici aussi :
+                le bloc « Annuler » ne touche plus à l'argent. */}
+            {encaisse && resteSiPasRembourse > 0 && (
               <details class="border-t border-bo-border">
                 <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
                   Rembourser
                 </summary>
-                <form method="POST" class="space-y-3 px-4 pb-4">
+                <form method="POST" class="space-y-3 px-4 pb-4" data-remboursement>
                   <input type="hidden" name="_action" value="rembourser" />
-                  <table class="w-full text-sm">
-                    <thead class="text-left text-xs text-bo-muted">
-                      <tr>
-                        <th class="py-1 font-medium">Article</th>
-                        <th class="py-1 font-medium">Prix</th>
-                        <th class="py-1 font-medium">Remboursables</th>
-                        <th class="py-1 font-medium">Quantité</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items
-                        .filter((it) => (it.aRembourser ?? 0) > 0)
-                        .map((it) => (
-                          <tr>
-                            <td class="py-1 pr-3">{it.title ?? "Affiche"}</td>
-                            <td class="py-1 pr-3 text-bo-muted">
-                              {formatPrice(it.unitPriceCents)}
-                            </td>
-                            <td class="py-1 pr-3 text-bo-muted">{it.aRembourser}</td>
-                            <td class="py-1">
-                              <input
-                                type="number"
-                                name={`remb-${it.id}`}
-                                min="0"
-                                max={it.aRembourser}
-                                value="0"
-                                class="w-20 rounded border border-bo-border px-2 py-1"
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                  <div class="flex flex-wrap items-end gap-4">
+                  <input type="hidden" name="resteCents" value={resteSiPasRembourse} />
+                  <div class="flex flex-wrap items-end gap-3">
                     <label class="text-sm">
-                      <span class="mb-1 block text-xs text-bo-muted">
-                        Frais de port (max {formatPrice(portRemboursable)})
-                      </span>
+                      <span class="mb-1 block text-xs text-bo-muted">Montant à rembourser</span>
                       <input
                         type="number"
-                        name="portEuros"
+                        name="montant"
                         step="0.01"
-                        min="0"
-                        max={(portRemboursable / 100).toFixed(2)}
-                        value="0"
-                        class="w-28 rounded border border-bo-border px-2 py-1"
-                      />
-                    </label>
-                    <label class="text-sm">
-                      <span class="mb-1 block text-xs text-bo-muted">
-                        OU un montant libre, en € (max {formatPrice(Math.max(0, total - rembourse))})
-                      </span>
-                      <input
-                        type="number"
-                        name="montantLibre"
-                        step="0.01"
-                        min="0"
-                        max={(Math.max(0, total - rembourse) / 100).toFixed(2)}
-                        placeholder="0,00"
+                        min="0.01"
+                        max={(resteSiPasRembourse / 100).toFixed(2)}
+                        value={(resteSiPasRembourse / 100).toFixed(2)}
+                        required
+                        data-reste={resteSiPasRembourse}
                         class="w-32 rounded border border-bo-border px-2 py-1"
                       />
                     </label>
-                    <label class="flex-1 text-sm">
-                      <span class="mb-1 block text-xs text-bo-muted">Motif</span>
-                      <input
-                        name="reason"
-                        placeholder="Article abîmé, erreur de commande…"
-                        class="w-full rounded border border-bo-border px-3 py-2"
-                      />
+                    <label class="text-sm">
+                      <span class="mb-1 block text-xs text-bo-muted">en</span>
+                      <select name="unite" class="rounded border border-bo-border px-2 py-1">
+                        <option value="eur" selected>€</option>
+                        <option value="pct">% du reste</option>
+                      </select>
                     </label>
+                    <p class="pb-1 text-xs text-bo-muted" data-equivaut>
+                      Par défaut, tout ce qui reste : {formatPrice(resteSiPasRembourse)}.
+                    </p>
                   </div>
                   <label class="block text-sm">
-                    <span class="mb-1 block text-xs text-bo-muted">
-                      Note interne (jamais envoyée au client)
-                    </span>
+                    <span class="mb-1 block text-xs text-bo-muted">Motif</span>
                     <input
-                      name="noteRemb"
+                      name="reason"
+                      placeholder="Affiche abîmée, geste commercial, erreur de commande…"
                       class="w-full rounded border border-bo-border px-3 py-2"
                     />
                   </label>
-                  <label class="flex items-center gap-2 text-sm">
-                    <input type="checkbox" name="restock" />
-                    Remettre les articles en stock
-                    <span class="text-xs text-bo-muted">
-                      (sans effet sur les affiches, imprimées à la commande)
+                  <label class="block text-sm">
+                    <span class="mb-1 block text-xs text-bo-muted">
+                      Note interne (jamais envoyée à la cliente)
                     </span>
+                    <input name="noteRemb" class="w-full rounded border border-bo-border px-3 py-2" />
                   </label>
                   <label class="flex items-center gap-2 text-sm">
                     <input type="checkbox" name="viaPsp" checked />
-                    Rendre l'argent via Stripe ou PayPal (celui qui a encaissé)
+                    Rendre l'argent via {paiement?.provider === "paypal" ? "PayPal" : paiement?.provider === "stripe" ? "Stripe (carte)" : "Stripe ou PayPal"}
                     <span class="text-xs text-bo-muted">
-                      (décochez pour un remboursement fait à la main)
+                      (décochez si vous avez déjà remboursé à la main, sur le site du prestataire ou en espèces)
                     </span>
                   </label>
+                  {!annulee && (
+                    <div class="space-y-2 rounded border border-amber-300 p-3 text-sm">
+                      <label class="flex items-start gap-2">
+                        <input type="checkbox" name="annulerAussi" class="mt-0.5" data-annuler-aussi />
+                        <span>
+                          Annuler aussi la commande
+                          <span class="block text-xs text-bo-muted">
+                            Elle sort de vos chiffres, ne peut plus rien expédier, et la cliente est prévenue par courrier.
+                          </span>
+                        </span>
+                      </label>
+                      {resteAExpedier < nbArticles && (
+                        <p class="rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                          {nbArticles - resteAExpedier} article(s) sont déjà partis : l'annulation sera refusée (le remboursement, lui, passera).
+                        </p>
+                      )}
+                      <div class="space-y-2" data-champs-annulation hidden>
+                        <label class="block">
+                          <span class="mb-1 block text-xs text-bo-muted">Motif de l'annulation</span>
+                          <select name="motif" class="w-full rounded border border-bo-border px-2 py-1">
+                            {MOTIFS_ANNULATION.map(([valeur, libelle]) => (
+                              <option value={valeur}>{libelle}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label class="block">
+                          <span class="mb-1 block text-xs text-bo-muted">Précision (écrite à la cliente)</span>
+                          <input
+                            name="motifLibre"
+                            placeholder="Le fond choisi n'est plus disponible"
+                            class="w-full rounded border border-bo-border px-2 py-1"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
                   <p class="text-xs text-bo-muted">
-                    Soit des articles et le port, soit un montant libre (geste
-                    commercial, affiche abîmée qu'on ne reprend pas). Rappel : une
-                    affiche personnalisée n'a pas de droit de rétractation (seule la
-                    garantie joue) ; une affiche prête à imprimer, 14 jours.
+                    Rappel : une affiche personnalisée n'a pas de droit de
+                    rétractation (seule la garantie joue) ; une affiche prête à
+                    imprimer, 14 jours.
                   </p>
                   <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
                     Rembourser
@@ -2133,6 +2150,13 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   revient.
                 </p>
               )}
+              {encaisse && resteSiPasRembourse > 0 ? (
+                <p class="text-sm text-bo-muted">
+                  Cette commande a été payée : pour l'annuler, ouvrez
+                  « Rembourser » (bloc Paiement) et cochez « Annuler aussi la
+                  commande ». L'argent et l'annulation partent ensemble.
+                </p>
+              ) : (
               <details>
                 <summary class="cursor-pointer text-sm text-bo-accent">
                   Annuler {order.number}
@@ -2170,32 +2194,6 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                     />
                   </label>
 
-                  {/* Le remboursement n'a de sens que sur une commande
-                      encaissée. Sur les autres, on ne montre pas une case
-                      qui ne peut que produire un refus. */}
-                  {encaisse && resteSiPasRembourse > 0 && (
-                    <>
-                      <label class="flex items-start gap-2">
-                        <input type="checkbox" name="rembourser" checked class="mt-0.5" />
-                        <span>
-                          Rembourser {formatPrice(resteSiPasRembourse)} en même
-                          temps
-                          <span class="block text-xs text-bo-muted">
-                            Décochée, l'annulation passe quand même — mais cette
-                            somme reste due à la cliente, et rien d'autre ne
-                            vous le rappellera.
-                          </span>
-                        </span>
-                      </label>
-                      <label class="flex items-center gap-2">
-                        <input type="checkbox" name="viaPspAnnul" checked />
-                        Rendre l'argent via Stripe
-                        <span class="text-xs text-bo-muted">
-                          (décochez pour un remboursement fait à la main)
-                        </span>
-                      </label>
-                    </>
-                  )}
                   {encaisse && resteSiPasRembourse <= 0 && (
                     <p class="text-xs text-bo-muted">
                       Tout a déjà été remboursé sur cette commande : il n'y a
@@ -2222,6 +2220,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   </button>
                 </form>
               </details>
+              )}
             </section>
           )}
 
@@ -2401,5 +2400,49 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
   {/* Les PDF d'impression : prêt, en préparation, ou impossible et pourquoi. */}
   <script>
     import "../../lib/impression-bo.ts";
+
+    // Le bloc « Rembourser » : passer de l'euro au pourcentage remet le champ
+    // sur « tout » dans la nouvelle unité (le reste, ou 100 %), et la ligne
+    // d'à côté dit ce que le montant représente. Sans script, le formulaire
+    // marche quand même : le serveur fait le calcul.
+    for (const form of document.querySelectorAll<HTMLFormElement>("form[data-remboursement]")) {
+      const montant = form.querySelector<HTMLInputElement>('input[name="montant"]');
+      const unite = form.querySelector<HTMLSelectElement>('select[name="unite"]');
+      const equivaut = form.querySelector<HTMLElement>("[data-equivaut]");
+      const annuler = form.querySelector<HTMLInputElement>("[data-annuler-aussi]");
+      const champs = form.querySelector<HTMLElement>("[data-champs-annulation]");
+      if (!montant || !unite) continue;
+      const reste = Number(montant.dataset.reste) || 0;
+      const euros = (c: number) =>
+        (c / 100).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+      const centimes = () => {
+        const v = Number(montant.value.replace(",", ".")) || 0;
+        return unite.value === "pct" ? Math.round((reste * Math.min(100, Math.max(0, v))) / 100) : Math.round(v * 100);
+      };
+      const dire = () => {
+        if (!equivaut) return;
+        const c = centimes();
+        equivaut.textContent =
+          c >= reste
+            ? `Tout ce qui reste : ${euros(reste)}.`
+            : `Soit ${euros(c)} sur ${euros(reste)} remboursables.`;
+      };
+      unite.addEventListener("change", () => {
+        if (unite.value === "pct") {
+          montant.max = "100";
+          montant.step = "1";
+          montant.value = "100";
+        } else {
+          montant.max = (reste / 100).toFixed(2);
+          montant.step = "0.01";
+          montant.value = (reste / 100).toFixed(2);
+        }
+        dire();
+      });
+      montant.addEventListener("input", dire);
+      annuler?.addEventListener("change", () => {
+        if (champs) champs.hidden = !annuler.checked;
+      });
+    }
   </script>
 </Admin>

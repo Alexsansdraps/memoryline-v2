@@ -1574,6 +1574,32 @@ export function mountOrderRoutes(app: Hono): void {
     const dejaRendu = await quantitesRemboursees(id);
     const dejaCents = (await resumeCommandes([id])).get(id)!.rembourseCents;
 
+    // « Tout rembourser » (`tout: true`, le choix par défaut du bloc
+    // Rembourser depuis le 17/11) : tous les articles qui restent, et le port
+    // qui reste. Par les articles plutôt que par un montant libre égal au
+    // reste : chaque ligne est ainsi marquée rendue, comme le faisait
+    // l'annulation.
+    //
+    // Sauf quand ces articles et ce port valent PLUS que l'argent qui reste
+    // encaissé : une remise (« 3 achetées = 1 A4 offerte »), ou un montant
+    // libre déjà rendu, que les articles ne connaissent pas. Additionner les
+    // prix faisait alors refuser « tout rembourser » (« dépasserait le
+    // montant encaissé ») — et l'annulation avec lui. On rend alors exactement
+    // ce qui reste, en un montant.
+    if (b.tout === true) {
+      const items = lignes
+        .map((l) => ({ orderItemId: l.id, quantity: l.quantity - (dejaRendu.get(l.id) ?? 0) }))
+        .filter((l) => l.quantity > 0);
+      const port = await portRemboursable(id, order.shippingCents);
+      const parArticles =
+        items.reduce((s, it) => s + (lignes.find((l) => l.id === it.orderItemId)!.unitPriceCents * it.quantity), 0) + port;
+      const resteEncaisse = Math.max(0, order.totalCents - dejaCents);
+      b =
+        parArticles > 0 && parArticles <= resteEncaisse
+          ? { ...b, items, shippingCents: port, amountCents: 0 }
+          : { ...b, items: [], shippingCents: 0, amountCents: resteEncaisse };
+    }
+
     const detail: {
       orderItemId: number;
       quantity: number;
@@ -1773,7 +1799,7 @@ export function mountOrderRoutes(app: Hono): void {
       message:
         `Remboursement de ${(montant / 100).toFixed(2).replace(".", ",")} €` +
         (gateway === "stripe" ? " via Stripe" : gateway === "paypal" ? " via PayPal" : " (hors ligne)") +
-        (libre > 0 ? " (montant libre)" : "") +
+        (libre > 0 ? (b.tout === true ? " (tout le reste)" : " (montant libre)") : "") +
         (b.restock === true ? ", articles remis en stock" : "") +
         ".",
     });
@@ -1972,21 +1998,16 @@ export function mountOrderRoutes(app: Hono): void {
           },
           400,
         );
-      const dejaRendu = await quantitesRemboursees(id);
-      const aRendre = lignes
-        .map((l) => ({
-          orderItemId: l.id,
-          quantity: l.quantity - (dejaRendu.get(l.id) ?? 0),
-        }))
-        .filter((l) => l.quantity > 0);
-      // Le port part avec le reste : la commande entière est annulée, la
-      // cliente n'a rien reçu, il n'y a pas de raison qu'elle paie l'envoi.
-      const portARendre = await portRemboursable(id, order.shippingCents);
+      // Tout ce qui reste encaissé, port compris (la commande entière est
+      // annulée, la cliente n'a rien reçu) : le même calcul que « tout
+      // rembourser » (enregistrerRemboursement, `tout`), remises et montants
+      // libres déjà rendus compris.
+      const dejaRembourse = (await resumeCommandes([id])).get(id)!.rembourseCents;
       // Une commande déjà entièrement remboursée n'a plus rien à rendre. Le
       // remboursement refuserait — « Rien à rembourser » — et son refus
       // arrêterait l'annulation, alors qu'elle est justement le geste qui
       // reste à faire. On saute donc l'étape au lieu de buter dessus.
-      if (!aRendre.length && portARendre <= 0) {
+      if (order.totalCents - dejaRembourse <= 0) {
         await db.insert(schema.orderEvents).values({
           orderId: id,
           kind: "event",
@@ -1995,8 +2016,7 @@ export function mountOrderRoutes(app: Hono): void {
         });
       } else {
         const r = await enregistrerRemboursement(id, {
-          items: aRendre,
-          shippingCents: portARendre,
+          tout: true,
           reason: motif ?? "Commande annulée",
           note: String(b.note ?? "").trim() || null,
           restock: b.restock === true,
