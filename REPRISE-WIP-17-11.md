@@ -44,6 +44,8 @@ Vérifications : `tsc` de l'API, 342 tests, astro check du BO à 0 erreur, `tsc`
 Scripts d'essai, dans le scratchpad de la session (perdu au redémarrage) : `essai-cartes.mjs`, `essai-navigateur.mjs`, `essai-menage.mjs`.
 
 ## 2. États de traitement en étapes et module des stands à l'accueil : INTERROMPU
+
+**EXIGENCE (Alexandra, 17/11, 16 h 30) : UN SEUL STATUT par commande.** Sur la fiche, il ne doit plus y avoir deux en-têtes « Payée » (bloc paiement) et « Traitée » (bloc remise ou expédition). Un seul statut dit où en est la commande dans SON parcours : la frise ci-dessous, avec l’étape en cours. Il en va de même dans la liste du BO : une seule colonne « Statut » au lieu de « Paiement » et « Traitement », avec les filtres adaptés. Le détail des mouvements d’argent et des remises reste lisible plus bas, mais sans statut à lui.
 Les parcours voulus, définis par Alexandra :
 - **Stand** : À encaisser → Payée (« Marquer payée ») → À imprimer → Terminée. Aucun courriel. Annulable seulement avant le paiement.
 - **Site livré** : En préparation → Envoyée (courriel « en route ») → Livrée. Annulable tant que la commande n'est pas envoyée.
