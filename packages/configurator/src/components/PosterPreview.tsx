@@ -213,7 +213,29 @@ export function PosterPreview(props: {
    * fin.
    */
   const [fondCharge, setFondCharge] = createSignal(false);
-  createEffect(on(srcFond, () => setFondCharge(false), { defer: true }));
+
+  /**
+   * La version LÉGÈRE du fond (400 px, une trentaine de Ko), montrée d'abord :
+   * au stand, en 4G, l'affiche apparaît tout de suite, et la version nette
+   * (1400 px) la remplace dès qu'elle est arrivée (17/11). C'est la même
+   * image que la vignette du fond qu'on vient de toucher : le navigateur l'a
+   * souvent déjà.
+   */
+  const srcFondLeger = () =>
+    props.state.backgroundUrl
+      ? aLaLargeur(urlAsset(props.assetBaseUrl ?? "", props.state.backgroundUrl), 400)
+      : undefined;
+  const [legerCharge, setLegerCharge] = createSignal(false);
+  createEffect(
+    on(
+      srcFond,
+      () => {
+        setFondCharge(false);
+        setLegerCharge(false);
+      },
+      { defer: true },
+    ),
+  );
 
   /** Bas réel du dessin d'un personnage, pour aligner ses pieds au sol. */
   const basDuDessin = (id: string | number): number =>
@@ -414,7 +436,30 @@ export function PosterPreview(props: {
           : { "box-shadow": "0 1px 4px rgba(0,0,0,.15)" }),
       }}
     >
-      {/* Couche fond */}
+      {/* Couche fond, en deux temps : la version légère d'abord, la nette
+          par-dessus dès qu'elle est arrivée (fondu). */}
+      <Show when={srcFondLeger() !== srcFond() ? srcFondLeger() : undefined}>
+        {(url) => (
+          <img
+            ref={(el) => {
+              if (el.complete && el.naturalWidth > 0) setLegerCharge(true);
+            }}
+            src={url()}
+            alt=""
+            draggable={false}
+            onLoad={() => setLegerCharge(true)}
+            style={{
+              position: "absolute",
+              inset: "0",
+              width: "100%",
+              height: "100%",
+              "object-fit": "cover",
+              "pointer-events": "none",
+              "user-select": "none",
+            }}
+          />
+        )}
+      </Show>
       <Show when={srcFond()}>
         {(url) => (
           <img
@@ -436,14 +481,17 @@ export function PosterPreview(props: {
               "object-fit": "cover",
               "pointer-events": "none",
               "user-select": "none",
+              opacity: fondCharge() ? "1" : "0",
+              transition: "opacity .25s ease",
             }}
           />
         )}
       </Show>
 
-      {/* Le chargement, par-dessus tout le reste, tant que le fond n'est pas
-          là (ml-cfg-chargement, global.css). */}
-      <Show when={srcFond() && !fondCharge()}>
+      {/* Le chargement, par-dessus tout le reste, tant que RIEN du fond n'est
+          là (ml-cfg-chargement, global.css) : la version légère suffit à le
+          retirer. */}
+      <Show when={srcFond() && !fondCharge() && !legerCharge()}>
         <div class="ml-cfg-chargement" role="status" aria-live="polite">
           <span class="ml-cfg-chargement-roue" aria-hidden="true" />
           <span class="ml-cfg-chargement-texte">{m().chargementApercu}</span>
