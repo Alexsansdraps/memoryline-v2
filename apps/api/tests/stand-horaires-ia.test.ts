@@ -55,3 +55,28 @@ test("sans clé ni phrase : une phrase claire", async () => {
   process.env.OPENAI_API_KEY = "cle-de-test";
   await assert.rejects(horairesDepuisTexte("   ", actuel, "2026-11-17"), /Écrivez d'abord/);
 });
+
+test("non-stop : toujours un seul créneau, dans le matin (17/11)", async () => {
+  process.env.OPENAI_API_KEY = "cle-de-test";
+  repondre({
+    dateDebut: "2026-11-20",
+    dateFin: "2026-12-27",
+    // Base rendue en deux créneaux qui se touchent : une journée continue.
+    matin: { de: "11:00", a: "13:00" },
+    apresMidi: { de: "13:00", a: "20:00" },
+    jours: [
+      // Un non-stop rendu tout entier dans l'après-midi.
+      { date: "2026-11-21", matin: null, apresMidi: { de: "10:00", a: "21:00" } },
+      // Un vrai « fermé le matin » reste tel quel.
+      { date: "2026-11-22", matin: null, apresMidi: { de: "14:00", a: "19:00" } },
+      // Le format attendu passe sans changement.
+      { date: "2026-11-28", matin: { de: "10:00", a: "21:00" }, apresMidi: null },
+    ],
+  });
+  const r = await horairesDepuisTexte("tout en non-stop", actuel, "2026-11-17");
+  assert.deepEqual(r.horaires.matin, { de: "11:00", a: "20:00" });
+  assert.equal(r.horaires.apresMidi, null);
+  assert.deepEqual(r.horaires.jours?.["2026-11-21"], { matin: { de: "10:00", a: "21:00" }, apresMidi: null });
+  assert.deepEqual(r.horaires.jours?.["2026-11-22"], { matin: null, apresMidi: { de: "14:00", a: "19:00" } });
+  assert.deepEqual(r.horaires.jours?.["2026-11-28"], { matin: { de: "10:00", a: "21:00" }, apresMidi: null });
+});

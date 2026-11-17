@@ -44,7 +44,11 @@ Règles :
 - "matin" et "apresMidi" sont les horaires de base, recopiés sur chaque jour du stand. "jours" ne contient QUE les jours qui s'en écartent : fermés, ou à horaires différents.
 - Garde tel quel tout ce que la consigne ne change pas.
 - « Fermé les lundis » : chaque lundi entre dateDebut et dateFin est fermé.
-- Une journée continue, « non-stop » (« 11h-20h », « non-stop le 24 ») : un seul créneau dans "matin", du début du matin à la fin de l'après-midi, et "apresMidi" à null.
+- FORMAT D'UNE JOURNÉE NON-STOP (ouverte sans pause : « non-stop », « sans pause », « sans coupure », « en continu », « 10h-21h ») : TOUJOURS un seul créneau, dans "matin", du début du matin à la fin de l'après-midi, et "apresMidi" à null.
+  Un jour passé en non-stop : {"date":"2026-11-21","matin":{"de":"10:00","a":"21:00"},"apresMidi":null}
+  Des horaires de base non-stop : "matin":{"de":"11:00","a":"20:00"},"apresMidi":null
+  Jamais deux créneaux qui se touchent (10:00-13:00 puis 13:00-21:00), et jamais ce créneau unique dans "apresMidi" avec "matin" à null : ce serait « fermé le matin ».
+- « Le 24 en non-stop » sans heures : ce jour-là, de l'ouverture de son matin à la fermeture de son après-midi, tels qu'ils sont dans le calendrier actuel.
 - « Tout en non-stop » (« non-stop tous les jours », « sans pause ») : les horaires de base deviennent un seul créneau dans "matin", de l'heure d'ouverture du matin ACTUELLE à l'heure de fermeture de l'après-midi ACTUELLE, et "apresMidi" à null. Chaque jour de "jours" qui a deux créneaux devient de même un seul créneau, du début de son matin à la fin de son après-midi. Les jours fermés restent fermés. Aucune autre heure ne change.
 - « Fermé le matin » un jour : ce jour-là "matin" à null et l'après-midi garde ses heures. « Fermé l'après-midi » : "apresMidi" à null.
 - N'invente jamais une heure ni un jour : ce que la consigne ne dit pas reste exactement comme dans le calendrier actuel.
@@ -52,6 +56,27 @@ Règles :
 - Les heures sur 24 h, « HH:MM ». Les dates « AAAA-MM-JJ » ; l'année se déduit d'aujourd'hui (${aujourdhui}) : une date déjà passée cette année est celle de l'année suivante.
 - Le matin finit avant le début de l'après-midi.
 - Réponds par le JSON seul.`;
+
+const estCreneau = (x: unknown): x is Creneau =>
+  !!x && typeof x === "object" && typeof (x as Creneau).de === "string" && typeof (x as Creneau).a === "string";
+
+/**
+ * Une journée sans pause, rangée comme le BO la lit (17/11) : un seul créneau
+ * dans le matin, l'après-midi à null. L'IA la rend parfois en deux créneaux
+ * qui se touchent (10:00–13:00 puis 13:00–21:00), ou tout entière dans
+ * l'après-midi : le BO y lisait alors « Avec pause » ou « Matin fermé ».
+ */
+export function rangerNonStop(
+  matin: unknown,
+  apresMidi: unknown,
+): { matin: unknown; apresMidi: unknown } {
+  // Deux créneaux qui se touchent ou se chevauchent : une seule journée.
+  if (estCreneau(matin) && estCreneau(apresMidi) && matin.a >= apresMidi.de)
+    return { matin: { de: matin.de, a: apresMidi.a > matin.a ? apresMidi.a : matin.a }, apresMidi: null };
+  // Un « après-midi » qui commence avant midi est la journée entière.
+  if (!matin && estCreneau(apresMidi) && apresMidi.de < "12:00") return { matin: apresMidi, apresMidi: null };
+  return { matin, apresMidi };
+}
 
 function versTexte(dateDebut: string | null, dateFin: string | null, h: HorairesStand | null): CalendrierTexte {
   return {
@@ -132,10 +157,10 @@ export async function horairesDepuisTexte(
     const jours: Record<string, unknown> = {};
     for (const j of Array.isArray(lu.jours) ? lu.jours : []) {
       if (!j || typeof j !== "object" || !jourValide(j.date)) continue;
-      jours[j.date] = j.ferme ? { ferme: true } : { matin: j.matin ?? null, apresMidi: j.apresMidi ?? null };
+      jours[j.date] = j.ferme ? { ferme: true } : rangerNonStop(j.matin ?? null, j.apresMidi ?? null);
     }
     const horaires = horairesLus(
-      { matin: lu.matin ?? null, apresMidi: lu.apresMidi ?? null, jours },
+      { ...rangerNonStop(lu.matin ?? null, lu.apresMidi ?? null), jours },
       dateDebut,
       dateFin,
     );
