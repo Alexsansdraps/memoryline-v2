@@ -38,6 +38,8 @@ export interface MessagesConfigurateur {
   descendre: string;
   retour: string;
   continuer: string;
+  /** Sur l'aperçu, le temps que le fond arrive (17/11). */
+  chargementApercu: string;
   validerAffiche: string;
   validerPersonnage: string;
   personnalisation: string;
@@ -150,6 +152,7 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   descendre: "Descendre",
   retour: "Retour",
   continuer: "Continuer",
+  chargementApercu: "Chargement de l'affiche…",
   validerAffiche: "Valider l'affiche",
   validerPersonnage: "Valider mon personnage",
   personnalisation: "PERSONNALISATION",

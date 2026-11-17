@@ -1250,7 +1250,7 @@ const fondsEnCours = new Map<string, Promise<Buffer>>();
  * sharp, en revanche, sait décoder le WebP : on convertit chaque image avant
  * de confier le SVG au moteur de dessin.
  */
-async function sansWebp(svg: Buffer): Promise<Buffer> {
+export async function sansWebp(svg: Buffer): Promise<Buffer> {
   if (!svg.includes("data:image/webp")) return svg;
   const texte = svg.toString("utf8");
   const morceaux: string[] = [];

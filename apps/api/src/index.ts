@@ -316,10 +316,16 @@ async function fichierALaTaille(
 ): Promise<{ chemin: string; mime: string }> {
   const ext = extname(file).toLowerCase();
   const mimeOrigine = MIME[ext] ?? "application/octet-stream";
-  // Un SVG est un dessin : il s'agrandit sans perdre, le retailler n'aurait
-  // aucun sens. Un format qu'on ne connait pas, on n'y touche pas non plus.
-  if (largeur === null || ext === ".svg" || !mimeOrigine.startsWith("image/"))
+  // Un format qu'on ne connait pas, on n'y touche pas.
+  //
+  // Un SVG, si : une largeur demandée en donne une IMAGE (17/11). Les fonds
+  // des villes pèsent jusqu'à 14 Mo — des photos y sont collées —, et le
+  // configurateur les attendait plusieurs secondes sur un téléphone, puis le
+  // navigateur devait encore les dessiner. L'original reste celui qu'on
+  // imprime (pdf.ts) ; sans « ?l= », c'est toujours lui qui part.
+  if (largeur === null || !mimeOrigine.startsWith("image/"))
     return { chemin: path, mime: mimeOrigine };
+  const estSvg = ext === ".svg";
 
   const nomCache = `${largeur}-${file.replace(/\.[^.]+$/, "")}.webp`;
   const cache = resolve(TAILLES_DIR, basename(nomCache));
@@ -339,6 +345,22 @@ async function fichierALaTaille(
       travail = (async () => {
         const sharp = (await import("sharp")).default;
         await mkdir(TAILLES_DIR, { recursive: true });
+        if (estSvg) {
+          // Les images WebP collées dans le SVG d'abord converties : le
+          // moteur de dessin les laisserait de côté sans rien dire (pdf.ts,
+          // sansWebp). Puis dessiné directement à la largeur demandée.
+          const { sansWebp } = await import("./pdf.js");
+          const source = await sansWebp(await readFile(path));
+          const m = await sharp(source, { unlimited: true }).metadata();
+          const densite = m.width
+            ? Math.min(600, Math.max(36, Math.ceil((72 * largeur) / m.width) + 1))
+            : 150;
+          await sharp(source, { density: densite, unlimited: true })
+            .resize({ width: largeur })
+            .webp({ quality: 82 })
+            .toFile(cache);
+          return;
+        }
         await sharp(path)
           // `withoutEnlargement` : on ne fabrique jamais une image plus grande
           // que l'originale, ce qui ne ferait qu'ajouter du poids sans un

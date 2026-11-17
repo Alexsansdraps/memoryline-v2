@@ -612,7 +612,7 @@ export default function CartIsland(props: {
                         }
                       >
                         <div
-                          class="relative w-full overflow-hidden bg-paper-deep"
+                          class="ml-squelette relative w-full overflow-hidden"
                           /* LA FEUILLE, DANS SON VRAI SENS, et non un portrait
                              d'office : une création en paysage — le sens se
                              déduit de la photo — se retrouvait réduite au
@@ -633,7 +633,9 @@ export default function CartIsland(props: {
                             )}
                             alt=""
                             class="absolute inset-0 h-full w-full object-contain"
+                            onLoad={(e) => e.currentTarget.parentElement?.classList.add("est-charge")}
                             onError={(e) => {
+                              e.currentTarget.parentElement?.classList.add("est-charge");
                               // Aperçu introuvable (route IA absente, fichier
                               // effacé) : on laisse le cadre vide plutôt que
                               // l'icône d'image cassée du navigateur.

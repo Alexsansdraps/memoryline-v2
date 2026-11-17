@@ -283,6 +283,7 @@ export default function ConfiguratorIsland(
                 descendre: tr("cfg.descendre"),
                 retour: tr("cfg.retour"),
                 continuer: tr("cfg.continuer"),
+                chargementApercu: tr("cfg.chargement_apercu"),
                 validerAffiche: tr("cfg.valider_affiche"),
                 validerPersonnage: tr("cfg.valider_perso"),
                 personnalisation: tr("cfg.personnalisation"),

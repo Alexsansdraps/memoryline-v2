@@ -306,3 +306,15 @@ export function urlAsset(base: string, url: string): string {
   if (!b) return url;
   return url.startsWith(b + "/") ? url : b + url;
 }
+
+/**
+ * La même image du site, à la largeur demandée (« ?l= », route /assets de
+ * l'API). Un fond SVG en reçoit alors une IMAGE légère : certains pèsent
+ * 14 Mo, et le configurateur les attendait plusieurs secondes (17/11).
+ * Une adresse d'un autre site, ou qui porte déjà ses paramètres, ne change
+ * pas.
+ */
+export function aLaLargeur(url: string | undefined, largeur: number): string | undefined {
+  if (!url || url.includes("?") || !url.includes("/assets/")) return url;
+  return `${url}?l=${largeur}`;
+}

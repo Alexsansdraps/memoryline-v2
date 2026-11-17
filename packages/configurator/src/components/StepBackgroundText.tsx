@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { For, Show } from "solid-js";
 import {
+  aLaLargeur,
   COULEURS_TEXTE_AFFICHE,
   couleurTexteParValeur,
   policesDeLaLigne,
@@ -111,8 +112,12 @@ export function StepBackgroundText(props: {
       </For>
     </ZoneDefilante>
   );
+  // Les vignettes en 400 px : un fond SVG pèse jusqu'à 14 Mo, l'API en donne
+  // une image de la largeur demandée (index.ts, fichierALaTaille).
   const resolve = (url: string) =>
-    url.startsWith("http") ? url : props.assetBaseUrl.replace(/\/$/, "") + url;
+    url.startsWith("http")
+      ? url
+      : (aLaLargeur(props.assetBaseUrl.replace(/\/$/, "") + url, 400) ?? url);
 
   const inputStyle = {
     width: "100%",
@@ -168,7 +173,7 @@ export function StepBackgroundText(props: {
                     // du choix fait posées par le site (`ml-choix`). La case
                     // rogne son image : la coche se loge dans son coin.
                     aria-pressed={selected()}
-                    class="ml-choix ml-choix-dedans"
+                    class="ml-choix ml-choix-dedans ml-squelette"
                     style={{
                       border: selected()
                         ? "2px solid #4f46e5"
@@ -176,7 +181,9 @@ export function StepBackgroundText(props: {
                       "border-radius": "6px",
                       padding: "2px",
                       cursor: "pointer",
-                      background: "#fff",
+                      // Pas de fond blanc posé ici : le reflet de chargement
+                      // (ml-squelette, global.css) se voit le temps que la
+                      // vignette arrive.
                       "aspect-ratio": "1 / 1.4142",
                       overflow: "hidden",
                     }}
@@ -184,6 +191,8 @@ export function StepBackgroundText(props: {
                     <img
                       src={resolve(bg.url)}
                       alt={bg.name ?? ""}
+                      onLoad={(e) => e.currentTarget.parentElement?.classList.add("est-charge")}
+                      onError={(e) => e.currentTarget.parentElement?.classList.add("est-charge")}
                       style={{
                         width: "100%",
                         height: "100%",

@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { createMemo, createSignal, onCleanup, onMount, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, onMount, For, Show } from "solid-js";
 import {
   bornerPlacement,
   CHAR_BASE_WIDTH,
@@ -25,6 +25,7 @@ import {
   sousLignes,
   tailleDeLigneCqw,
   urlAsset,
+  aLaLargeur,
 } from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
 import { Filigrane } from "./Filigrane";
@@ -201,8 +202,18 @@ export function PosterPreview(props: {
   /** Fond affichable : le chemin stocké est brut, on le préfixe ici. */
   const srcFond = () =>
     props.state.backgroundUrl
-      ? urlAsset(props.assetBaseUrl ?? "", props.state.backgroundUrl)
+      ? aLaLargeur(urlAsset(props.assetBaseUrl ?? "", props.state.backgroundUrl), 1400)
       : undefined;
+
+  /**
+   * Le fond est-il arrivé ? Tant qu'il ne l'est pas, l'aperçu montre un
+   * chargement (17/11) : sans lui, on voyait une affiche grise avec le texte
+   * blanc posé dessus, comme cassée. Revient à faux à chaque nouveau fond ;
+   * une image en erreur arrête aussi le chargement, pour ne pas tourner sans
+   * fin.
+   */
+  const [fondCharge, setFondCharge] = createSignal(false);
+  createEffect(on(srcFond, () => setFondCharge(false), { defer: true }));
 
   /** Bas réel du dessin d'un personnage, pour aligner ses pieds au sol. */
   const basDuDessin = (id: string | number): number =>
@@ -407,9 +418,16 @@ export function PosterPreview(props: {
       <Show when={srcFond()}>
         {(url) => (
           <img
+            ref={(el) => {
+              // Déjà dans le cache du navigateur : « load » est peut-être
+              // passé avant que l'écouteur ne soit posé.
+              if (el.complete && el.naturalWidth > 0) setFondCharge(true);
+            }}
             src={url()}
             alt=""
             draggable={false}
+            onLoad={() => setFondCharge(true)}
+            onError={() => setFondCharge(true)}
             style={{
               position: "absolute",
               inset: "0",
@@ -421,6 +439,15 @@ export function PosterPreview(props: {
             }}
           />
         )}
+      </Show>
+
+      {/* Le chargement, par-dessus tout le reste, tant que le fond n'est pas
+          là (ml-cfg-chargement, global.css). */}
+      <Show when={srcFond() && !fondCharge()}>
+        <div class="ml-cfg-chargement" role="status" aria-live="polite">
+          <span class="ml-cfg-chargement-roue" aria-hidden="true" />
+          <span class="ml-cfg-chargement-texte">{m().chargementApercu}</span>
+        </div>
       </Show>
 
       {/* Couche personnages — composition automatique, ou places enregistrées */}

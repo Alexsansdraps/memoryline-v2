@@ -88,7 +88,7 @@ function brancher({ champ, panneau, basculer }: Branchement): void {
         lien.className = "group block focus:outline-none";
         const cadre = document.createElement("div");
         cadre.className =
-          "overflow-hidden bg-paper-deep ring-terracotta ring-offset-2 transition group-hover:ring-2 group-focus-visible:ring-2";
+          "ml-squelette overflow-hidden ring-terracotta ring-offset-2 transition group-hover:ring-2 group-focus-visible:ring-2";
         cadre.style.aspectRatio = "1020 / 1400";
         const src = vignette(a.image);
         if (src) {
@@ -98,6 +98,7 @@ function brancher({ champ, panneau, basculer }: Branchement): void {
           img.loading = "lazy";
           img.decoding = "async";
           img.className = "h-full w-full object-cover";
+          img.addEventListener("load", () => cadre.classList.add("est-charge"));
           cadre.appendChild(img);
         }
         const nom = document.createElement("span");

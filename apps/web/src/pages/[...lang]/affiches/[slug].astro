@@ -529,7 +529,13 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
     {/* `md:min-w-max` : la carte coupe ce qui déborde (coins arrondis), et un
         élément qui coupe peut, pour la grille, descendre à zéro — elle lui
         laissait ce qui restait après le texte, et l'affiche était rognée. */}
-    <div class="self-start overflow-hidden rounded-2xl border border-ink/10 bg-paper-deep md:min-w-max">
+    <div
+      class:list={[
+        "self-start overflow-hidden rounded-2xl border border-ink/10 md:min-w-max",
+        // Le reflet de chargement tant que l'image n'est pas là (global.css).
+        image ? "ml-squelette" : "bg-paper-deep",
+      ]}
+    >
       {
         image ? (
           <img
@@ -540,6 +546,7 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
             width={largeurImage}
             height={hauteurImage}
             fetchpriority="high"
+            onload="this.parentElement.classList.add('est-charge')"
             class="h-auto w-full md:w-[var(--largeur-affiche)] md:max-w-none"
             style={`--largeur-affiche: ${largeurSurGrandEcran}`}
           />

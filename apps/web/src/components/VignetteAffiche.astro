@@ -204,7 +204,11 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
 <li class:list={["group", !(prioritaire || premiere || sansApparition) && "ml-apparition"]}>
   <a href={lien(langue, `/affiches/${affiche.slug}`)} class="block">
     <div
-      class="relative flex items-center justify-center overflow-hidden bg-paper-deep"
+      class:list={[
+        "relative flex items-center justify-center overflow-hidden",
+        // Le reflet de chargement tant que l'image n'est pas là (global.css).
+        image ? "ml-squelette" : "bg-paper-deep",
+      ]}
       style="aspect-ratio:1020/1400"
     >
       {
@@ -218,6 +222,7 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
             height="1400"
             loading={prioritaire || premiere ? "eager" : "lazy"}
             fetchpriority={premiere ? "high" : undefined}
+            onload="this.parentElement.classList.add('est-charge')"
             class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (
