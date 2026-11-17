@@ -398,7 +398,7 @@ export const ui = {
     "stand.suivant": "Client suivant",
 
     "cookies.texte":
-      "Ce site garde dans votre navigateur ce qu'il faut pour votre panier et vos préférences. Aucune mesure d'audience, aucun traceur publicitaire.",
+      "Ce site garde dans votre navigateur ce qu'il faut pour votre panier et vos préférences. Avec votre accord, il mesure aussi son audience et l'efficacité de ses publicités.",
     "cookies.politique": "Voir notre politique de cookies",
     "cookies.accepter": "Accepter",
     "cookies.refuser": "Refuser",
@@ -1125,7 +1125,7 @@ export const ui = {
     "stand.suivant": "Next customer",
 
     "cookies.texte":
-      "This site keeps what your basket and preferences need in your browser. No analytics, no advertising trackers.",
+      "This site keeps what your basket and preferences need in your browser. With your consent, it also measures its audience and the effectiveness of its ads.",
     "cookies.politique": "See our cookie policy",
     "cookies.accepter": "Accept",
     "cookies.refuser": "Decline",
@@ -1829,7 +1829,7 @@ export const ui = {
     "stand.suivant": "Nächster Kunde",
 
     "cookies.texte":
-      "Diese Website speichert in Ihrem Browser nur, was Warenkorb und Einstellungen brauchen. Keine Reichweitenmessung, keine Werbe-Tracker.",
+      "Diese Website speichert in Ihrem Browser, was Warenkorb und Einstellungen brauchen. Mit Ihrer Zustimmung misst sie außerdem ihre Reichweite und die Wirkung ihrer Werbung.",
     "cookies.politique": "Unsere Cookie-Richtlinie ansehen",
     "cookies.accepter": "Zustimmen",
     "cookies.refuser": "Ablehnen",
@@ -2535,7 +2535,7 @@ export const ui = {
     "stand.suivant": "Cliente successivo",
 
     "cookies.texte":
-      "Questo sito conserva nel tuo browser solo ciò che serve al carrello e alle preferenze. Nessuna misurazione del traffico, nessun tracciante pubblicitario.",
+      "Questo sito conserva nel tuo browser ciò che serve al carrello e alle preferenze. Con il tuo consenso, misura anche il traffico e l'efficacia delle sue pubblicità.",
     "cookies.politique": "Consulta la nostra politica sui cookie",
     "cookies.accepter": "Accetta",
     "cookies.refuser": "Rifiuta",
@@ -3236,7 +3236,7 @@ export const ui = {
     "stand.suivant": "Siguiente cliente",
 
     "cookies.texte":
-      "Este sitio guarda en tu navegador solo lo que necesitan la cesta y tus preferencias. Sin medición de audiencia ni rastreadores publicitarios.",
+      "Este sitio guarda en tu navegador lo que necesitan la cesta y tus preferencias. Con tu consentimiento, también mide su audiencia y la eficacia de sus anuncios.",
     "cookies.politique": "Ver nuestra política de cookies",
     "cookies.accepter": "Aceptar",
     "cookies.refuser": "Rechazar",
