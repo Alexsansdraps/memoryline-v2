@@ -75,7 +75,7 @@ export const MENU: GroupeNav[] = [
       },
       // Ici et pas dans le catalogue : une carte cadeau n'est pas un article à
       // vendre, c'est de l'argent que quelqu'un a déjà payé.
-      { href: "/cartes-cadeaux", label: "Cartes cadeaux", icon: "🎁", owner: true },
+      { href: "/cartes-cadeaux", label: "Code promo / Carte cadeau", icon: "🎁", owner: true },
     ],
   },
   {

@@ -16,9 +16,11 @@
  */
 import Admin from "../layouts/Admin.astro";
 import { apiUrl, url } from "../lib/url.ts";
+import { libelleRegle } from "@memoryline/types";
 import {
   adminApi,
   formatPrice,
+  type PromoRule,
   type CarteCadeau,
   type Client,
   type DetailCarteCadeau,
@@ -171,6 +173,39 @@ try {
   // lui, la case « client » reste vide et le reste de l'écran fonctionne.
 }
 
+/**
+ * Code promo / Carte cadeau (17/11) : un seul écran pour les deux sortes de
+ * codes qu'on tape à la caisse. « ?type=code » ou « ?type=carte » filtre ;
+ * sans rien, les deux. Les codes promo se créent et se modifient dans le
+ * formulaire des promotions, ouvert en mode « code » (promotions?type=code).
+ */
+const typeVu = Astro.url.searchParams.get("type");
+const voirCodes = typeVu !== "carte";
+const voirCartes = typeVu !== "code";
+let codes: PromoRule[] = [];
+try {
+  codes = (await api.promos()).filter((p) => p.code && !p.archivedAt);
+} catch {
+  // Sans la liste des codes, l'écran des cartes reste utilisable.
+}
+/** Où en est un code promo, en un mot. */
+function etatCode(p: PromoRule): { mot: string; ton: string } {
+  const maintenant = Date.now();
+  if (!p.active) return { mot: "Désactivé", ton: "bg-bo-bg text-bo-muted" };
+  if (p.endsAt && new Date(p.endsAt).getTime() < maintenant)
+    return { mot: "Expiré", ton: "bg-amber-100 text-amber-900" };
+  if (p.startsAt && new Date(p.startsAt).getTime() > maintenant)
+    return { mot: "Programmé", ton: "bg-blue-100 text-blue-800" };
+  const unique = (p.config as { usageUnique?: unknown } | null)?.usageUnique === true;
+  if (unique && (p.utilisations ?? 0) > 0) return { mot: "Déjà utilisé", ton: "bg-bo-bg text-bo-muted" };
+  return { mot: "Actif", ton: "bg-green-100 text-green-800" };
+}
+const ONGLETS_TYPE = [
+  { cle: null, label: "Tout" },
+  { cle: "code", label: "Codes promo" },
+  { cle: "carte", label: "Cartes cadeaux" },
+];
+
 /** La carte dont on regarde l'historique, désignée par « ?carte=… ». */
 const ouverte = Number(Astro.url.searchParams.get("carte")) || 0;
 let detail: DetailCarteCadeau | null = null;
@@ -206,7 +241,7 @@ const classeBouton =
   "rounded border border-bo-border px-2 py-1 text-xs hover:bg-bo-bg";
 ---
 
-<Admin title="Cartes cadeaux">
+<Admin title="Code promo / Carte cadeau">
   {
     flash && (
       <p
@@ -228,7 +263,85 @@ const classeBouton =
     )
   }
 
+  {/* Le type d'abord : filtrer, et créer. */}
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <nav class="flex flex-wrap gap-1 text-sm">
+      {ONGLETS_TYPE.map((o) => (
+        <a
+          href={o.cle ? `${url("/cartes-cadeaux")}?type=${o.cle}` : url("/cartes-cadeaux")}
+          class={`rounded px-3 py-1.5 ${
+            (typeVu ?? null) === o.cle ? "bg-bo-nav text-white" : "border border-bo-border hover:bg-bo-bg"
+          }`}
+        >
+          {o.label}
+        </a>
+      ))}
+    </nav>
+    <div class="flex flex-wrap gap-2 text-sm">
+      <span class="self-center text-bo-muted">Créer :</span>
+      <a href={`${url("/promotions")}?type=code#formulaire`} class="rounded bg-bo-nav px-3 py-1.5 text-white">
+        Un code promo
+      </a>
+      <a href={`${url("/cartes-cadeaux")}?type=carte#vendre`} class="rounded bg-bo-nav px-3 py-1.5 text-white">
+        Une carte cadeau
+      </a>
+    </div>
+  </div>
+
+  {voirCodes && (
+    <section class="mb-6 overflow-x-auto rounded-lg border border-bo-border bg-bo-surface">
+      <table class="w-full text-sm">
+        <thead class="bg-bo-bg text-left text-bo-muted">
+          <tr>
+            <th class="px-4 py-2 font-medium">Type</th>
+            <th class="px-4 py-2 font-medium">Code</th>
+            <th class="px-4 py-2 font-medium">Valeur</th>
+            <th class="px-4 py-2 font-medium">Usage</th>
+            <th class="px-4 py-2 font-medium">État</th>
+            <th class="px-4 py-2"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {codes.map((p) => {
+            const e = etatCode(p);
+            const unique = (p.config as { usageUnique?: unknown } | null)?.usageUnique === true;
+            return (
+              <tr class="border-t border-bo-border align-top">
+                <td class="px-4 py-2"><span class="rounded bg-bo-bg px-2 py-0.5 text-xs">Code promo</span></td>
+                <td class="px-4 py-2 font-mono font-medium">{p.code}<span class="block font-sans text-xs font-normal text-bo-muted">{p.name}</span></td>
+                <td class="px-4 py-2">{libelleRegle(p)}</td>
+                <td class="px-4 py-2 text-bo-muted">
+                  {unique
+                    ? (p.utilisations ?? 0) > 0
+                      ? "Usage unique · utilisé"
+                      : "Usage unique · pas encore utilisé"
+                    : `Réutilisable · ${p.utilisations ?? 0} utilisation${(p.utilisations ?? 0) > 1 ? "s" : ""}`}
+                </td>
+                <td class="px-4 py-2"><span class={`inline-block rounded px-2 py-0.5 text-xs ${e.ton}`}>{e.mot}</span></td>
+                <td class="px-4 py-2 text-right whitespace-nowrap">
+                  <a href={`${url("/promotions")}?type=code&modifier=${p.id}#formulaire`} class="text-bo-accent hover:underline">
+                    Modifier
+                  </a>
+                </td>
+              </tr>
+            );
+          })}
+          {codes.length === 0 && (
+            <tr><td colspan="6" class="px-4 py-4 text-center text-bo-muted">Aucun code promo.</td></tr>
+          )}
+        </tbody>
+      </table>
+      <p class="border-t border-bo-border px-4 py-2 text-xs text-bo-muted">
+        Activer, désactiver, archiver, traduire un code : ouvrez « Modifier », ou{" "}
+        <a href={`${url("/promotions")}?type=code`} class="underline">la liste complète des codes</a>{" "}
+        (archivés compris).
+      </p>
+    </section>
+  )}
+
+  <div hidden={!voirCartes}>
   <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+    <span class="mr-2 rounded bg-bo-bg px-2 py-0.5 text-xs">Carte cadeau</span>
     Une carte cadeau n'est pas une remise : c'est de l'argent que quelqu'un vous
     a déjà payé, et que vous devez encore rendre en affiches. C'est pour cette
     raison qu'une carte ne se supprime jamais. On la met hors service, ce qui
@@ -286,7 +399,7 @@ const classeBouton =
     )
   }
 
-  <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
+  <section id="vendre" class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-5">
     <h2 class="mb-1 text-base font-semibold">Vendre une carte</h2>
     <p class="mb-4 text-sm text-bo-muted">
       Le code est tiré au hasard par la boutique : vous n'avez pas à l'inventer,
@@ -566,6 +679,8 @@ const classeBouton =
       )
     }
   </section>
+
+  </div>
 
   <script is:inline>
     // Il y a un bouton par carte, et la liste change à chaque vente : on écoute
