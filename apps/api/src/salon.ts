@@ -32,7 +32,15 @@ import { prochainNumeroDeCommande } from "./numeros-commande.js";
 import { estProprietaire, standsDuVendeur } from "./vendeurs.js";
 import { supprimerPourToujours } from "./suppression.js";
 import { appliquerCalendrier } from "./stands-calendrier.js";
-import { DUREE_MAX_JOURS, horairesLus, joursDuStand, jourValide } from "@memoryline/types";
+import {
+  DUREE_MAX_JOURS,
+  horairesLus,
+  joursDuStand,
+  jourAParis,
+  jourValide,
+  resumeHoraires,
+} from "@memoryline/types";
+import { EchecHorairesIa, horairesDepuisTexte } from "./stand-horaires-ia.js";
 
 /**
  * Un code d'accès : six caractères, sans ceux qui se confondent.
@@ -606,6 +614,58 @@ export function mountSalonRoutes(app: Hono): void {
     await appliquerCalendrier(id);
     const [relu] = await db.select().from(schema.stands).where(eq(schema.stands.id, id));
     return c.json({ ok: true, stand: relu ?? suivant });
+  });
+
+  /**
+   * Les horaires dictés en quelques mots (17/11) : l'IA lit la consigne,
+   * met à jour le calendrier ACTUEL du stand, et le résultat — relu par les
+   * mêmes règles que la saisie à la main — est enregistré tout de suite.
+   * L'écran le montre aussitôt, en clair et dans le tableau des jours, pour
+   * qu'on le vérifie et le corrige à la main au besoin.
+   */
+  app.post("/admin/stands/:id/horaires-texte", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: "stand inconnu" }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const [stand] = await db.select().from(schema.stands).where(eq(schema.stands.id, id));
+    if (!stand) return c.json({ error: "Ce stand n'existe plus. Rechargez la page." }, 404);
+    if (stand.archivedAt) return c.json({ error: "Ce stand est archivé : restaurez-le d'abord." }, 400);
+
+    let nouveau: Awaited<ReturnType<typeof horairesDepuisTexte>>;
+    try {
+      nouveau = await horairesDepuisTexte(
+        String(b.texte ?? ""),
+        { dateDebut: stand.dateDebut ?? null, dateFin: stand.dateFin ?? null, horaires: stand.horaires ?? null },
+        jourAParis(new Date()),
+      );
+    } catch (e) {
+      if (e instanceof EchecHorairesIa) return c.json({ error: e.message }, 400);
+      throw e;
+    }
+    if (nouveau.dateDebut && nouveau.dateFin && joursDuStand(nouveau.dateDebut, nouveau.dateFin).length > DUREE_MAX_JOURS)
+      return c.json({ error: `Un stand dure au plus ${DUREE_MAX_JOURS} jours : précisez les dates.` }, 400);
+
+    const champs: Record<string, unknown> = {
+      dateDebut: nouveau.dateDebut,
+      dateFin: nouveau.dateFin,
+      horaires: nouveau.horaires,
+    };
+    // Les premières dates : le calendrier prend la main (comme à la main).
+    if (nouveau.dateDebut && !stand.dateDebut) champs.pilotage = "calendrier";
+    if (!nouveau.dateDebut) champs.pilotage = "manuel";
+    await db.update(schema.stands).set(champs).where(eq(schema.stands.id, id));
+    await appliquerCalendrier(id);
+    const [relu] = await db.select().from(schema.stands).where(eq(schema.stands.id, id));
+    return c.json({
+      ok: true,
+      stand: relu,
+      resume: relu
+        ? resumeHoraires(
+            { dateDebut: relu.dateDebut ?? null, dateFin: relu.dateFin ?? null, horaires: relu.horaires ?? null },
+            "fr",
+          )
+        : "",
+    });
   });
 
   /**

@@ -2160,6 +2160,17 @@ export function adminApi(request?: Request) {
      * été faites. Archiver le FERME aussi — sa tablette n'accepte plus rien.
      * `commandes` dit combien de ventes s'y rattachent, pour le redire.
      */
+    /**
+     * Les horaires dictés en quelques mots (17/11) : l'IA met à jour le
+     * calendrier du stand, enregistré aussitôt ; `resume` le dit en clair.
+     */
+    horairesTexte: (id: number, texte: string) =>
+      req<{ ok: true; stand: StandBo; resume: string }>(
+        "POST",
+        `/admin/stands/${id}/horaires-texte`,
+        { texte },
+        cookie,
+      ),
     archiverStand: (id: number, archived = true) =>
       req<{ ok: true; archived: boolean; commandes: number }>(
         "POST",

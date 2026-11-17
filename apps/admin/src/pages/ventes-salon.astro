@@ -48,6 +48,8 @@ let flashAlerte = false;
  * avoir à le retrouver dans la liste.
  */
 let nouveaute: { id: number; nom: string; code: string } | null = null;
+/** Le stand dont le calendrier vient d'être enregistré : il reste ouvert à l'écran. */
+let calendrierOuvert: number | null = null;
 
 if (Astro.request.method === "POST" && estProprietaire) {
   // La liste des commandes, plus bas, relit le corps de la requête pour ses
@@ -87,7 +89,16 @@ if (Astro.request.method === "POST" && estProprietaire) {
           flash = `Ce stand s'appelle maintenant « ${stand.nom} ».`;
           break;
         }
+        case "calendrier_texte": {
+          calendrierOuvert = cible;
+          const { stand, resume } = await api.horairesTexte(cible, texte("consigne"));
+          flash = resume
+            ? `Calendrier de « ${stand.nom} » mis à jour par l'IA. Vérifiez ci-dessous, et corrigez un jour à la main au besoin :\n${resume}`
+            : `Calendrier de « ${stand.nom} » mis à jour par l'IA : il n'a plus de dates.`;
+          break;
+        }
         case "calendrier": {
+          calendrierOuvert = cible;
           // Les jours affichés dans le formulaire sont ceux des dates d'AVANT :
           // chacun est relu, et ce qui reprend l'horaire de base d'avant
           // suit le nouvel horaire de base (rien à retenir pour lui).
@@ -300,7 +311,7 @@ const classeBouton =
   {
     flash && (
       <p
-        class={`mb-4 rounded border px-3 py-2 text-sm ${
+        class={`mb-4 whitespace-pre-line rounded border px-3 py-2 text-sm ${
           flashAlerte
             ? "border-amber-200 bg-amber-50 text-amber-900"
             : "border-green-200 bg-green-50 text-green-900"
@@ -544,13 +555,32 @@ const classeBouton =
               sur chaque jour, jours qui s'en écartent ou fermés. Suivi, il
               ouvre et ferme le stand tout seul ; « Retrait au stand » est
               proposé à la caisse du site jusqu'à 3 jours avant la fin. */}
-          <details class="mt-4 border-t border-bo-border pt-3">
+          <details class="mt-4 border-t border-bo-border pt-3" open={calendrierOuvert === stand.id}>
             <summary class="cursor-pointer text-sm font-medium">
               Calendrier et horaires —{" "}
               {stand.dateDebut && stand.dateFin
                 ? `du ${jourCourt(stand.dateDebut)} au ${jourCourt(stand.dateFin)}${stand.pilotage === "calendrier" ? ", suivi" : ", pas suivi (ouverture à la main)"}`
                 : "pas encore de dates"}
             </summary>
+            {/* Les horaires dictés en quelques mots : l'IA comprend la
+                phrase et met à jour le calendrier ci-dessous, qu'on peut
+                toujours corriger à la main (17/11). */}
+            <form method="POST" class="mt-3 space-y-2 text-sm" data-ia-horaires>
+              <input type="hidden" name="_action" value="calendrier_texte" />
+              <input type="hidden" name="id" value={stand.id} />
+              <label class="block text-xs text-bo-muted" for={`consigne-${stand.id}`}>
+                Écrivez les horaires comme vous les diriez : l'IA met le calendrier à jour, vous vérifiez ensuite.
+              </label>
+              <textarea
+                id={`consigne-${stand.id}`}
+                name="consigne"
+                rows="2"
+                maxlength="2000"
+                placeholder="Ex. : du 20 novembre au 27 décembre, 11h-12h30 et 13h-20h ; fermé les lundis ; le 24 jusqu'à 16h ; le 25 fermé"
+                class="block w-full rounded border border-bo-border bg-bo-surface px-2 py-1.5"
+              />
+              <button class={classeBouton}>Appliquer avec l'IA</button>
+            </form>
             <form method="POST" class="mt-3 space-y-4 text-sm">
               <input type="hidden" name="_action" value="calendrier" />
               <input type="hidden" name="id" value={stand.id} />
@@ -763,7 +793,7 @@ const classeBouton =
       allait le modifier. On revient à la liste pour en ouvrir un autre. */}
   {!standChoisi && (
   <section class="mt-6 rounded-lg border border-bo-border bg-bo-surface p-5">
-    <h2 class="text-base font-semibold">Ouvrir un nouveau stand</h2>
+    <h2 class="text-base font-semibold">Créer un nouveau stand</h2>
     <form method="POST" class="mt-3 flex flex-wrap items-end gap-3 text-sm">
       <input type="hidden" name="_action" value="creer" />
       <label class="min-w-[260px] flex-1">
@@ -782,9 +812,13 @@ const classeBouton =
         Ouvrir tout de suite
       </label>
       <button class="rounded bg-bo-accent px-4 py-2 text-white hover:opacity-90">
-        Ouvrir le stand
+        Créer le stand
       </button>
     </form>
+    <p class="mt-2 text-xs text-bo-muted">
+      Ensuite, dans la fiche du stand : son emplacement, son calendrier et ses
+      horaires (en quelques mots avec l'IA, ou jour par jour).
+    </p>
     <p class="mt-2 text-xs text-bo-muted">
       Le nom est ce que vous chercherez des mois plus tard pour savoir quel
       salon a bien marché : mettez la ville et l'année. Le code d'accès, lui,
