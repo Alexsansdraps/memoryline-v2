@@ -1130,10 +1130,21 @@ export function mountCompteRoutes(app: Hono): void {
       .trim()
       .toLowerCase();
     if (email) {
+      // Une cliente reprise de Shopify (17/11, `legacy_id`) n'a pas encore de
+      // mot de passe : ce lien, reçu à SON adresse, lui permet d'en choisir un
+      // sur sa fiche, et de retrouver ses anciennes commandes. Un compte avec
+      // mot de passe passe d'abord, s'il en existe un à la même adresse.
       const [compte] = await db
         .select()
         .from(schema.customers)
-        .where(and(memeEmail(email), isNotNull(schema.customers.passwordHash)));
+        .where(
+          and(
+            memeEmail(email),
+            or(isNotNull(schema.customers.passwordHash), isNotNull(schema.customers.legacyId)),
+          ),
+        )
+        .orderBy(raw`${schema.customers.passwordHash} is null`, schema.customers.id)
+        .limit(1);
       if (compte?.email) {
         const jeton = randomBytes(32).toString("base64url");
         await db.insert(schema.customerTokens).values({

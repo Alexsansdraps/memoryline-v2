@@ -196,6 +196,16 @@ const EMAIL_VALIDE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * « Belgique », « Germany ». Le site enregistre des codes (« FR ») ; un nom
  * gardé tel quel n'irait plus dans un bordereau d'expédition.
  */
+/**
+ * Les codes périmés ou réservés qu'Intl nomme encore comme un pays d'aujourd'hui
+ * (17/11) : « FX » s'appelle « France », « UK » « Royaume-Uni », « SU »
+ * « Russie »… Venant après le bon code dans l'alphabet, ils l'écrasaient :
+ * « France » donnait « FX », que rien n'expédie.
+ */
+const CODES_PERIMES = new Set([
+  "AN", "BU", "CS", "DD", "DY", "FX", "HV", "NH", "RH", "SU", "TP", "UK", "VD", "YD", "YU", "ZR",
+]);
+
 const CODES_DES_PAYS: Map<string, string> = (() => {
   const carte = new Map<string, string>();
   const noms = [
@@ -206,6 +216,7 @@ const CODES_DES_PAYS: Map<string, string> = (() => {
   for (const a of lettres)
     for (const b of lettres) {
       const code = a + b;
+      if (CODES_PERIMES.has(code)) continue;
       for (const n of noms) {
         let nom: string | undefined;
         try {

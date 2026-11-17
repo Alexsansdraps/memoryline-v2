@@ -260,6 +260,45 @@ app.use("/admin/*", async (c, next) => {
   }
 });
 
+/**
+ * Les commandes reprises de Shopify (17/11, scripts/import-historique.ts) sont
+ * de l'histoire : réglées, expédiées et facturées là-bas. Rien ne doit en
+ * repartir d'ici : ni facture (elle prendrait un numéro de la suite légale), ni
+ * courriel (confirmation, expédition, annulation, remboursement), ni étiquette
+ * achetée, ni encaissement. Refusé ici une fois pour toutes, plutôt que dans
+ * chaque route : une route ajoutée plus tard sous un de ces noms l'est aussi.
+ */
+const GESTES_REFUSES_AUX_REPRISES = new Set([
+  "facture",
+  "fulfillments",
+  "fulfil",
+  "refunds",
+  "cancel",
+  "encaisser",
+  "renvoyer-confirmation",
+  "bordereau",
+]);
+app.use("/admin/orders/:id/*", async (c, next) => {
+  // « /admin/orders/12/facture.pdf » → « facture » ; « …/facture/envoyer » aussi.
+  const geste = (c.req.path.split("/").filter(Boolean)[3] ?? "").split(".")[0] ?? "";
+  const id = Number(c.req.param("id"));
+  if (GESTES_REFUSES_AUX_REPRISES.has(geste) && Number.isInteger(id) && id > 0) {
+    const [commande] = await db
+      .select({ legacyId: schema.orders.legacyId, legacyName: schema.orders.legacyName })
+      .from(schema.orders)
+      .where(eq(schema.orders.id, id))
+      .limit(1);
+    if (commande?.legacyId != null)
+      return c.json(
+        {
+          error: `Commande reprise de Shopify (${commande.legacyName ?? "ancienne boutique"}) : elle a été réglée, expédiée et facturée là-bas. Ni facture, ni courriel, ni étiquette ne repartent d'ici.`,
+        },
+        409,
+      );
+  }
+  await next();
+});
+
 // Images/SVG rapatriés depuis Shopify (cf. scripts/fetch-assets.ts).
 // Servis depuis data/assets/ à la racine du repo. On lit le fichier
 // explicitement (chemin absolu) pour éviter les ambiguïtés de cwd.

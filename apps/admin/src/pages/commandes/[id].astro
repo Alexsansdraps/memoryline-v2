@@ -757,6 +757,15 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
             {quand(order.createdAt)} · {NOM_CANAL[order.channel] ?? order.channel}
             {order.legacyName && ` · ancien n° ${order.legacyName}`}
           </p>
+          {/* Reprise de Shopify (17/11) : l'API refuse facture, courriels,
+              étiquette, encaissement et remboursement. On le dit d'emblée. */}
+          {order.number?.startsWith("SHOP-") && (
+            <p class="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
+              Commande reprise de l'ancienne boutique Shopify : elle y a été réglée,
+              expédiée et facturée. Elle reste ici pour l'historique ; facture,
+              courriels, étiquette et remboursement ne repartent pas d'ici.
+            </p>
+          )}
         </div>
         <div class="flex flex-wrap gap-2">
           <a

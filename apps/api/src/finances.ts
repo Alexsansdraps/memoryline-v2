@@ -347,6 +347,8 @@ async function rapprocher(periode: Periode): Promise<Finances> {
         promotions: schema.orders.promotions,
         clientNom: schema.customers.name,
         clientEmail: schema.customers.email,
+        // Non nul : une commande reprise de Shopify (17/11), encaissée là-bas.
+        reprise: schema.orders.legacyId,
       })
       .from(schema.orders)
       .leftJoin(schema.stands, eq(schema.orders.standId, schema.stands.id))
@@ -652,6 +654,10 @@ async function rapprocher(periode: Periode): Promise<Finances> {
   // il ne sert qu'à mettre en tête ce qui coûte le plus cher à comprendre.
   const trouvailles: { anomalie: Anomalie; ecart: number }[] = [];
   for (const cmd of commandes) {
+    // Reprise de Shopify (17/11) : encaissée chez Shopify, sans paiement ni
+    // écriture ici, et c'est normal. Elle compte dans les ventes, pas dans
+    // les anomalies.
+    if (cmd.reprise != null) continue;
     const journalVente = venteJournalDe.get(cmd.id) ?? 0;
     const aUneEcriture = venteJournalDe.has(cmd.id);
     const paiement = paiementDe.get(cmd.id) ?? 0;

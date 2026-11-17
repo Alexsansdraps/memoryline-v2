@@ -1,7 +1,26 @@
 # À faire — état au 17 novembre, fin de matinée (écrit pour une reprise dans un autre contexte)
 
 > **17/11 après-midi** (tout est en prod, voir `git log`) :
-> - **Historique Shopify : JAMAIS importé.** Au vidage, la base comptait 0 commande et 0 cliente Shopify : « les clientes Shopify restent » ne gardait donc rien. L'ancien `import-historique.ts` lisait le format Matrixify et EFFAÇAIT toutes les commandes et clientes avant d'écrire : ne JAMAIS le lancer tel quel en prod. Une réécriture est en cours : rien n'est supprimé, fusion par e-mail, numéros à part, lecture de l'export natif. Il faut les deux exports de l'admin Shopify, en CSV, dans `data/exports/shopify/` : Clients › Exporter › Tous les clients, et Commandes › Exporter › Toutes les commandes.
+> - **Historique Shopify : JAMAIS importé** : 0 commande et 0 cliente Shopify au vidage. L’import est réécrit et sûr sur la base en service (`941b5e4`).
+>   - Il lit l’export natif, ou Matrixify.
+>   - Il ne supprime rien et fusionne les clientes par e-mail, en complétant les fiches sans rien écraser. Il n’abonne jamais une adresse désabonnée.
+>   - Les numéros sont `SHOP-1001` (pas de collision avec WEB/SAL), les statuts paid / cancelled / voided, et les commandes reprises restent hors des listes de travail.
+>   - Sur ces commandes, l’API refuse facture, courriels, étiquette, encaissement et remboursement (409, garde dans index.ts), et le BO l’annonce par un bandeau.
+>   - Les finances ne les comptent pas en anomalies.
+>   - Une cliente reprise choisit son mot de passe avec « mot de passe oublié ». Si elle s’inscrit à la place, elle obtient une seconde fiche, à rattacher au BO.
+>   - **Procédure :**
+>     1. Les CSV (Clients › Exporter › Tous les clients ; Commandes › Exporter › Toutes les commandes) vont dans `data/exports/shopify/`.
+>     2. `scp -r data/exports/shopify debian@…:~/import-shopify`.
+>     3. Sur le serveur : `docker compose -f docker-compose.prod.yml cp ~/import-shopify api:/tmp/import-shopify`.
+>     4. Aperçu : `docker compose -f docker-compose.prod.yml exec -w /app/apps/api -e IMPORT_DIR=/tmp/import-shopify api npx tsx scripts/import-historique.ts`.
+>     5. `bash apps/api/scripts/sauvegarder.sh`.
+>     6. La même commande d’aperçu avec `--pour-de-bon`.
+>     7. Effacer `~/import-shopify` et `/tmp/import-shopify` (données personnelles).
+>   - **À trancher en lisant l’aperçu :**
+>     - les commandes pending ou authorized de Shopify sont reprises hors ventes ;
+>     - les payées non expédiées sont marquées traitées (à envoyer depuis Shopify) ;
+>     - le taux de transformation sera gonflé sur les périodes Shopify.
+>   - Corrigé au passage : `codePays("France")` donnait « FX » dans l’import de clientes du BO (codes périmés d’Intl).
 > - **Cache Docker du serveur.** Le crontab de debian lance `0 23,0 * * *` → `apps/api/scripts/vider-cache-docker.sh`. Le script ne fait rien hors de 1 h, heure de Paris. Il garde 3 Go de cache de construction et retire les images sans nom. Journal : `sauvegardes/journal-cache.txt`. Le disque avait 23 Go libres le 17/11 à 13 h.
 > - **Newsletter.** En-têtes `List-Unsubscribe` et `List-Unsubscribe-Post` : c'est le bouton « Se désabonner » de Gmail, Outlook et Apple Mail, en un clic. Le courrier et les pages de désabonnement disent « newsletter ».
 > - **BO › Réglages › Textes légaux.** Mentions légales, CGV, confidentialité et cookies s'ouvrent chacun dans l'éditeur visuel des pages, traductions comprises.
