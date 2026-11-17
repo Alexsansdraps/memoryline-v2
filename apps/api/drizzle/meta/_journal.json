@@ -575,6 +575,13 @@
       "when": 1794907044572,
       "tag": "0081_stand_toutes_les_affiches",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1794910041198,
+      "tag": "0082_retrait_au_stand",
+      "breakpoints": true
     }
   ]
 }

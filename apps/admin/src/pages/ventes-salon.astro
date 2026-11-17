@@ -81,6 +81,13 @@ if (Astro.request.method === "POST" && estProprietaire) {
           flash = `Ce stand s'appelle maintenant « ${stand.nom} ».`;
           break;
         }
+        case "emplacement": {
+          const { stand } = await api.majStand(cible, { emplacement: texte("emplacement") });
+          flash = stand.emplacement
+            ? `Emplacement de « ${stand.nom} » enregistré : les clientes le voient à la caisse sous « Retrait au stand » tant que le stand est ouvert.`
+            : `Emplacement de « ${stand.nom} » effacé.`;
+          break;
+        }
         case "code": {
           const { stand } = await api.majStand(cible, { nouveauCode: true });
           nouveaute = { id: stand.id, nom: stand.nom, code: stand.code ?? "" };
@@ -433,6 +440,28 @@ const classeBouton =
               )}
             </div>
           </div>
+
+          {/* Où trouver le stand (17/11) : texte libre, montré à la caisse du
+              site sous « Retrait au stand » (gratuit), tant que le stand est
+              ouvert. */}
+          <form method="POST" class="mt-4 border-t border-bo-border pt-3">
+            <input type="hidden" name="_action" value="emplacement" />
+            <input type="hidden" name="id" value={stand.id} />
+            <label class="block text-xs text-bo-muted" for={`emplacement-${stand.id}`}>
+              Emplacement exact — montré aux clientes qui choisissent « Retrait au stand » (gratuit) à la caisse du site
+            </label>
+            <div class="mt-1 flex flex-wrap gap-2">
+              <input
+                id={`emplacement-${stand.id}`}
+                name="emplacement"
+                value={stand.emplacement ?? ""}
+                maxlength="300"
+                placeholder="Ex. : Place de la Réunion, chalet n° 12"
+                class="min-w-0 flex-1 rounded border border-bo-border bg-bo-surface px-2 py-1.5 text-sm"
+              />
+              <button class={classeBouton}>Enregistrer</button>
+            </div>
+          </form>
 
           <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-bo-border pt-3 text-sm">
             <form method="POST" data-renommer>

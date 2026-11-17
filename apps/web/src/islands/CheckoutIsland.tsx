@@ -18,6 +18,7 @@ import {
   type JSX,
 } from "solid-js";
 import {
+  MODE_RETRAIT_STAND,
   codePaysSaisi,
   codePostalValide,
   telephoneValide,
@@ -543,8 +544,23 @@ export default function CheckoutIsland(props: {
    * ne part pas : personne ne saurait où la lui remettre. Le serveur relit
    * de toute façon le lieu (actif, pas archivé) avant d'écrire la commande.
    */
-  type LieuRetrait = { id: number; nom: string; adresse: string | null; description: string | null };
-  const lieuxRetrait = (): LieuRetrait[] => catalogue()?.lieuxRetrait ?? [];
+  type LieuRetrait = {
+    id: number;
+    nom: string;
+    adresse: string | null;
+    description: string | null;
+    standId?: number | null;
+  };
+  /**
+   * Les lieux du mode choisi : les stands ouverts sous « Retrait au stand »
+   * (gratuit, avec leur emplacement), les lieux de BO › Livraison sous les
+   * autres modes de retrait (17/11).
+   */
+  const lieuxRetrait = (): LieuRetrait[] => {
+    const tous: LieuRetrait[] = catalogue()?.lieuxRetrait ?? [];
+    const auStand = optionChoisie()?.mode.slug === MODE_RETRAIT_STAND;
+    return tous.filter((l) => (l.standId != null) === auStand);
+  };
   const [lieuChoisi, setLieuChoisi] = createSignal<number | null>(null);
   const lieuRetenu = (): LieuRetrait | null => {
     const l = lieuxRetrait();

@@ -447,6 +447,8 @@ export interface StandBo {
    */
   code: string | null;
   nom: string;
+  /** Où trouver le stand, en texte libre : montré à la caisse du site sous « Retrait au stand ». */
+  emplacement?: string | null;
   ouvert: boolean;
   createdAt: string;
   closedAt: string | null;
@@ -2129,7 +2131,7 @@ export function adminApi(request?: Request) {
     /** Renomme, ouvre, ferme, ou donne un nouveau code d'accès. */
     majStand: (
       id: number,
-      corps: { nom?: string; ouvert?: boolean; nouveauCode?: boolean },
+      corps: { nom?: string; emplacement?: string; ouvert?: boolean; nouveauCode?: boolean },
     ) =>
       req<{ ok: true; stand: StandBo }>(
         "POST",

@@ -31,6 +31,7 @@ import { HORS_VENTES } from "./statuts-vente.js";
 import { prochainNumeroDeCommande } from "./numeros-commande.js";
 import { estProprietaire, standsDuVendeur } from "./vendeurs.js";
 import { supprimerPourToujours } from "./suppression.js";
+import { synchroniserLieuDuStand } from "./lieux-retrait.js";
 
 /**
  * Un code d'accès : six caractères, sans ceux qui se confondent.
@@ -448,6 +449,7 @@ export function mountSalonRoutes(app: Hono): void {
           // pour tous les stands, revient à le laisser traîner.
           code: proprietaire ? s.code : null,
           nom: s.nom,
+          emplacement: s.emplacement ?? null,
           ouvert: s.ouvert,
           createdAt: s.createdAt,
           closedAt: s.closedAt,
@@ -480,6 +482,8 @@ export function mountSalonRoutes(app: Hono): void {
         .insert(schema.stands)
         .values({ code, nom, ouvert: b.ouvert === true })
         .returning();
+      // Son lieu de retrait (« Retrait au stand », à la caisse du site).
+      if (stand) await synchroniserLieuDuStand(stand.id);
       return c.json({ ok: true, stand });
     }
     return c.json(
@@ -506,6 +510,13 @@ export function mountSalonRoutes(app: Hono): void {
       const nom = String(b.nom ?? "").trim().slice(0, 120);
       if (!nom) return c.json({ error: "Le nom du stand ne peut pas être vide." }, 400);
       champs.nom = nom;
+    }
+    if ("emplacement" in b) {
+      // Texte libre : une adresse, une place, « allée B, chalet 12 »… Vide =
+      // pas d'emplacement dit. La caisse du site le montre sous « Retrait
+      // au stand ».
+      const emplacement = String(b.emplacement ?? "").trim().slice(0, 300);
+      champs.emplacement = emplacement || null;
     }
     if ("ouvert" in b) {
       if (typeof b.ouvert !== "boolean")
@@ -545,6 +556,8 @@ export function mountSalonRoutes(app: Hono): void {
       .set(champs)
       .where(eq(schema.stands.id, id))
       .returning();
+    // Le lieu de retrait suit : nom, emplacement, ouvert ou fermé.
+    await synchroniserLieuDuStand(id);
     return c.json({ ok: true, stand: suivant });
   });
 
@@ -594,6 +607,8 @@ export function mountSalonRoutes(app: Hono): void {
       .returning({ archivedAt: schema.stands.archivedAt });
     if (!ligne)
       return c.json({ error: "Ce stand n'existe plus. Rechargez la page." }, 404);
+    // Archivé, il quitte aussi la caisse du site (Retrait au stand).
+    await synchroniserLieuDuStand(id);
 
     return c.json({
       ok: true,

@@ -74,6 +74,7 @@ import {
   verifierPoint as verifierPointSendcloud,
 } from "./sendcloud-points.js";
 import {
+  MODE_RETRAIT_STAND,
   codePostalValide,
   telephoneValide,
   CODES_NATURE,
@@ -2697,8 +2698,15 @@ export function mountConfiguratorRoutes(app: Hono) {
       // pendant qu'on fermait le chalet ; on refuse alors, avec un message,
       // plutôt que de l'attendre à un endroit qui n'existe plus. Ce que la
       // commande garde, c'est une COPIE du lieu tel qu'elle l'a lu.
-      const lieu =
+      const lieuLu =
         port.kind === "pickup" ? await lieuPourLaCommande(tx, idLieu) : null;
+      // Le lieu d'un stand ne se choisit que sous « Retrait au stand », et
+      // ce mode-là n'accepte que les lieux des stands (17/11) : sans cela,
+      // une adresse modifiée à la main prendrait un retrait gratuit ailleurs.
+      const lieu =
+        lieuLu && (lieuLu.standId != null) === (modeSlug === MODE_RETRAIT_STAND)
+          ? lieuLu
+          : null;
       if (port.kind === "pickup" && !lieu)
         return {
           erreur: "Choisissez le lieu où retirer votre commande.",

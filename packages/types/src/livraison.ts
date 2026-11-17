@@ -153,6 +153,11 @@ export interface LieuRetraitPublic {
   adresse: string | null;
   /** Horaires, accès… sur plusieurs lignes, dans la langue de la caisse. */
   description: string | null;
+  /**
+   * Le stand dont c'est le lieu (son « adresse » est alors l'emplacement
+   * réglé dans Ventes stand) : il ne sort que sous « Retrait au stand ».
+   */
+  standId?: number | null;
 }
 
 /** Code pays normalisé : deux lettres majuscules, ou chaîne vide. */
@@ -186,6 +191,13 @@ export const PAYS_PROPOSES: readonly string[] = [
   "US",
   "ZZ",
 ];
+
+/**
+ * Le mode « Retrait au stand » (17/11) : gratuit, il propose les stands
+ * OUVERTS comme lieux de retrait, avec leur emplacement. Créé par la
+ * migration 0082 ; ses lieux sont ceux des stands (pickup_point.stand_id).
+ */
+export const MODE_RETRAIT_STAND = "retrait-au-stand";
 
 /**
  * La forme du code postal de chaque pays proposé. Un pays absent d'ici (et

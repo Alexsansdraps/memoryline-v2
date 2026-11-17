@@ -129,7 +129,7 @@ type Lecteur = Pick<typeof db, "select">;
 export async function lieuPourLaCommande(
   lecteur: Lecteur,
   id: number,
-): Promise<{ id: number; instantane: InstantaneLieuRetrait } | null> {
+): Promise<{ id: number; standId: number | null; instantane: InstantaneLieuRetrait } | null> {
   if (!Number.isInteger(id) || id <= 0) return null;
   const [lieu] = await lecteur
     .select()
@@ -144,6 +144,7 @@ export async function lieuPourLaCommande(
   if (!lieu) return null;
   return {
     id: lieu.id,
+    standId: lieu.standId ?? null,
     instantane: {
       nom: lieu.nom,
       adresse: lieu.adresse?.trim() || null,
@@ -155,7 +156,14 @@ export async function lieuPourLaCommande(
 
 /** Les lieux proposés à la caisse, dans la langue de la visiteuse. */
 export async function lieuxRetraitPublics(langue: string): Promise<
-  { id: number; nom: string; adresse: string | null; description: string | null }[]
+  {
+    id: number;
+    nom: string;
+    adresse: string | null;
+    description: string | null;
+    /** Le stand dont c'est le lieu : il ne sort que sous « Retrait au stand ». */
+    standId: number | null;
+  }[]
 > {
   const lignes = await db
     .select()
@@ -169,6 +177,7 @@ export async function lieuxRetraitPublics(langue: string): Promise<
     description: l.description?.trim()
       ? (champTraduit(l.translations, langue, "description") ?? l.description)
       : null,
+    standId: l.standId ?? null,
   }));
 }
 
@@ -177,8 +186,53 @@ export async function nombreDeLieuxActifs(): Promise<number> {
   const [r] = await db
     .select({ n: count() })
     .from(schema.pickupPoints)
-    .where(and(eq(schema.pickupPoints.active, true), isNull(schema.pickupPoints.archivedAt)));
+    .where(
+      and(
+        eq(schema.pickupPoints.active, true),
+        isNull(schema.pickupPoints.archivedAt),
+        isNull(schema.pickupPoints.standId),
+      ),
+    );
   return Number(r?.n ?? 0);
+}
+
+/** Combien de stands ouverts la caisse propose sous « Retrait au stand ». */
+export async function nombreDeLieuxDesStands(): Promise<number> {
+  const [r] = await db
+    .select({ n: count() })
+    .from(schema.pickupPoints)
+    .where(
+      and(
+        eq(schema.pickupPoints.active, true),
+        isNull(schema.pickupPoints.archivedAt),
+        sql`${schema.pickupPoints.standId} is not null`,
+      ),
+    );
+  return Number(r?.n ?? 0);
+}
+
+/**
+ * Le lieu de retrait d'un stand, tenu à jour à chaque changement du stand
+ * (salon.ts) : son nom, son emplacement, actif tant que le stand est ouvert,
+ * archivé avec lui. Créé la première fois. Rien à faire au BO : la cliente
+ * voit « Retrait au stand » à la caisse dès qu'un stand ouvre (17/11).
+ */
+export async function synchroniserLieuDuStand(standId: number): Promise<void> {
+  const [stand] = await db.select().from(schema.stands).where(eq(schema.stands.id, standId));
+  if (!stand) return;
+  const valeurs = {
+    nom: stand.nom,
+    adresse: stand.emplacement?.trim() || null,
+    active: stand.ouvert && !stand.archivedAt,
+    archivedAt: stand.archivedAt ? new Date() : null,
+    updatedAt: new Date(),
+  };
+  const [lieu] = await db
+    .select({ id: schema.pickupPoints.id })
+    .from(schema.pickupPoints)
+    .where(eq(schema.pickupPoints.standId, standId));
+  if (lieu) await db.update(schema.pickupPoints).set(valeurs).where(eq(schema.pickupPoints.id, lieu.id));
+  else await db.insert(schema.pickupPoints).values({ ...valeurs, standId, position: 0 });
 }
 
 export function mountLieuxRetrait(app: Hono): void {
@@ -188,9 +242,12 @@ export function mountLieuxRetrait(app: Hono): void {
    * caisse.
    */
   app.get("/admin/pickup-points", async (c) => {
+    // Sans les lieux des stands : ils se règlent dans Ventes stand (nom,
+    // emplacement, ouverture), pas ici.
     const lignes = await db
       .select()
       .from(schema.pickupPoints)
+      .where(isNull(schema.pickupPoints.standId))
       .orderBy(asc(schema.pickupPoints.position), asc(schema.pickupPoints.id));
     return c.json(lignes);
   });

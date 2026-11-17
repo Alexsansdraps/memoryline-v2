@@ -1054,6 +1054,14 @@ export const pickupPoints = pgTable(
      * se range dans « Lieux archivés », d'où il se restaure.
      */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * Le stand dont ce lieu est le point de retrait (17/11), ou null pour un
+     * lieu saisi dans BO › Livraison › Lieux de retrait. Le lieu d'un stand
+     * se tient tout seul (lieux-retrait.ts, synchroniserLieuDuStand) : actif
+     * quand le stand est ouvert, son nom et son emplacement. Il n'apparaît
+     * que sous le mode « Retrait au stand », gratuit.
+     */
+    standId: integer("stand_id").references(() => stands.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -1237,6 +1245,12 @@ export const stands = pgTable(
     code: text("code").notNull(),
     /** « Salon du livre de Nantes 2026 » : le nom du lieu, tel qu'on le dit. */
     nom: text("nom").notNull(),
+    /**
+     * Où trouver le stand, en texte libre : une adresse, une place, « allée B,
+     * chalet 12 »… (17/11). La caisse du site le montre sous « Retrait au
+     * stand », pour que la cliente sache où venir chercher son affiche.
+     */
+    emplacement: text("emplacement"),
     /**
      * Ouvert veut dire « la tablette accepte des commandes ». Fermer ne
      * supprime rien : les ventes restent, et le stand peut rouvrir l'an

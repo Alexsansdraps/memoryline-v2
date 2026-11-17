@@ -37,6 +37,7 @@ import {
 } from "./auth.js";
 import {
   CODES_NATURE,
+  MODE_RETRAIT_STAND,
   NATURES_LIVRAISON,
   REGLAGE_BANDEAUX_VISUELS,
   bandeauxPublics,
@@ -108,6 +109,7 @@ import {
   lieuxRetraitPublics,
   mountLieuxRetrait,
   nombreDeLieuxActifs,
+  nombreDeLieuxDesStands,
 } from "./lieux-retrait.js";
 import { mountFacturation } from "./facturation.js";
 import { mountPaiementsReglages } from "./paiements-reglages.js";
@@ -1491,10 +1493,17 @@ app.get("/shipping", async (c) => {
   // Et un « retrait sur place » suppose un endroit où retirer. La règle est
   // celle de `raisonsMasquage`, la même que celle expliquée au back-office.
   const couvertures = couverturesParMode(tarifs);
+  // Les lieux des stands ne servent qu'au « Retrait au stand » ; ceux de BO ›
+  // Livraison › Lieux de retrait, aux autres modes de retrait (17/11).
+  const lieuxDesStands = lieuxRetrait.filter((l) => l.standId != null).length;
+  const autresLieux = lieuxRetrait.length - lieuxDesStands;
   const modes = tousModes.filter(
     (m) =>
-      raisonsMasquage(m, lieuxRetrait.length, couvertures.get(m.id) ?? SANS_TARIF)
-        .length === 0,
+      raisonsMasquage(
+        m,
+        m.slug === MODE_RETRAIT_STAND ? lieuxDesStands : autresLieux,
+        couvertures.get(m.id) ?? SANS_TARIF,
+      ).length === 0,
   );
   return c.json({
     zones,
@@ -1536,11 +1545,12 @@ app.get("/shipping", async (c) => {
 
 /** Idem, tout compris (modes désactivés inclus) — gestion au back-office. */
 app.get("/admin/shipping", async (c) => {
-  const [zones, modes, tarifs, lieuxActifs] = await Promise.all([
+  const [zones, modes, tarifs, lieuxActifs, standsOuverts] = await Promise.all([
     db.select().from(schema.shippingZones).orderBy(asc(schema.shippingZones.position)),
     db.select().from(schema.shippingMethods).orderBy(asc(schema.shippingMethods.position)),
     db.select().from(schema.shippingRates),
     nombreDeLieuxActifs(),
+    nombreDeLieuxDesStands(),
   ]);
   // Chaque mode porte TOUT ce qui l'empêche de sortir sur le site. Sans ces
   // raisons, l'écran affiche « proposé » sur un mode que personne ne voit, et
@@ -1558,13 +1568,13 @@ app.get("/admin/shipping", async (c) => {
       ...m,
       masqueRaisons: raisonsMasquage(
         m,
-        lieuxActifs,
+        m.slug === MODE_RETRAIT_STAND ? standsOuverts : lieuxActifs,
         couvertures.get(m.id) ?? SANS_TARIF,
       ),
       ouverture: checklistOuverture(m, {
         zones,
         couverture: couvertures.get(m.id) ?? SANS_TARIF,
-        lieuxRetraitActifs: lieuxActifs,
+        lieuxRetraitActifs: m.slug === MODE_RETRAIT_STAND ? standsOuverts : lieuxActifs,
         transporteursEnService: enService,
       }),
     })),

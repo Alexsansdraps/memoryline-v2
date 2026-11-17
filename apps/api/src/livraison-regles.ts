@@ -9,7 +9,7 @@
  * règle qu'on peut lire et essayer seule est une règle qu'on peut vérifier,
  * ce qu'un fichier de routes de trois mille lignes n'offre pas.
  */
-import { CODES_NATURE, nomNature } from "@memoryline/types";
+import { CODES_NATURE, MODE_RETRAIT_STAND, nomNature } from "@memoryline/types";
 import { estConfigure as mondialRelayConfigure } from "./mondial-relay.js";
 import { estConfigure as colissimoConfigure } from "./colissimo.js";
 import {
@@ -151,6 +151,8 @@ export const SANS_TARIF: CouvertureTarifaire = {
 
 /** Le mode tel que la règle a besoin de le connaître. */
 export interface ModeAExaminer {
+  /** Sert à reconnaître « Retrait au stand », dont les lieux sont les stands. */
+  slug?: string;
   kind: string;
   carrier: string | null;
   active: boolean;
@@ -221,7 +223,9 @@ export function raisonsMasquage(
   // champ « Où retirer », que la caisse n'affiche plus.
   if (m.kind === "pickup" && lieuxRetraitActifs === 0)
     raisons.push(
-      "Aucun lieu de retrait actif : ajoutez-en un dans Livraison › Lieux de retrait.",
+      m.slug === MODE_RETRAIT_STAND
+        ? "Aucun stand ouvert : ce mode s'affiche tout seul dès qu'un stand ouvre (Ventes stand)."
+        : "Aucun lieu de retrait actif : ajoutez-en un dans Livraison › Lieux de retrait.",
     );
   return raisons;
 }
@@ -412,7 +416,16 @@ export function checklistOuverture(
   }
 
   /* --- Le lieu de retrait ----------------------------------------------- */
-  if (m.kind === "pickup") {
+  if (m.kind === "pickup" && m.slug === MODE_RETRAIT_STAND) {
+    const ou = ctx.lieuxRetraitActifs > 0;
+    etapes.push({
+      fait: ou,
+      titre: ou ? "Un stand est ouvert" : "Ouvrir un stand",
+      detail: ou
+        ? `${ctx.lieuxRetraitActifs} stand${ctx.lieuxRetraitActifs > 1 ? "s" : ""} ouvert${ctx.lieuxRetraitActifs > 1 ? "s" : ""} : la cliente choisit où venir chercher sa commande, avec l'emplacement réglé dans Ventes stand.`
+        : "Aucun stand ouvert : ce mode s'affiche tout seul à la caisse dès qu'un stand ouvre (Ventes stand).",
+    });
+  } else if (m.kind === "pickup") {
     const ou = ctx.lieuxRetraitActifs > 0;
     etapes.push({
       fait: ou,
