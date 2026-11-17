@@ -377,10 +377,10 @@ const archivable = (c: CompteAdmin) =>
     </section>
   )}
 
-  <details class="bg-bo-surface border border-bo-border rounded-lg">
-    <summary class="cursor-pointer px-5 py-3 font-semibold select-none">
-      <span class="mr-1 text-bo-accent">+</span> Ajouter un compte
-    </summary>
+  {/* Toujours ouvert (17/11) : un bloc à déplier pour un seul formulaire
+      n'avait pas de sens. */}
+  <section class="bg-bo-surface border border-bo-border rounded-lg">
+    <h2 class="px-5 py-3 font-semibold">Ajouter un compte</h2>
     <form method="POST" class="flex flex-wrap items-end gap-3 px-5 pb-5 text-sm">
       <label class="block">
         <span class="text-bo-muted">Adresse e-mail</span>
@@ -441,7 +441,7 @@ const archivable = (c: CompteAdmin) =>
         que l'e-mail du compte, et demandez-lui de le changer ici même.
       </p>
     </form>
-  </details>
+  </section>
 
   <p class="mt-6 text-xs text-bo-muted max-w-3xl">
     Un compte s'archive d'abord ; archivé, il peut ensuite être supprimé

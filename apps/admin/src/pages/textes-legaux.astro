@@ -1,0 +1,133 @@
+---
+/**
+ * Les textes légaux (17/11) : mentions légales, conditions générales de
+ * vente, confidentialité, cookies.
+ *
+ * Rangés dans « Réglages » : on y vient quand on cherche ce qu'on a rangé, pas
+ * pour travailler chaque jour. Chaque texte est une page du site et s'ouvre
+ * dans l'éditeur des pages — mise en forme visuelle (gras, titres, listes,
+ * liens) et traductions —, le même que « Pages du site ». Un seul éditeur :
+ * deux écrans qui modifieraient le même texte finiraient par se contredire.
+ */
+import Admin from "../layouts/Admin.astro";
+import { adminApi, type ResumePage } from "../lib/api.ts";
+import { url } from "../lib/url.ts";
+
+const api = adminApi(Astro.request);
+
+/** Les textes, dans l'ordre du pied de page du site. */
+const TEXTES = [
+  {
+    slug: "mentions-legales",
+    nom: "Mentions légales",
+    objet: "Qui édite le site, qui l'héberge, qui l'a conçu.",
+  },
+  {
+    slug: "conditions-de-vente",
+    nom: "Conditions générales de vente",
+    objet: "Prix, paiement, livraison, retrait au stand, retours et rétractation.",
+  },
+  {
+    slug: "confidentialite",
+    nom: "Politique de confidentialité",
+    objet: "Les données des clientes : lesquelles, pourquoi, combien de temps.",
+  },
+  {
+    slug: "cookies",
+    nom: "Cookies",
+    objet: "Les traceurs du site (mesure d'audience comprise) et le bandeau de consentement.",
+  },
+];
+
+let pages: ResumePage[] = [];
+let erreur: string | null = null;
+try {
+  pages = (await api.pages()).pages;
+} catch (e) {
+  erreur = String(e).replace(/^Error:\s*/, "");
+}
+
+/** L'adresse publique du site, pour « Voir sur le site » (comme pages.astro). */
+function originePublique(): string {
+  const annoncee: unknown =
+    import.meta.env.PUBLIC_SITE_URL ?? import.meta.env.PUBLIC_ORIGIN;
+  if (typeof annoncee === "string" && annoncee.trim())
+    return annoncee.trim().replace(/\/+$/, "");
+  const entetes = Astro.request.headers;
+  const hote = entetes.get("x-forwarded-host") ?? entetes.get("host");
+  const protocole =
+    entetes.get("x-forwarded-proto") ?? Astro.url.protocol.replace(":", "");
+  return hote ? `${protocole}://${hote}` : Astro.url.origin;
+}
+const ORIGINE = originePublique();
+
+const dateLongue = (iso: string) =>
+  new Date(iso).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Paris",
+  });
+---
+
+<Admin title="Textes légaux">
+  <p class="mb-5 max-w-3xl text-sm text-bo-muted">
+    Les textes obligatoires du site. « Modifier le texte » ouvre l'éditeur :
+    on écrit comme dans un traitement de texte (gras, titres, listes, liens),
+    et l'enregistrement met le site à jour aussitôt. Les traductions se font
+    au même endroit.
+  </p>
+
+  {erreur && (
+    <p role="alert" class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm">
+      La liste des pages n'a pas pu être lue : {erreur}
+    </p>
+  )}
+
+  <div class="grid gap-3 md:grid-cols-2">
+    {TEXTES.map((t) => {
+      const p = pages.find((x) => x.slug === t.slug && !x.archivedAt);
+      return (
+        <section class="flex flex-col rounded-lg border border-bo-border bg-bo-surface p-4">
+          <h2 class="font-semibold">{p?.title ?? t.nom}</h2>
+          <p class="mt-1 text-sm text-bo-muted">{t.objet}</p>
+          {p ? (
+            <>
+              <p class="mt-2 text-xs text-bo-muted">
+                Modifié le {dateLongue(p.updatedAt)}
+                {p.status !== "active" && " · brouillon : pas encore visible sur le site"}
+              </p>
+              <div class="mt-auto flex flex-wrap gap-2 pt-3">
+                <a
+                  href={url(`/pages/${p.id}`)}
+                  class="rounded bg-bo-accent px-3 py-1.5 text-sm text-white"
+                >
+                  Modifier le texte
+                </a>
+                <a
+                  href={`${ORIGINE}/pages/${p.slug}`}
+                  target="_blank"
+                  rel="noopener"
+                  class="rounded border border-bo-border px-3 py-1.5 text-sm hover:bg-bo-bg"
+                >
+                  Voir sur le site ↗
+                </a>
+              </div>
+            </>
+          ) : (
+            <p class="mt-2 text-sm">
+              Cette page n'existe pas encore (ou elle est archivée). Créez-la dans
+              <a class="text-bo-accent hover:underline" href={url("/pages")}>Pages du site</a>
+              avec l'adresse « {t.slug} ».
+            </p>
+          )}
+        </section>
+      );
+    })}
+  </div>
+
+  <p class="mt-6 max-w-3xl text-xs text-bo-muted">
+    Les autres pages (à propos, la page du stand…) se trouvent dans
+    <a class="text-bo-accent hover:underline" href={url("/pages")}>Boutique en ligne › Pages du site</a>.
+  </p>
+</Admin>

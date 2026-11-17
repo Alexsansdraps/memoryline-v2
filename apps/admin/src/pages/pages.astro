@@ -627,13 +627,10 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
     </section>
   )}
 
-  <details
+  <section
     class="rounded-lg border border-bo-border bg-bo-surface"
-    open={enCours.length === 0 || flashErreur}
   >
-    <summary class="cursor-pointer select-none px-5 py-3 font-semibold">
-      <span class="mr-1 text-bo-accent">+</span> Créer une page
-    </summary>
+    <h2 class="px-5 py-3 font-semibold">Créer une page</h2>
     <form method="POST" class="space-y-4 px-5 pb-5 text-sm">
       <label class="block max-w-md">
         <span class="font-medium">Nom de la page</span>
@@ -677,7 +674,7 @@ const cadre = "mb-8 overflow-hidden rounded-lg border border-bo-border bg-bo-sur
         que vous l'aurez mise en ligne, depuis l'éditeur — puis ajoutée au menu.
       </p>
     </form>
-  </details>
+  </section>
 
   <style is:global>
     /* La ligne qu'on fait glisser se voit : elle pâlit et se soulève. */

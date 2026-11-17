@@ -1,7 +1,19 @@
 # À faire — état au 17 novembre, fin de matinée (écrit pour une reprise dans un autre contexte)
 
+> **17/11 après-midi** (tout est en prod, voir `git log`) :
+> - **Historique Shopify : JAMAIS importé.** Au vidage, la base comptait 0 commande et 0 cliente Shopify : « les clientes Shopify restent » ne gardait donc rien. L'ancien `import-historique.ts` lisait le format Matrixify et EFFAÇAIT toutes les commandes et clientes avant d'écrire : ne JAMAIS le lancer tel quel en prod. Une réécriture est en cours : rien n'est supprimé, fusion par e-mail, numéros à part, lecture de l'export natif. Il faut les deux exports de l'admin Shopify, en CSV, dans `data/exports/shopify/` : Clients › Exporter › Tous les clients, et Commandes › Exporter › Toutes les commandes.
+> - **Cache Docker du serveur.** Le crontab de debian lance `0 23,0 * * *` → `apps/api/scripts/vider-cache-docker.sh`. Le script ne fait rien hors de 1 h, heure de Paris. Il garde 3 Go de cache de construction et retire les images sans nom. Journal : `sauvegardes/journal-cache.txt`. Le disque avait 23 Go libres le 17/11 à 13 h.
+> - **Newsletter.** En-têtes `List-Unsubscribe` et `List-Unsubscribe-Post` : c'est le bouton « Se désabonner » de Gmail, Outlook et Apple Mail, en un clic. Le courrier et les pages de désabonnement disent « newsletter ».
+> - **BO › Réglages › Textes légaux.** Mentions légales, CGV, confidentialité et cookies s'ouvrent chacun dans l'éditeur visuel des pages, traductions comprises.
+> - **BO.** Les blocs « + Ajouter … » sont toujours ouverts : comptes, cadres, catégories, lieux, pages, redirections, types d'affiche.
+> - **Calendrier des stands.** Chaque jour peut être Normal, Fermé, Matin fermé, Après-midi fermé ou Non-stop, et la ligne s'affiche selon ce choix. En non-stop, elle montre le début du matin et la fin de l'après-midi.
+> - **Google Tag Manager** `GTM-PJ2BFXCB` est dans Base.astro, en production seulement. Le Consent Mode de Google est branché sur le bandeau cookies : tout est refusé tant que « Accepter » n'est pas cliqué. Reste à faire :
+>   - pour qui règle GTM : toute balise d'un autre éditeur que Google doit attendre le consentement ;
+>   - pour Margaux, dans Textes légaux : la page Cookies doit citer la mesure d'audience.
+> - **Stand de test.** Ses dates vont du 16 au 18/11. Or un stand n'est proposé à la caisse que s'il est activé, non archivé et, s'il a des dates, jusqu'à 3 jours avant son dernier jour (`MARGE_RETRAIT_JOURS`). Il est donc caché depuis le 15/11.
+
 > **17/11 : BASCULE FAITE. memoryline.fr est servi par le VPS.** Ce qui a été fait :
-> - **Vidage par Alexandra à 08 h 38**, script modifié à sa demande (`8e15016`). TOUTES les commandes et clientes du nouveau site sont parties, WEB-0016 comprise. L'IA et les personnages n'ont pas été touchés. Les clientes Shopify restent. Sauvegarde : `sauvegardes/base/2026-11-17-avant-vidage.sql.gz`.
+> - **Vidage par Alexandra à 08 h 38**, script modifié à sa demande (`8e15016`). TOUTES les commandes et clientes du nouveau site sont parties, WEB-0016 comprise. L'IA et les personnages n'ont pas été touchés. (« Les clientes Shopify restent » : il n'y en avait aucune, voir plus haut.) Sauvegarde : `sauvegardes/base/2026-11-17-avant-vidage.sql.gz`.
 > - **Le `.env` du serveur.** Il contient maintenant DOMAINE=memoryline.fr, DOMAINE_WWW avec www et l'ancien nom du VPS, PUBLIC_ORIGIN=https://memoryline.fr et PUBLIC_NOINDEX=false. Un second `PUBLIC_NOINDEX=true`, plus bas, a été retiré. Copie de l'ancien fichier : `.env.avant-domaine`, à effacer à J+7. Images de secours : `secours-{api,web,admin}:avant-domaine`.
 > - **La construction**, puis les deux lignes A chez OVH (@ et www) passées à 51.255.34.187, puis `up -d`. Le TTL est resté par défaut.
 > - **Vérifié** : certificat Let's Encrypt de memoryline.fr ; www, http et l'ancien nom du VPS en 301/308 vers https://memoryline.fr, chemin gardé ; robots.txt « Allow: / » ; pages en « index, follow », canoniques en memoryline.fr.

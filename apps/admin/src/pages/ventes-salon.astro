@@ -335,6 +335,21 @@ const baseDe = (s: StandBo): HorairesStand => s.horaires ?? HORAIRES_PAR_DEFAUT;
 const champCal = "rounded border border-bo-border bg-bo-surface px-2 py-1";
 const champJour = "w-[6.5rem] rounded border border-bo-border bg-bo-surface px-1 py-0.5 text-xs";
 
+/**
+ * Ce qu'une ligne de jour montre selon « Ce jour-là » (17/11) : md/ma = début
+ * et fin du matin, ad/aa = début et fin de l'après-midi, tm/ta = leurs tirets,
+ * fm/fa = « Fermé » à la place d'une demi-journée, ns = la flèche du non-stop.
+ * Non-stop : le début du matin et la fin de l'après-midi, rien entre les deux.
+ * Le script du bas de page relit cette table quand on change de choix.
+ */
+const VISIBLES: Record<string, string[]> = {
+  normal: ["md", "tm", "ma", "ad", "ta", "aa"],
+  ferme: ["fm", "fa"],
+  matin_ferme: ["fm", "ad", "ta", "aa"],
+  aprem_ferme: ["md", "tm", "ma", "fa"],
+  non_stop: ["md", "ns", "aa"],
+};
+
 const classeBouton =
   "rounded border border-bo-border px-3 py-1.5 hover:bg-bo-bg";
 ---
@@ -654,7 +669,17 @@ const classeBouton =
               </fieldset>
               {joursDuStand(stand.dateDebut ?? null, stand.dateFin ?? null).length > 0 && (
                 <div class="max-h-96 overflow-y-auto rounded border border-bo-border">
-                  <table class="w-full text-sm">
+                  <table
+                    class="w-full text-sm"
+                    data-jours-stand
+                    data-visibles={JSON.stringify(VISIBLES)}
+                    data-base={JSON.stringify({
+                      md: baseDe(stand).matin?.de ?? "",
+                      ma: baseDe(stand).matin?.a ?? "",
+                      ad: baseDe(stand).apresMidi?.de ?? "",
+                      aa: baseDe(stand).apresMidi?.a ?? "",
+                    })}
+                  >
                     <thead class="sticky top-0 bg-bo-bg text-left text-xs text-bo-muted">
                       <tr>
                         <th class="px-2 py-1.5">Jour</th>
@@ -690,8 +715,10 @@ const classeBouton =
                           genre === "non_stop"
                             ? { md: m?.de, ma: "", ad: "", aa: m?.a }
                             : { md: m?.de, ma: m?.a, ad: am?.de, aa: am?.a };
+                        // Ce que la ligne montre selon son choix (VISIBLES).
+                        const cache = (champ: string) => !VISIBLES[genre]!.includes(champ);
                         return (
-                          <tr class={`border-t border-bo-border ${h.ferme ? "bg-bo-bg text-bo-muted" : ""}`}>
+                          <tr class={`border-t border-bo-border ${genre === "ferme" ? "bg-bo-bg text-bo-muted" : ""}`}>
                             <td class="px-2 py-1 whitespace-nowrap">{jourCourt(j)}</td>
                             <td class="px-2 py-1">
                               <select
@@ -707,14 +734,25 @@ const classeBouton =
                               </select>
                             </td>
                             <td class="px-2 py-1 whitespace-nowrap">
-                              <input type="time" name={`j_${j}_md`} value={v.md ?? ""} class={champJour} />
-                              –
-                              <input type="time" name={`j_${j}_ma`} value={v.ma ?? ""} class={champJour} />
+                              <span data-champ="md" hidden={cache("md")}>
+                                <input type="time" name={`j_${j}_md`} value={v.md ?? ""} class={champJour} aria-label={`Ouverture le ${jourCourt(j)}`} />
+                              </span>
+                              <span data-champ="tm" hidden={cache("tm")}>–</span>
+                              <span data-champ="ma" hidden={cache("ma")}>
+                                <input type="time" name={`j_${j}_ma`} value={v.ma ?? ""} class={champJour} aria-label={`Fin du matin le ${jourCourt(j)}`} />
+                              </span>
+                              <span data-champ="ns" hidden={cache("ns")} class="text-xs text-bo-muted">→ sans coupure</span>
+                              <span data-champ="fm" hidden={cache("fm")} class="text-xs text-bo-muted">Fermé</span>
                             </td>
                             <td class="px-2 py-1 whitespace-nowrap">
-                              <input type="time" name={`j_${j}_ad`} value={v.ad ?? ""} class={champJour} />
-                              –
-                              <input type="time" name={`j_${j}_aa`} value={v.aa ?? ""} class={champJour} />
+                              <span data-champ="ad" hidden={cache("ad")}>
+                                <input type="time" name={`j_${j}_ad`} value={v.ad ?? ""} class={champJour} aria-label={`Début de l'après-midi le ${jourCourt(j)}`} />
+                              </span>
+                              <span data-champ="ta" hidden={cache("ta")}>–</span>
+                              <span data-champ="aa" hidden={cache("aa")}>
+                                <input type="time" name={`j_${j}_aa`} value={v.aa ?? ""} class={champJour} aria-label={`Fermeture le ${jourCourt(j)}`} />
+                              </span>
+                              <span data-champ="fa" hidden={cache("fa")} class="text-xs text-bo-muted">Fermé</span>
                             </td>
                           </tr>
                         );
@@ -1054,6 +1092,34 @@ const classeBouton =
   )}
 
   <script is:inline>
+    // Calendrier d'un stand (17/11) : « Ce jour-là » change ce que la ligne
+    // montre. Non-stop : le début du matin et la fin de l'après-midi, rien
+    // entre les deux ; matin ou après-midi fermé : « Fermé » à sa place. Une
+    // case qui réapparaît vide reprend l'heure de base.
+    document.addEventListener("change", (evenement) => {
+      const choix = evenement.target;
+      if (!(choix instanceof HTMLSelectElement) || !/^j_.+_type$/.test(choix.name)) return;
+      const ligne = choix.closest("tr");
+      const table = choix.closest("table[data-jours-stand]");
+      if (!ligne || !table) return;
+      let visibles = [];
+      let base = {};
+      try {
+        visibles = JSON.parse(table.getAttribute("data-visibles") || "{}")[choix.value] || [];
+        base = JSON.parse(table.getAttribute("data-base") || "{}");
+      } catch {
+        return;
+      }
+      ligne.querySelectorAll("[data-champ]").forEach((morceau) => {
+        const champ = morceau.getAttribute("data-champ") || "";
+        morceau.hidden = !visibles.includes(champ);
+        const saisie = morceau.querySelector("input");
+        if (saisie && !morceau.hidden && !saisie.value && base[champ]) saisie.value = base[champ];
+      });
+      ligne.classList.toggle("bg-bo-bg", choix.value === "ferme");
+      ligne.classList.toggle("text-bo-muted", choix.value === "ferme");
+    });
+
     // Il y a un bouton par stand, et la liste change à chaque salon : on écoute
     // la page une fois pour toutes plutôt que chaque bouton un à un.
     document.addEventListener("click", async (evenement) => {

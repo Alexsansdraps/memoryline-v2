@@ -440,10 +440,8 @@ function messageArchivage(c: Cadre): string {
     </section>
   )}
 
-  <details class="bg-bo-surface border border-bo-border rounded-lg">
-    <summary class="cursor-pointer px-5 py-3 font-semibold select-none">
-      <span class="mr-1 text-bo-accent">+</span> Ajouter un cadre
-    </summary>
+  <section class="bg-bo-surface border border-bo-border rounded-lg">
+    <h2 class="px-5 py-3 font-semibold">Ajouter un cadre</h2>
     <form method="POST" class="flex flex-wrap items-end gap-3 px-5 pb-5 text-sm">
       <label class="block">
         <span class="text-bo-muted">Nom</span>
@@ -511,7 +509,7 @@ function messageArchivage(c: Cadre): string {
       </label>
       <button class="rounded bg-bo-accent text-white px-4 py-2">Créer</button>
     </form>
-  </details>
+  </section>
 
   <script is:inline>
     // Archiver retire le cadre de la vente : on demande confirmation, avec ce

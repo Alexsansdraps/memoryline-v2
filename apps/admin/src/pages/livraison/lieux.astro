@@ -327,10 +327,8 @@ const champ = "mt-1 block w-full rounded border border-bo-border px-2 py-1";
   {/* ================================================================== */}
   {/* Ajouter un lieu                                                     */}
   {/* ================================================================== */}
-  <details class="mb-6 rounded-lg border border-bo-border bg-bo-surface" open={vivants.length === 0}>
-    <summary class="cursor-pointer select-none px-5 py-3 font-semibold">
-      <span class="mr-1 text-bo-accent">+</span> Ajouter un lieu
-    </summary>
+  <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface">
+    <h2 class="px-5 py-3 font-semibold">Ajouter un lieu</h2>
     <form method="POST" class="grid max-w-2xl gap-3 px-5 pb-5 text-sm">
       <input type="hidden" name="_action" value="lieu" />
       <label class="block">
@@ -373,7 +371,7 @@ const champ = "mt-1 block w-full rounded border border-bo-border px-2 py-1";
         <button class="rounded bg-bo-accent px-4 py-2 text-white">Ajouter le lieu</button>
       </p>
     </form>
-  </details>
+  </section>
 
   {/* ================================================================== */}
   {/* Aperçu : ce que la caisse montre                                    */}

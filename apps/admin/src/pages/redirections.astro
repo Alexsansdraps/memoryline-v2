@@ -335,14 +335,11 @@ const bouton = "rounded border border-bo-border px-3 py-1 text-xs hover:bg-bo-bg
   {/* ================================================================== */}
   {/* Ajouter une redirection                                            */}
   {/* ================================================================== */}
-  <details
+  <section
     id="ajouter"
     class="mb-4 rounded-lg border border-bo-border bg-bo-surface"
-    open={(ajoutOuvert && !ajoutAConfirmer) || (vivantes.length === 0 && !importResultat)}
   >
-    <summary class="cursor-pointer select-none px-5 py-3 font-semibold">
-      <span class="mr-1 text-bo-accent">+</span> Ajouter une redirection
-    </summary>
+    <h2 class="px-5 py-3 font-semibold">Ajouter une redirection</h2>
     <form method="POST" class="grid gap-3 px-5 pb-5 text-sm">
       <input type="hidden" name="_action" value="ajouter" />
       <div class="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
@@ -387,7 +384,7 @@ const bouton = "rounded border border-bo-border px-3 py-1 text-xs hover:bg-bo-bg
         <button class="rounded bg-bo-accent px-4 py-2 text-white">Ajouter la redirection</button>
       </p>
     </form>
-  </details>
+  </section>
 
   {/* ================================================================== */}
   {/* Importer le fichier de Shopify                                     */}

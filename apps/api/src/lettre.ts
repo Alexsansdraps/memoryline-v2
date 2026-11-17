@@ -227,9 +227,9 @@ function rendreLettre(
         </td></tr>
         <tr><td style="padding:0 32px 32px;font-size:15px;line-height:1.6">${contenu}</td></tr>
         <tr><td style="padding:16px 32px;background:#f3f3f3;font-size:12px;color:#5b5b54">
-          Vous recevez cette lettre parce que vous vous êtes inscrit sur memoryline.fr
+          Vous recevez cette newsletter parce que vous vous êtes inscrit sur memoryline.fr
           ou que vous avez accepté d'être tenu au courant lors d'une commande.<br />
-          <a href="${h(lienDesabonnement)}" style="color:#5b5b54">Me désabonner de la lettre d'information</a><br /><br />
+          <a href="${h(lienDesabonnement)}" style="color:#5b5b54">Me désabonner de la newsletter</a><br /><br />
           Memory Line, affiches personnalisées.<br />
           TVA non applicable, article 293 B du CGI.
         </td></tr>
@@ -243,8 +243,8 @@ function rendreLettre(
     html,
     text:
       `${objet}\n\n${versTexte(contenu)}\n\n` +
-      `-- \nVous recevez cette lettre parce que vous vous êtes inscrit sur memoryline.fr.\n` +
-      `Pour ne plus la recevoir : ${lienDesabonnement}\n\nMemory Line`,
+      `-- \nVous recevez cette newsletter parce que vous vous êtes inscrit sur memoryline.fr.\n` +
+      `Pour vous désabonner : ${lienDesabonnement}\n\nMemory Line`,
   };
 }
 
@@ -909,16 +909,21 @@ export function mountLettre(app: Hono): void {
     let partis = 0;
     for (const destinataire of paquet) {
       const jeton = await jetonPour(destinataire.email);
-      const courrier = rendreLettre(
-        ligne.objet,
-        ligne.contenuHtml,
-        `${LIEN_DESABONNEMENT}?jeton=${encodeURIComponent(jeton)}`,
-      );
+      const lien = `${LIEN_DESABONNEMENT}?jeton=${encodeURIComponent(jeton)}`;
+      const courrier = rendreLettre(ligne.objet, ligne.contenuHtml, lien);
       const parti = await envoyer({
         to: destinataire.email,
         subject: courrier.subject,
         html: courrier.html,
         text: courrier.text,
+        // Le bouton « Se désabonner » que Gmail, Outlook et Apple Mail
+        // affichent à côté de l'expéditeur (17/11). « One-Click » : la
+        // messagerie envoie un POST à ce lien, sans page à confirmer
+        // (RFC 8058) ; la route le reconnaît au jeton de l'adresse.
+        entetes: {
+          "List-Unsubscribe": `<${lien}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
       });
       if (parti) partis += 1;
       await db
@@ -1019,16 +1024,16 @@ export function mountLettre(app: Hono): void {
       return c.html(
         pageDesabonnement(
           "Vous êtes déjà désabonné",
-          `<p>L'adresse ${h(trouve.email)} ne reçoit plus notre lettre d'information.</p>
+          `<p>L'adresse ${h(trouve.email)} ne reçoit plus notre newsletter.</p>
            <p class="discret">Vous n'avez rien d'autre à faire.</p>`,
         ),
       );
 
     return c.html(
       pageDesabonnement(
-        "Ne plus recevoir la lettre",
+        "Ne plus recevoir la newsletter",
         `<p>Vous êtes sur le point de retirer l'adresse ${h(trouve.email)} de notre
-          lettre d'information.</p>
+          newsletter.</p>
          <form method="POST" action="${h(LIEN_DESABONNEMENT)}">
            <input type="hidden" name="jeton" value="${h(jeton)}" />
            <button type="submit">Confirmer mon désabonnement</button>
@@ -1042,7 +1047,9 @@ export function mountLettre(app: Hono): void {
   /** Le désabonnement lui-même, une fois la personne d'accord. */
   app.post("/lettre/desabonnement", async (c) => {
     const formulaire = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
-    const jeton = texte(formulaire["jeton"], 200);
+    // Le jeton vient du formulaire de la page, ou de l'adresse quand c'est la
+    // messagerie qui désabonne d'un clic (« List-Unsubscribe-Post »).
+    const jeton = texte(formulaire["jeton"], 200) || texte(c.req.query("jeton"), 200);
 
     const lignes = jeton
       ? await db
@@ -1075,7 +1082,7 @@ export function mountLettre(app: Hono): void {
     return c.html(
       pageDesabonnement(
         "C'est fait",
-        `<p>L'adresse ${h(trouve.email)} ne recevra plus notre lettre d'information.</p>
+        `<p>L'adresse ${h(trouve.email)} ne recevra plus notre newsletter.</p>
          <p class="discret">Merci d'avoir suivi Memory Line jusqu'ici. Vous pouvez vous
           réinscrire à tout moment depuis le bas de notre site.</p>`,
       ),

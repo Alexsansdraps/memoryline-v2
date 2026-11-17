@@ -215,6 +215,9 @@ export const MENU: GroupeNav[] = [
       // obligatoires, qu'on règle une fois et qu'on ne cherche qu'au moment
       // de déménager — d'où « Réglages ».
       { href: "/facturation", label: "Factures", icon: "🧾", owner: true },
+      // Mentions légales, CGV, confidentialité, cookies (17/11) : chacun
+      // s'ouvre dans l'éditeur visuel des pages.
+      { href: "/textes-legaux", label: "Textes légaux", icon: "⚖️", owner: true },
       { href: "/comptes", label: "Comptes", icon: "🔑", owner: true },
       // Dans « Réglages » et pas dans un groupe à soi : on n'y va pas pour
       // travailler, on y va quand on cherche quelque chose qu'on a rangé.

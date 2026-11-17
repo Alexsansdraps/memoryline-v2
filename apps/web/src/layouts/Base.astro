@@ -341,6 +341,35 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/* Google Tag Manager (17/11), sur le site en production seulement : en
+        local, il mesurerait nos propres essais. Le consentement passe AVANT
+        (« Consent Mode » de Google) : tout est refusé tant que la visiteuse
+        n'a pas cliqué « Accepter » dans le bandeau cookies (CookieBanner.astro,
+        choix gardé dans localStorage, évènement « ml:consent »). GTM ne pose
+        lui-même aucun cookie ; les balises Google qu'il charge attendent
+        l'accord. Une balise d'un autre éditeur ajoutée dans GTM doit, elle,
+        y être réglée pour attendre le consentement. */}
+    {import.meta.env.PROD && (
+      <>
+        <script is:inline>
+          window.dataLayer = window.dataLayer || [];
+          function gtag() { dataLayer.push(arguments); }
+          (function () {
+            var refuse = { ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied", analytics_storage: "denied" };
+            var accorde = { ad_storage: "granted", ad_user_data: "granted", ad_personalization: "granted", analytics_storage: "granted" };
+            gtag("consent", "default", Object.assign({ wait_for_update: 500 }, refuse));
+            var choix = null;
+            try { choix = localStorage.getItem("ml_cookie_consent"); } catch (e) {}
+            if (choix === "accept") gtag("consent", "update", accorde);
+            document.addEventListener("ml:consent", function (e) {
+              gtag("consent", "update", e.detail && e.detail.consent === "accept" ? accorde : refuse);
+            });
+          })();
+          gtag("js", new Date());
+        </script>
+        <script is:inline async src="https://www.googletagmanager.com/gtm.js?id=GTM-PJ2BFXCB"></script>
+      </>
+    )}
     <meta name="generator" content={Astro.generator} />
     <link rel="sitemap" href="/sitemap.xml" />
     {/* Les icônes du site : l'onglet, l'écran d'accueil d'un téléphone, et
