@@ -1603,9 +1603,12 @@ export default function CheckoutIsland(props: {
                               >
                                 <span class="font-medium">{o.mode.name}</span>
                                 <span>
+                                  {/* « Offert » plutôt que « 0 € » (17/11). */}
                                   {o.offert
                                     ? tr("livraison.offerte")
-                                    : formatPrice(o.fraisCents, locale)}
+                                    : o.fraisCents === 0
+                                      ? tr("livraison.offert")
+                                      : formatPrice(o.fraisCents, locale)}
                                 </span>
                               </label>
                               <Show when={o.mode.description}>
@@ -1773,7 +1776,9 @@ export default function CheckoutIsland(props: {
                             <span>
                               {o.offert
                                 ? tr("livraison.offerte")
-                                : formatPrice(o.fraisCents, locale)}
+                                : o.fraisCents === 0
+                                  ? tr("livraison.offert")
+                                  : formatPrice(o.fraisCents, locale)}
                             </span>
                           </span>
                           {/* Le texte du mode, sur autant de lignes que la
@@ -2482,7 +2487,9 @@ export default function CheckoutIsland(props: {
                 <span>
                   {optionChoisie()!.offert
                     ? tr("livraison.offerte")
-                    : formatPrice(fraisPort(), locale)}
+                    : fraisPort() === 0
+                      ? tr("livraison.offert")
+                      : formatPrice(fraisPort(), locale)}
                 </span>
               </div>
             </Show>

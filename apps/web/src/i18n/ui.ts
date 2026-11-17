@@ -307,6 +307,7 @@ export const ui = {
     "livraison.point_relais_aide":
       "Indiquez le nom et l'adresse du point relais Mondial Relay de votre choix.",
     "livraison.offerte": "Offerte",
+    "livraison.offert": "Offert",
     "livraison.aucune": "Aucune livraison disponible pour ce pays.",
     "livraison.poids_colis": "Poids du colis :",
     "livraison.aucune_pour_ce_poids":
@@ -1042,6 +1043,7 @@ export const ui = {
     "livraison.point_relais_aide":
       "Enter the name and address of your chosen Mondial Relay pickup point.",
     "livraison.offerte": "Free",
+    "livraison.offert": "Free",
     "livraison.aucune": "No delivery available for this country.",
     "livraison.poids_colis": "Parcel weight:",
     "livraison.aucune_pour_ce_poids":
@@ -1744,6 +1746,7 @@ export const ui = {
     "livraison.point_relais_aide":
       "Geben Sie Namen und Adresse Ihres Mondial-Relay-Paketshops an.",
     "livraison.offerte": "Kostenlos",
+    "livraison.offert": "Kostenlos",
     "livraison.aucune": "Für dieses Land ist kein Versand verfügbar.",
     "livraison.poids_colis": "Paketgewicht:",
     "livraison.aucune_pour_ce_poids":
@@ -2450,6 +2453,7 @@ export const ui = {
     "livraison.point_relais_aide":
       "Indica nome e indirizzo del punto di ritiro Mondial Relay scelto.",
     "livraison.offerte": "Gratuita",
+    "livraison.offert": "Gratuito",
     "livraison.aucune": "Nessuna spedizione disponibile per questo paese.",
     "livraison.poids_colis": "Peso del pacco:",
     "livraison.aucune_pour_ce_poids":
@@ -3150,6 +3154,7 @@ export const ui = {
     "livraison.point_relais_aide":
       "Indica el nombre y la dirección del punto Mondial Relay elegido.",
     "livraison.offerte": "Gratis",
+    "livraison.offert": "Gratis",
     "livraison.aucune": "No hay envío disponible para este país.",
     "livraison.poids_colis": "Peso del paquete:",
     "livraison.aucune_pour_ce_poids":
