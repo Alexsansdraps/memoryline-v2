@@ -257,16 +257,24 @@ const AVEC_ARTICLE: Record<string, string> = {
   secret: "le secret",
 };
 
-/** La confirmation de « Effacer » : ce qui se passe à la caisse, en clair. */
-function texteEffacer(c: CasePaiement, p: "stripe" | "paypal", m: "test" | "live"): string {
-  const tete = `Effacer ${AVEC_ARTICLE[c.champ] ?? c.libelle.toLowerCase()} ${NOMS[p]} (${TITRES[p][m]}) ?\n\n`;
-  if (c.apresEffacement === "retire") return `${tete}${NOMS[p]} ne sera plus proposé à la caisse.`;
-  const archive =
-    c.champ === "cle_publique" || c.champ === "cle_secrete"
-      ? "Elle est archivée : on ne pourra plus s'en servir, et il faudra la ressaisir pour la remettre."
-      : "Il est archivé : on ne pourra plus s'en servir, et il faudra le ressaisir pour le remettre.";
-  if (c.apresEffacement === "serveur") return `${tete}${archive}\n\nLa caisse reprendra aussitôt les clés des réglages du serveur.`;
-  return `${tete}${archive}`;
+/**
+ * Ce que dit « Remplacer » / « Enregistrer » avant d'envoyer (17/11) : le
+ * champ vide est signalé (un clic par erreur ne fait rien), sinon on demande
+ * confirmation. Le bouton « Effacer » a été retiré : on remplace une clé,
+ * on ne la laisse plus vide par un clic.
+ */
+function confirmationCle(c: CasePaiement, p: "stripe" | "paypal", m: "test" | "live"): string {
+  const quoi = `${AVEC_ARTICLE[c.champ] ?? c.libelle.toLowerCase()} ${NOMS[p]} (${TITRES[p][m]})`;
+  const vide = "Le champ est vide : collez d'abord la nouvelle valeur, puis cliquez de nouveau.";
+  const question =
+    c.etat === "bo"
+      ? `Remplacer ${quoi} ?
+
+La valeur enregistrée aujourd'hui ne servira plus${m === "live" ? " : les vrais paiements passeront par la nouvelle" : ""}. Confirmez-vous ?`
+      : `Enregistrer ${quoi} ?
+
+Confirmez-vous ?`;
+  return `var v = this.valeur.value.trim(); if (!v) { alert(${JSON.stringify(vide)}); this.valeur.focus(); return false; } return confirm(${JSON.stringify(question)});`;
 }
 
 const ACTIONS: Record<string, string> = {
@@ -500,7 +508,13 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
                           ce mode-ci.{m === "live" ? " Exigé pour passer en réel." : ""}
                         </p>
                       )}
-                      <form method="POST" class="mt-1 flex gap-2" autocomplete="off">
+                      <form
+                        method="POST"
+                        class="mt-1 flex gap-2"
+                        autocomplete="off"
+                        novalidate
+                        onsubmit={confirmationCle(c, p, m)}
+                      >
                         <input type="hidden" name="action" value="cle" />
                         <input type="hidden" name="prestataire" value={p} />
                         <input type="hidden" name="mode" value={m} />
@@ -511,9 +525,8 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
                             retient rien ; les gestionnaires de mots de passe sont
                             écartés par data-1p-ignore et data-lpignore. */}
                         <input
-                          type={SECRETES.has(c.champ) ? "password" : "text"}
+                          type={SECRETES.has(c.champ) || c.etat === "bo" ? "password" : "text"}
                           name="valeur"
-                          required
                           autocomplete={SECRETES.has(c.champ) ? "new-password" : "off"}
                           spellcheck="false"
                           autocapitalize="off"
@@ -521,7 +534,11 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
                           data-1p-ignore
                           data-lpignore="true"
                           aria-label={`${c.libelle} ${NOMS[p]}, ${TITRES[p][m]}`}
-                          placeholder={exemple(m, c.champ)}
+                          placeholder={
+                            // Une valeur enregistrée se montre en points, comme un
+                            // mot de passe caché ; la case vide garde son exemple.
+                            c.etat === "bo" || c.etat === "env" ? "••••••••••••••••" : exemple(m, c.champ)
+                          }
                           class={champ}
                           disabled={!ouverte}
                         />
@@ -529,20 +546,6 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
                           {c.etat === "bo" ? "Remplacer" : "Enregistrer"}
                         </button>
                       </form>
-                      {(c.etat === "bo" || c.etat === "a_ressaisir") && (
-                        <form
-                          method="POST"
-                          class="mt-1"
-                          onsubmit={`return confirm(${JSON.stringify(texteEffacer(c, p, m))})`}
-                        >
-                          <input type="hidden" name="action" value="archiver" />
-                          <input type="hidden" name="prestataire" value={p} />
-                          <input type="hidden" name="mode" value={m} />
-                          <input type="hidden" name="champ" value={c.champ} />
-                          {c.effacementRetire && <input type="hidden" name="confirme" value="oui" />}
-                          <button class="text-xs text-red-700 underline">Effacer</button>
-                        </form>
-                      )}
                     </div>
                   ))}
 
