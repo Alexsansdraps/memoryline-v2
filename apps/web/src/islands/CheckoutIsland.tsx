@@ -557,6 +557,14 @@ export default function CheckoutIsland(props: {
     retirerAvantHeure?: string | null;
     /** Le stand est-il ouvert en ce moment ? */
     ouvert?: boolean | null;
+    /** Premier et dernier jour du stand (« AAAA-MM-JJ »). */
+    du?: string | null;
+    au?: string | null;
+    /** Ses 7 prochains jours, vraies heures ou fermé ; `suite` : il continue après. */
+    semaine?: {
+      jours: { jour: string; ferme: boolean; creneaux: { de: string; a: string }[] }[];
+      suite: boolean;
+    } | null;
   };
   /** Les stands ouverts, chacun proposé comme une option à part entière. */
   const lieuxDesStands = (): LieuRetrait[] =>
@@ -571,6 +579,23 @@ export default function CheckoutIsland(props: {
       month: "long",
       timeZone: "UTC",
     }).format(new Date(`${jour}T12:00:00Z`));
+  /** « Ven. 20 nov. », pour le tableau des 7 jours du stand. */
+  const jourCourt = (jour: string) => {
+    const t = new Intl.DateTimeFormat(locale, {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    }).format(new Date(`${jour}T12:00:00Z`));
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
+  /** Aujourd'hui à Paris (« AAAA-MM-JJ »), pour mettre la ligne du jour en avant. */
+  const aujourdhuiAParis = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
   /**
    * Les lieux du mode choisi : les stands ouverts sous « Retrait au stand »
    * (gratuit, avec leur emplacement), les lieux de BO › Livraison sous les
@@ -1647,10 +1672,51 @@ export default function CheckoutIsland(props: {
                                 <Show when={lieu().adresse}>
                                   <span class="mt-0.5 block whitespace-pre-line">{lieu().adresse}</span>
                                 </Show>
-                                <Show when={lieu().description}>
-                                  <span class="mt-2 block whitespace-pre-line text-ink-soft">
-                                    {lieu().description}
-                                  </span>
+                                {/* Les 7 prochains jours en petit tableau (17/11 :
+                                    « plus buvable », « que les 7 premiers puis des
+                                    points de suspension ») ; le texte d'avant ne sert
+                                    plus que si l'API ne les donne pas. */}
+                                <Show
+                                  when={lieu().semaine?.jours.length ? lieu().semaine : null}
+                                  fallback={
+                                    <Show when={lieu().description}>
+                                      <span class="mt-2 block whitespace-pre-line text-ink-soft">
+                                        {lieu().description}
+                                      </span>
+                                    </Show>
+                                  }
+                                >
+                                  {(semaine) => (
+                                    <>
+                                      <Show when={lieu().du && lieu().au}>
+                                        <span class="mt-2 block text-ink-soft">
+                                          {tr("livraison.stand_periode")
+                                            .replace("{du}", jourLong(lieu().du!))
+                                            .replace("{au}", jourLong(lieu().au!))}
+                                        </span>
+                                      </Show>
+                                      <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-5 gap-y-1 tabular-nums">
+                                        <For each={semaine().jours}>
+                                          {(j) => (
+                                            <>
+                                              <dt class={j.jour === aujourdhuiAParis ? "font-medium" : "text-ink-soft"}>
+                                                {j.jour === aujourdhuiAParis ? tr("livraison.aujourdhui") : jourCourt(j.jour)}
+                                              </dt>
+                                              <dd class={j.ferme ? "text-ink-soft" : j.jour === aujourdhuiAParis ? "font-medium" : ""}>
+                                                {j.ferme
+                                                  ? tr("livraison.jour_ferme")
+                                                  : j.creneaux.map((c) => `${c.de}–${c.a}`).join(" · ")}
+                                              </dd>
+                                            </>
+                                          )}
+                                        </For>
+                                        <Show when={semaine().suite}>
+                                          <dt class="text-ink-soft">…</dt>
+                                          <dd />
+                                        </Show>
+                                      </dl>
+                                    </>
+                                  )}
                                 </Show>
                                 <Show when={lieu().retirerAvant}>
                                   <label class="mt-3 flex cursor-pointer items-start gap-2 border-t border-ink/10 pt-3">

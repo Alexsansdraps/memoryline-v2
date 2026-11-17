@@ -14,6 +14,7 @@ import {
   ouvertureEffective,
   resumeHoraires,
   retraitProposable,
+  semaineDuStand,
   type StandCalendrier,
 } from "@memoryline/types";
 
@@ -137,27 +138,32 @@ test("le résumé pour les clientes, en français et dans les autres langues", (
   assert.equal(resumeHoraires({ ...marche, dateDebut: null }, "fr"), "");
 });
 
-test("à la caisse : les 7 prochains jours écrits un par un, puis la suite", () => {
+test("à la caisse : les 7 prochains jours un par un, puis « … »", () => {
   // Avant le premier jour : la semaine part du premier jour du stand.
-  const fr = resumeHoraires(marche, "fr", { maintenant: midi("2026-11-17") });
-  const lignes = fr.split("\n");
-  assert.equal(lignes[0], "Du vendredi 20 novembre au jeudi 24 décembre 2026.");
-  assert.equal(lignes[1], "Vendredi 20 novembre : 10:00–12:30 et 14:00–19:00.");
-  assert.equal(lignes[2], "Samedi 21 novembre : 10:00–13:00 et 14:00–20:00.");
-  assert.equal(lignes[4], "Lundi 23 novembre : fermé.");
-  assert.equal(lignes[7], "Jeudi 26 novembre : 10:00–12:30 et 14:00–19:00.");
-  assert.equal(lignes[8], "Ensuite, tous les jours : 10:00–12:30 et 14:00–19:00.");
-  assert.doesNotMatch(fr, /Fermé : lundi 23 novembre/, "déjà écrit dans la semaine");
-  assert.match(fr, /À venir chercher au plus tard le jeudi 24 décembre à 19:00\.$/);
-  // Un jour particulier APRÈS la semaine reste dit après « Ensuite ».
-  const avecNoel = {
-    ...marche,
-    horaires: { ...marche.horaires!, jours: { ...marche.horaires!.jours, "2026-12-05": { ferme: true } } },
-  };
-  assert.match(resumeHoraires(avecNoel, "fr", { maintenant: midi("2026-11-17") }), /Fermé : samedi 5 décembre\./);
-  // En cours de stand : à partir d'aujourd'hui ; la fin dans la semaine, pas d'« Ensuite ».
-  const fin = resumeHoraires(marche, "fr", { maintenant: midi("2026-12-20") }).split("\n");
-  assert.equal(fin[1], "Dimanche 20 décembre : 10:00–12:30 et 14:00–19:00.");
-  assert.equal(fin.length, 1 + 5 + 1, "période, 5 jours, dernier moment");
-  assert.match(resumeHoraires(marche, "en", { maintenant: midi("2026-11-17") }), /After that, every day: 10:00–12:30 and 14:00–19:00\./);
+  const semaine = semaineDuStand(marche, midi("2026-11-17"))!;
+  assert.equal(semaine.jours.length, 7);
+  assert.equal(semaine.jours[0]!.jour, "2026-11-20");
+  assert.deepEqual(semaine.jours[1]!.creneaux, [
+    { de: "10:00", a: "13:00" },
+    { de: "14:00", a: "20:00" },
+  ]);
+  assert.equal(semaine.jours[3]!.ferme, true, "lundi 23 novembre");
+  assert.equal(semaine.suite, true, "le stand continue après");
+  const fr = resumeHoraires(marche, "fr", { maintenant: midi("2026-11-17") }).split("\n");
+  assert.equal(fr[0], "Du vendredi 20 novembre au jeudi 24 décembre 2026.");
+  assert.equal(fr[1], "Vendredi 20 novembre : 10:00–12:30 et 14:00–19:00.");
+  assert.equal(fr[4], "Lundi 23 novembre : fermé.");
+  assert.equal(fr[7], "Jeudi 26 novembre : 10:00–12:30 et 14:00–19:00.");
+  assert.equal(fr[8], "…");
+  assert.equal(fr[9], "À venir chercher au plus tard le jeudi 24 décembre à 19:00.");
+  assert.equal(fr.length, 10, "rien d'autre : ni « Tous les jours », ni la suite");
+  // En cours de stand : à partir d'aujourd'hui ; la fin dans la semaine, pas de « … ».
+  const fin = semaineDuStand(marche, midi("2026-12-20"))!;
+  assert.equal(fin.jours[0]!.jour, "2026-12-20");
+  assert.equal(fin.jours.length, 5);
+  assert.equal(fin.suite, false);
+  assert.ok(!resumeHoraires(marche, "fr", { maintenant: midi("2026-12-20") }).includes("…"));
+  // Stand fini ou sans dates : rien.
+  assert.equal(semaineDuStand(marche, midi("2026-12-25")), null);
+  assert.equal(semaineDuStand({ ...marche, dateDebut: null }, midi("2026-11-17")), null);
 });

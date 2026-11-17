@@ -206,8 +206,6 @@ const MOTS: Record<
   {
     periode: (debut: string, fin: string) => string;
     tousLesJours: string;
-    /** Après les 7 jours écrits un par un : le reste du stand. */
-    ensuite: string;
     et: string;
     ferme: string;
     avant: (date: string) => string;
@@ -218,7 +216,6 @@ const MOTS: Record<
   fr: {
     periode: (d, f) => `Du ${d} au ${f}.`,
     tousLesJours: "Tous les jours",
-    ensuite: "Ensuite, tous les jours",
     et: "et",
     ferme: "Fermé",
     avant: (d) => `À venir chercher au plus tard le ${d}.`,
@@ -227,7 +224,6 @@ const MOTS: Record<
   en: {
     periode: (d, f) => `From ${d} to ${f}.`,
     tousLesJours: "Every day",
-    ensuite: "After that, every day",
     et: "and",
     ferme: "Closed",
     avant: (d) => `To be collected by ${d} at the latest.`,
@@ -236,7 +232,6 @@ const MOTS: Record<
   de: {
     periode: (d, f) => `Von ${d} bis ${f}.`,
     tousLesJours: "Täglich",
-    ensuite: "Danach täglich",
     et: "und",
     ferme: "Geschlossen",
     avant: (d) => `Abholung spätestens am ${d}.`,
@@ -245,7 +240,6 @@ const MOTS: Record<
   it: {
     periode: (d, f) => `Dal ${d} al ${f}.`,
     tousLesJours: "Tutti i giorni",
-    ensuite: "Poi, tutti i giorni",
     et: "e",
     ferme: "Chiuso",
     avant: (d) => `Da ritirare entro ${d}.`,
@@ -254,7 +248,6 @@ const MOTS: Record<
   es: {
     periode: (d, f) => `Del ${d} al ${f}.`,
     tousLesJours: "Todos los días",
-    ensuite: "Después, todos los días",
     et: "y",
     ferme: "Cerrado",
     avant: (d) => `Recogida a más tardar el ${d}.`,
@@ -306,6 +299,31 @@ export function jourEcrit(jour: string, langue = "fr", avecAnnee = false): strin
 
 const majuscule = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
+/**
+ * Les 7 prochains jours du stand (17/11), à partir d'aujourd'hui, ou du
+ * premier jour s'il n'a pas commencé : leurs vraies heures, ou fermé. `suite` :
+ * le stand continue après. Null sans dates, ou une fois le stand fini. La
+ * caisse en fait un petit tableau, la commande et les courriels du texte.
+ */
+export function semaineDuStand(
+  s: Pick<StandCalendrier, "dateDebut" | "dateFin" | "horaires">,
+  maintenant: Date,
+  nombre = 7,
+): { jours: { jour: string; ferme: boolean; creneaux: Creneau[] }[]; suite: boolean } | null {
+  if (!jourValide(s.dateDebut) || !jourValide(s.dateFin) || s.dateDebut > s.dateFin) return null;
+  const aujourdhui = jourAParis(maintenant);
+  const debut = aujourdhui > s.dateDebut ? aujourdhui : s.dateDebut;
+  const restants = joursDuStand(debut, s.dateFin);
+  if (!restants.length) return null;
+  const base = s.horaires ?? HORAIRES_PAR_DEFAUT;
+  const jours = restants.slice(0, nombre).map((jour) => {
+    const h = horairesDuJour(base, jour);
+    const ferme = h.ferme || h.creneaux.length === 0;
+    return { jour, ferme, creneaux: ferme ? [] : h.creneaux };
+  });
+  return { jours, suite: restants.length > nombre };
+}
+
 function creneauxEcrits(creneaux: Creneau[], langue: string): string {
   const m = MOTS[langue] ?? MOTS.fr!;
   return creneaux.map((c) => `${c.de}–${c.a}`).join(` ${m.et} `);
@@ -321,18 +339,16 @@ function creneauxEcrits(creneaux: Creneau[], langue: string): string {
  *   Samedi 21 novembre : 10:00–20:00.
  *   À venir chercher au plus tard le jeudi 24 décembre.
  *
- * Avec `maintenant` (la caisse, 17/11 : « mets les horaires des 7 prochains
- * jours en vrai ») : les 7 prochains jours du stand sont écrits un par un, à
- * partir d'aujourd'hui ou du premier jour s'il n'a pas commencé, puis
- * « Ensuite, tous les jours : … » et les jours particuliers d'après :
+ * Avec `maintenant` (la caisse et la commande, 17/11 : « mets les horaires
+ * des 7 prochains jours en vrai », « vraiment que les 7 premiers puis des
+ * points de suspension ») : les 7 prochains jours du stand un par un (voir
+ * `semaineDuStand`), « … » s'il continue après :
  *
  *   Du vendredi 20 novembre au jeudi 24 décembre 2026.
  *   Vendredi 20 novembre : 10:00–12:30 et 14:00–19:00.
- *   Samedi 21 novembre : 10:00–20:00.
  *   …
  *   Lundi 23 novembre : fermé.
  *   …
- *   Ensuite, tous les jours : 10:00–12:30 et 14:00–19:00.
  *   À venir chercher au plus tard le jeudi 24 décembre à 19:00.
  *
  * Sans `maintenant` (le back-office) : le résumé complet, pour tout vérifier.
@@ -349,33 +365,24 @@ export function resumeHoraires(
   const lignes: string[] = [m.periode(jourEcrit(s.dateDebut, langue), jourEcrit(s.dateFin, langue, true))];
   const base = s.horaires ?? HORAIRES_PAR_DEFAUT;
   const creneauxDeBase = [base.matin, base.apresMidi].filter((c): c is Creneau => !!c);
-  // Les 7 prochains jours, un par un ; « Ensuite » pour la suite du stand.
-  let apresLaSemaine = "";
   if (options.maintenant) {
-    const aujourdhui = jourAParis(options.maintenant);
-    const debut = aujourdhui > s.dateDebut ? aujourdhui : s.dateDebut;
-    const semaine = joursDuStand(debut, s.dateFin).slice(0, 7);
-    for (const jour of semaine) {
-      const h = horairesDuJour(base, jour);
-      const texte = h.ferme || !h.creneaux.length ? m.ferme.toLowerCase() : creneauxEcrits(h.creneaux, langue);
-      lignes.push(`${majuscule(jourEcrit(jour, langue))}${deuxPoints}${texte}.`);
-    }
-    apresLaSemaine = semaine.at(-1) ?? "";
-    if (semaine.length && apresLaSemaine >= s.dateFin) {
+    const semaine = semaineDuStand(s, options.maintenant);
+    if (semaine) {
+      for (const j of semaine.jours)
+        lignes.push(
+          `${majuscule(jourEcrit(j.jour, langue))}${deuxPoints}${j.ferme ? m.ferme.toLowerCase() : creneauxEcrits(j.creneaux, langue)}.`,
+        );
+      if (semaine.suite) lignes.push("…");
       lignes.push(m.avant(dernierMomentEcrit(s, langue) ?? jourEcrit(s.dateFin, langue)));
       return lignes.join("\n");
     }
   }
   if (creneauxDeBase.length)
-    lignes.push(
-      `${apresLaSemaine ? m.ensuite : m.tousLesJours}${deuxPoints}${creneauxEcrits(creneauxDeBase, langue)}.`,
-    );
+    lignes.push(`${m.tousLesJours}${deuxPoints}${creneauxEcrits(creneauxDeBase, langue)}.`);
   const fermes: string[] = [];
   const autres: string[] = [];
   for (const jour of joursDuStand(s.dateDebut, s.dateFin)) {
     if (!base.jours?.[jour]) continue;
-    // Déjà écrit dans les 7 prochains jours.
-    if (apresLaSemaine && jour <= apresLaSemaine) continue;
     const h = horairesDuJour(base, jour);
     if (h.ferme) fermes.push(jourEcrit(jour, langue));
     else

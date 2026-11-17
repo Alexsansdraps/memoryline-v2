@@ -132,11 +132,16 @@ if (Astro.request.method === "POST" && estProprietaire) {
           const { stand } = await api.majStand(cible, {
             dateDebut: texte("dateDebut"),
             dateFin: texte("dateFin"),
-            horaires: {
-              matin: creneau(texte("matin_de"), texte("matin_a")),
-              apresMidi: creneau(texte("aprem_de"), texte("aprem_a")),
-              jours,
-            },
+            // Horaires de base non-stop (17/11) : un seul créneau, de
+            // l'ouverture du matin à la fermeture de l'après-midi.
+            horaires:
+              texte("base_type") === "non_stop"
+                ? { matin: creneau(texte("matin_de"), texte("aprem_a")), apresMidi: null, jours }
+                : {
+                    matin: creneau(texte("matin_de"), texte("matin_a")),
+                    apresMidi: creneau(texte("aprem_de"), texte("aprem_a")),
+                    jours,
+                  },
           });
           flash = !stand.dateDebut
             ? `Calendrier de « ${stand.nom} » vidé : le stand s'ouvre et se ferme à la main.`
@@ -348,6 +353,37 @@ const VISIBLES: Record<string, string[]> = {
   matin_ferme: ["fm", "ad", "ta", "aa"],
   aprem_ferme: ["md", "tm", "ma", "fa"],
   non_stop: ["md", "ns", "aa"],
+};
+
+/**
+ * Les horaires de base (17/11) : avec une pause à midi, ou non-stop. Mêmes
+ * codes que les jours, plus les intitulés : lm/la = « Matin », « Après-midi »,
+ * lo/lf = « Ouverture », « Fermeture ».
+ */
+const VISIBLES_BASE: Record<string, string[]> = {
+  coupure: ["lm", "md", "tm", "ma", "la", "ad", "ta", "aa"],
+  non_stop: ["lo", "md", "ns", "lf", "aa"],
+};
+
+/** Vrai si les horaires de base d'un stand sont d'un seul tenant. */
+const baseNonStop = (s: StandBo): boolean => {
+  const b = baseDe(s);
+  return !!b.matin && !b.apresMidi;
+};
+
+/**
+ * Les heures qui remplissent une case réapparue vide quand on change de choix :
+ * celles de la base, et, pour la pause d'une base non-stop, celles par défaut.
+ */
+const heuresDeRepli = (s: StandBo) => {
+  const b = baseDe(s);
+  const nonStop = !!b.matin && !b.apresMidi;
+  return {
+    md: b.matin?.de ?? HORAIRES_PAR_DEFAUT.matin?.de ?? "",
+    ma: (nonStop ? HORAIRES_PAR_DEFAUT.matin?.a : b.matin?.a) ?? "",
+    ad: (nonStop ? HORAIRES_PAR_DEFAUT.apresMidi?.de : b.apresMidi?.de) ?? "",
+    aa: (nonStop ? b.matin?.a : b.apresMidi?.a) ?? "",
+  };
 };
 
 const classeBouton =
@@ -631,7 +667,17 @@ const classeBouton =
                 placeholder="Ex. : du 20 novembre au 27 décembre, 11h-12h30 et 13h-20h ; fermé les lundis ; le 24 jusqu'à 16h ; le 25 fermé"
                 class="block w-full rounded border border-bo-border bg-bo-surface px-2 py-1.5"
               />
-              <button class={classeBouton}>Appliquer avec l'IA</button>
+              {/* Le spinner (17/11) : l'IA met plusieurs secondes, il faut voir
+                  que ça travaille, et ne pas renvoyer la demande. */}
+              <button class={`${classeBouton} inline-flex items-center gap-2`} data-bouton-ia>
+                <span
+                  data-attente
+                  hidden
+                  aria-hidden="true"
+                  class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+                ></span>
+                <span data-texte>Appliquer avec l'IA</span>
+              </button>
             </form>
             <form method="POST" class="mt-3 space-y-4 text-sm">
               <input type="hidden" name="_action" value="calendrier" />
@@ -652,19 +698,50 @@ const classeBouton =
                   <input type="date" name="dateFin" value={stand.dateFin ?? ""} class={champCal} />
                 </label>
               </div>
-              <fieldset>
+              {/* Les horaires de base (17/11) : avec une pause à midi, ou
+                  non-stop — l'ouverture du matin et la fermeture du soir. */}
+              <fieldset
+                data-ligne-horaires
+                data-visibles={JSON.stringify(VISIBLES_BASE)}
+                data-base={JSON.stringify(heuresDeRepli(stand))}
+              >
                 <legend class="text-xs text-bo-muted">Horaires de base, recopiés sur chaque jour</legend>
+                <select
+                  name="base_type"
+                  data-type-horaires
+                  aria-label="Horaires de base"
+                  class="mt-1 rounded border border-bo-border bg-bo-surface px-2 py-1 text-sm"
+                >
+                  <option value="coupure" selected={!baseNonStop(stand)}>Avec une pause à midi</option>
+                  <option value="non_stop" selected={baseNonStop(stand)}>Non-stop</option>
+                </select>
                 <div class="mt-1 flex flex-wrap items-center gap-2">
-                  <span class="w-24">Matin</span>
-                  <input type="time" name="matin_de" value={baseDe(stand).matin?.de ?? ""} class={champCal} />
-                  à
-                  <input type="time" name="matin_a" value={baseDe(stand).matin?.a ?? ""} class={champCal} />
+                  <span class="w-24" data-champ="lm" hidden={baseNonStop(stand)}>Matin</span>
+                  <span class="w-24" data-champ="lo" hidden={!baseNonStop(stand)}>Ouverture</span>
+                  <span data-champ="md">
+                    <input type="time" name="matin_de" value={baseDe(stand).matin?.de ?? ""} class={champCal} />
+                  </span>
+                  <span data-champ="tm" hidden={baseNonStop(stand)}>à</span>
+                  <span data-champ="ma" hidden={baseNonStop(stand)}>
+                    <input type="time" name="matin_a" value={baseNonStop(stand) ? "" : (baseDe(stand).matin?.a ?? "")} class={champCal} />
+                  </span>
+                  <span data-champ="ns" hidden={!baseNonStop(stand)} class="text-xs text-bo-muted">→ sans coupure</span>
                 </div>
                 <div class="mt-1 flex flex-wrap items-center gap-2">
-                  <span class="w-24">Après-midi</span>
-                  <input type="time" name="aprem_de" value={baseDe(stand).apresMidi?.de ?? ""} class={champCal} />
-                  à
-                  <input type="time" name="aprem_a" value={baseDe(stand).apresMidi?.a ?? ""} class={champCal} />
+                  <span class="w-24" data-champ="la" hidden={baseNonStop(stand)}>Après-midi</span>
+                  <span class="w-24" data-champ="lf" hidden={!baseNonStop(stand)}>Fermeture</span>
+                  <span data-champ="ad" hidden={baseNonStop(stand)}>
+                    <input type="time" name="aprem_de" value={baseDe(stand).apresMidi?.de ?? ""} class={champCal} />
+                  </span>
+                  <span data-champ="ta" hidden={baseNonStop(stand)}>à</span>
+                  <span data-champ="aa">
+                    <input
+                      type="time"
+                      name="aprem_a"
+                      value={(baseNonStop(stand) ? baseDe(stand).matin?.a : baseDe(stand).apresMidi?.a) ?? ""}
+                      class={champCal}
+                    />
+                  </span>
                 </div>
               </fieldset>
               {joursDuStand(stand.dateDebut ?? null, stand.dateFin ?? null).length > 0 && (
@@ -673,12 +750,7 @@ const classeBouton =
                     class="w-full text-sm"
                     data-jours-stand
                     data-visibles={JSON.stringify(VISIBLES)}
-                    data-base={JSON.stringify({
-                      md: baseDe(stand).matin?.de ?? "",
-                      ma: baseDe(stand).matin?.a ?? "",
-                      ad: baseDe(stand).apresMidi?.de ?? "",
-                      aa: baseDe(stand).apresMidi?.a ?? "",
-                    })}
+                    data-base={JSON.stringify(heuresDeRepli(stand))}
                   >
                     <thead class="sticky top-0 bg-bo-bg text-left text-xs text-bo-muted">
                       <tr>
@@ -695,13 +767,13 @@ const classeBouton =
                         const base = baseDe(stand);
                         const m = special && "matin" in special ? special.matin : base.matin;
                         const am = special && "apresMidi" in special ? special.apresMidi : base.apresMidi;
-                        // Ce jour-là (17/11) : normal, fermé, matin ou après-midi
-                        // fermé, ou non-stop (un seul créneau, du matin au soir).
+                        // Ce jour-là (17/11) : avec pause, fermé, matin ou après-midi
+                        // fermé, ou non-stop (un seul créneau, du matin au soir). Lu
+                        // sur les heures du jour, base comprise : sous une base
+                        // non-stop, un jour ordinaire est non-stop lui aussi.
                         const genre =
                           h.ferme || (!m && !am)
                           ? "ferme"
-                          : !special
-                            ? "normal"
                           : !m && am
                             ? "matin_ferme"
                             : m && !am
@@ -718,15 +790,19 @@ const classeBouton =
                         // Ce que la ligne montre selon son choix (VISIBLES).
                         const cache = (champ: string) => !VISIBLES[genre]!.includes(champ);
                         return (
-                          <tr class={`border-t border-bo-border ${genre === "ferme" ? "bg-bo-bg text-bo-muted" : ""}`}>
+                          <tr
+                            class={`border-t border-bo-border ${genre === "ferme" ? "bg-bo-bg text-bo-muted" : ""}`}
+                            data-ligne-horaires
+                          >
                             <td class="px-2 py-1 whitespace-nowrap">{jourCourt(j)}</td>
                             <td class="px-2 py-1">
                               <select
                                 name={`j_${j}_type`}
+                                data-type-horaires
                                 aria-label={`Ce jour-là, le ${jourCourt(j)}`}
                                 class="rounded border border-bo-border bg-bo-surface px-1 py-0.5 text-xs"
                               >
-                                <option value="normal" selected={genre === "normal"}>Normal</option>
+                                <option value="normal" selected={genre === "normal"}>Avec pause</option>
                                 <option value="ferme" selected={genre === "ferme"}>Fermé</option>
                                 <option value="matin_ferme" selected={genre === "matin_ferme"}>Matin fermé</option>
                                 <option value="aprem_ferme" selected={genre === "aprem_ferme"}>Après-midi fermé</option>
@@ -1092,21 +1168,43 @@ const classeBouton =
   )}
 
   <script is:inline>
+    // « Appliquer avec l'IA » (17/11) : un spinner pendant que l'IA travaille,
+    // et un second clic ne renvoie pas la demande.
+    document.addEventListener("submit", (evenement) => {
+      const formulaire = evenement.target;
+      if (!(formulaire instanceof HTMLFormElement) || !formulaire.hasAttribute("data-ia-horaires")) return;
+      if (formulaire.dataset.envoye === "1") {
+        evenement.preventDefault();
+        return;
+      }
+      formulaire.dataset.envoye = "1";
+      const bouton = formulaire.querySelector("[data-bouton-ia]");
+      if (!bouton) return;
+      bouton.setAttribute("aria-disabled", "true");
+      bouton.setAttribute("aria-busy", "true");
+      bouton.classList.add("opacity-70", "cursor-wait");
+      bouton.querySelector("[data-attente]")?.removeAttribute("hidden");
+      const texte = bouton.querySelector("[data-texte]");
+      if (texte) texte.textContent = "L'IA prépare le calendrier…";
+    });
+
     // Calendrier d'un stand (17/11) : « Ce jour-là » change ce que la ligne
     // montre. Non-stop : le début du matin et la fin de l'après-midi, rien
     // entre les deux ; matin ou après-midi fermé : « Fermé » à sa place. Une
     // case qui réapparaît vide reprend l'heure de base.
     document.addEventListener("change", (evenement) => {
       const choix = evenement.target;
-      if (!(choix instanceof HTMLSelectElement) || !/^j_.+_type$/.test(choix.name)) return;
-      const ligne = choix.closest("tr");
-      const table = choix.closest("table[data-jours-stand]");
-      if (!ligne || !table) return;
+      // Une ligne de jour (dans le tableau) ou les horaires de base (le
+      // fieldset au-dessus) : chacun porte ce qu'il montre et ses heures de repli.
+      if (!(choix instanceof HTMLSelectElement) || !choix.hasAttribute("data-type-horaires")) return;
+      const ligne = choix.closest("[data-ligne-horaires]");
+      const reglage = choix.closest("[data-visibles]");
+      if (!ligne || !reglage) return;
       let visibles = [];
       let base = {};
       try {
-        visibles = JSON.parse(table.getAttribute("data-visibles") || "{}")[choix.value] || [];
-        base = JSON.parse(table.getAttribute("data-base") || "{}");
+        visibles = JSON.parse(reglage.getAttribute("data-visibles") || "{}")[choix.value] || [];
+        base = JSON.parse(reglage.getAttribute("data-base") || "{}");
       } catch {
         return;
       }

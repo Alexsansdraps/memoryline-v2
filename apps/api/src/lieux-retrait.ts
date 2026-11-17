@@ -28,6 +28,7 @@ import {
   dernierMomentDeRetrait,
   LANGUES_RESUME,
   resumeHoraires,
+  semaineDuStand,
   retraitProposable,
   type StandCalendrier,
 } from "@memoryline/types";
@@ -195,8 +196,14 @@ export async function lieuxRetraitPublics(langue: string): Promise<
     retirerAvantHeure: string | null;
     /** Le stand est-il ouvert en ce moment ? Dit à la caisse (17/11). Null hors stand. */
     ouvert: boolean | null;
+    /** Premier et dernier jour du stand (« AAAA-MM-JJ »). Null hors stand. */
+    du: string | null;
+    au: string | null;
+    /** Ses 7 prochains jours, pour le petit tableau de la caisse (17/11). */
+    semaine: ReturnType<typeof semaineDuStand>;
   }[]
 > {
+  const maintenant = new Date();
   const rangs = await db
     .select({
       l: schema.pickupPoints,
@@ -211,10 +218,8 @@ export async function lieuxRetraitPublics(langue: string): Promise<
     .orderBy(asc(schema.pickupPoints.position), asc(schema.pickupPoints.id));
   return rangs.map(({ l, dateDebut, dateFin, horaires, standOuvert }) => {
     // Le dernier moment pour venir : le dernier jour OUVERT, à l'heure où il ferme.
-    const dernier =
-      l.standId != null
-        ? dernierMomentDeRetrait({ dateDebut: dateDebut ?? null, dateFin: dateFin ?? null, horaires: horaires ?? null })
-        : null;
+    const cal = { dateDebut: dateDebut ?? null, dateFin: dateFin ?? null, horaires: horaires ?? null };
+    const dernier = l.standId != null ? dernierMomentDeRetrait(cal) : null;
     return {
     id: l.id,
     nom: champTraduit(l.translations, langue, "nom") ?? l.nom,
@@ -226,6 +231,9 @@ export async function lieuxRetraitPublics(langue: string): Promise<
     retirerAvant: dernier?.jour ?? null,
     retirerAvantHeure: dernier?.heure ?? null,
     ouvert: l.standId != null ? !!standOuvert : null,
+    du: l.standId != null ? (dateDebut ?? null) : null,
+    au: l.standId != null ? (dateFin ?? null) : null,
+    semaine: l.standId != null ? semaineDuStand(cal, maintenant) : null,
     };
   });
 }
