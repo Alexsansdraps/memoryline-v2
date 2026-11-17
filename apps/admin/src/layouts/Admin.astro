@@ -5,8 +5,14 @@ import { MENU, type NavItem } from "../lib/menu.ts";
 import { modeEssai, HORS_ESSAI } from "../lib/mode-essai.ts";
 interface Props {
   title: string;
+  rubrique?: string;
 }
-const { title } = Astro.props;
+/**
+ * `rubrique` : l'entrée du menu à montrer « en cours » quand l'adresse ne
+ * suffit pas à la deviner (17/11) — une vente du stand s'ouvre sous
+ * /commandes/…, mais elle appartient à « Ventes stand ».
+ */
+const { title, rubrique } = Astro.props as { title: string; rubrique?: string };
 const path = relPath(Astro.url.pathname);
 
 // Le menu (groupes, entrées, droits) est décrit dans lib/menu.ts : l'index de
@@ -65,7 +71,9 @@ const motifsDuMenu = visibleNav.flatMap((g) =>
   ]),
 );
 const courant =
-  motifsDuMenu.filter((x) => isActive(x.m)).sort((a, b) => b.m.length - a.m.length)[0]?.cible ?? null;
+  (rubrique && motifsDuMenu.some((x) => x.cible === rubrique) ? rubrique : null) ??
+  motifsDuMenu.filter((x) => isActive(x.m)).sort((a, b) => b.m.length - a.m.length)[0]?.cible ??
+  null;
 const estCourant = (href: string) => courant !== null && href === courant;
 
 /*

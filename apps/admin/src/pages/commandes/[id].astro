@@ -498,6 +498,8 @@ const estPanier = order?.status === "draft";
 
 /** Peut-on encore encaisser un règlement arrivé hors du site ? */
 const encaissableALaMain = !!order && !encaisse && !annulee && !estPanier && !auStand;
+/** Une vente du stand pas encore réglée : un seul bouton, « réglé sur place » (17/11). */
+const encaissableAuStand = !!order && !encaisse && !annulee && !estPanier && auStand;
 
 /** Ce que l'annulation laisserait en suspens si elle ne remboursait pas. */
 const resteSiPasRembourse = encaisse ? total - rembourse : 0;
@@ -564,15 +566,20 @@ function libelleMoyen(v: string | null | undefined): string {
 const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null;
 ---
 
-<Admin title={order ? `Commande ${order.number}` : `Commande #${id}`}>
+<Admin
+  title={order ? `Commande ${order.number}` : `Commande #${id}`}
+  rubrique={auStand ? "/ventes-salon" : undefined}
+>
   <p class="mb-4">
     {/* Le vendeur revient à SES ventes : la liste « /commandes » est celle
         du site, qui ne lui est pas ouverte. */}
+    {/* Une vente du stand ramène aux ventes du stand (17/11), pas aux
+        commandes en ligne. */}
     <a
-      href={url(estProprietaire ? "/commandes" : "/ventes-salon")}
+      href={url(estProprietaire && !auStand ? "/commandes" : "/ventes-salon")}
       class="text-sm text-bo-accent hover:underline"
     >
-      ← {estProprietaire ? "Retour aux commandes" : "Retour à vos ventes"}
+      ← {!estProprietaire ? "Retour à vos ventes" : auStand ? "Retour aux ventes du stand" : "Retour aux commandes"}
     </a>
   </p>
 
@@ -1771,6 +1778,22 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 Sans ce bouton, une cliente qui paie par virement laissait sa
                 commande « En attente » pour toujours — jamais préparée, sans
                 fichier d'impression, et sans confirmation. */}
+            {/* Une vente du stand (17/11) : la tablette l'enregistre « à
+                encaisser », et Margaux la marque réglée d'un clic. */}
+            {encaissableAuStand && (
+              <form method="POST" class="border-t border-bo-border px-4 py-3">
+                <input type="hidden" name="_action" value="encaisser" />
+                <input type="hidden" name="moyen" value="sur_place" />
+                <p class="mb-2 text-sm text-bo-muted">
+                  Vente prise au stand, pas encore réglée. Quand le client a payé
+                  (espèces ou carte), marquez-la réglée : elle passe en « Payée »
+                  pour {formatPrice(total)}.
+                </p>
+                <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
+                  Encaisser {formatPrice(total)} · réglé sur place
+                </button>
+              </form>
+            )}
             {encaissableALaMain && (
               <details class="border-t border-bo-border">
                 <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
@@ -1827,7 +1850,9 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 Le montant part plein — tout ce qui reste —, se règle en euros
                 ou en pourcentage du reste, et l'annulation se coche ici aussi :
                 le bloc « Annuler » ne touche plus à l'argent. */}
-            {encaisse && resteSiPasRembourse > 0 && (
+            {/* Pas de remboursement pour une vente du stand (17/11) : elle se
+                règle de la main à la main, sur place. */}
+            {encaisse && resteSiPasRembourse > 0 && !auStand && (
               <details class="border-t border-bo-border">
                 <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
                   Rembourser
@@ -2154,7 +2179,9 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           {/* Annuler : le geste qu'on cherche neuf fois sur dix quand on
               croit vouloir supprimer. Il se range donc JUSTE AVANT la
               suppression, pour qu'on le rencontre en premier. */}
-          {!annulee && !estPanier && (
+          {/* Une vente du stand déjà réglée ne s'annule pas d'ici (17/11) : pas
+              de remboursement au stand. Pas encore réglée, elle s'annule. */}
+          {!annulee && !estPanier && !(auStand && encaisse) && (
             <section class="rounded-lg border border-amber-300 bg-bo-surface px-4 py-3">
               <h3 class="mb-2 font-medium text-amber-900">Annuler la commande</h3>
               <p class="mb-2 text-sm text-bo-muted">

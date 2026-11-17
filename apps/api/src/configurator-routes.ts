@@ -1689,6 +1689,9 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
       .from(schema.orders)
       .where(eq(schema.orders.id, orderId));
     if (!order) return;
+    // Une vente du stand encaissée au BO (17/11) : ni confirmation aux tarifs
+    // du site (le stand les cache), ni avis à la boutique, qui était là.
+    if (order.channel === "salon") return;
     const [client] = order.customerId
       ? await db
           .select()

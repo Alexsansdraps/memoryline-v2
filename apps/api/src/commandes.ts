@@ -2471,6 +2471,8 @@ export function mountOrderRoutes(app: Hono): void {
    * là où on le cherche.
    */
   const MOYENS_HORS_LIGNE: Record<string, string> = {
+    // Une vente du stand, réglée au stand (espèces ou carte) : 17/11.
+    sur_place: "règlement sur place, au stand",
     virement: "virement bancaire",
     cheque: "chèque",
     especes: "espèces",
@@ -2519,17 +2521,10 @@ export function mountOrderRoutes(app: Hono): void {
         },
         400,
       );
-    // Une vente de stand naît déjà réglée, de la main à la main. Elle n'a rien
-    // à encaisser après coup, et la confirmation que cette route enverrait
-    // porterait les tarifs du site, que le stand cache justement.
-    if (order.channel === "salon")
-      return c.json(
-        {
-          error:
-            "Une vente prise au stand est réglée sur place : elle est encaissée dès la vente, il n'y a rien à marquer ici.",
-        },
-        400,
-      );
+    // Une vente du stand s'encaisse ici depuis le 17/11 : la tablette
+    // l'enregistre « à encaisser », et Margaux la marque réglée sur place.
+    // Aucun courrier ne part pour elle (previenirDuPaiement) : il porterait
+    // les tarifs du site, que le stand cache justement.
     // Idempotence : ce n'est PAS une erreur de cliquer deux fois, c'est même
     // le geste naturel quand la page a mis un instant à répondre. On répond
     // donc que c'est déjà fait, sans écrire un second encaissement.

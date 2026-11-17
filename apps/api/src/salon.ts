@@ -314,12 +314,12 @@ export function mountSalonRoutes(app: Hono): void {
           number: /^SAL-\d+$/.test(verrouille.number)
             ? verrouille.number
             : await prochainNumeroDeCommande(tx, "SAL-"),
-          // Payée d'emblée : au stand, le client règle avant de partir avec
-          // son affiche, ou il ne commande pas. Un état « en attente »
-          // obligeait à se souvenir de cocher chaque vente du samedi, et
-          // laissait les chiffres du stand à zéro tant que personne ne l'avait
-          // fait.
-          status: "paid",
+          // À ENCAISSER (17/11, Alexandra : « une commande stand n'est pas
+          // payée d'avance, ça doit être une étape que Margaux met »). La
+          // tablette enregistre la commande ; Margaux la marque réglée au BO
+          // (« Encaisser · réglé sur place ») quand le client a payé. C'est
+          // ce geste qui écrit l'encaissement au grand livre (markOrderPaid).
+          status: "pending",
           customerId: client.id,
           totalCents: total,
           shippingCents: 0,
@@ -336,23 +336,13 @@ export function mountSalonRoutes(app: Hono): void {
         .where(eq(schema.orders.id, panier.id))
         .returning();
 
-      // Le grand livre reçoit l'encaissement, comme pour une vente du site :
-      // c'est lui qui fait foi pour le solde d'une commande, et un
-      // remboursement de stand doit pouvoir s'y adosser.
-      await tx.insert(schema.orderTransactions).values({
-        orderId: panier.id,
-        kind: "sale",
-        status: "success",
-        amountCents: total,
-        gateway: "stand",
-        externalRef: null,
-      });
-
+      // Pas d'encaissement ici : il s'écrit quand Margaux marque la commande
+      // réglée au BO (route /admin/orders/:id/encaisser, moyen « sur place »).
       await tx.insert(schema.orderEvents).values({
         orderId: panier.id,
         kind: "event",
         message:
-          `Commande prise au stand${evenement ? ` (${evenement})` : ""}, réglée sur place.`,
+          `Commande prise au stand${evenement ? ` (${evenement})` : ""}, à encaisser sur place.`,
       });
       return { lignes, commande: commande! };
     });
