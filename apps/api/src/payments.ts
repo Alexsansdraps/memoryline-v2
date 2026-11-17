@@ -386,6 +386,19 @@ const RAISONS: Record<string, string> = {
     "PayPal ne retrouve pas ce paiement. Il a peut-être expiré : refaites la commande.",
   INSTRUMENT_DECLINED:
     "Le moyen de paiement du client a été refusé. C'est au client de réessayer avec un autre.",
+  // Vu le 17/11, au premier remboursement en réel : PayPal retient souvent
+  // l'argent des premières ventes d'un compte, et ne rembourse que depuis le
+  // solde disponible ou une banque liée.
+  REFUND_FAILED_INSUFFICIENT_FUNDS:
+    "Le solde du compte PayPal de la boutique ne suffit pas pour rembourser (l'argent des premières ventes est souvent retenu quelques jours par PayPal). Liez un compte bancaire au compte PayPal, ou ajoutez de l'argent au solde, puis recommencez. Vous pouvez aussi rembourser depuis paypal.com, puis enregistrer le remboursement ici en décochant « rendre l'argent ».",
+  TRANSACTION_REFUSED:
+    "PayPal refuse ce remboursement pour ce paiement. Regardez la transaction sur paypal.com (Activité) : elle est peut-être encore en attente, ou déjà remboursée.",
+  CAPTURE_FULLY_REFUNDED:
+    "Ce paiement a déjà été entièrement remboursé sur PayPal. Enregistrez le remboursement ici en décochant « rendre l'argent ».",
+  REFUND_AMOUNT_EXCEEDED:
+    "Le montant dépasse ce qui reste remboursable sur ce paiement PayPal (un remboursement a peut-être déjà été fait depuis paypal.com).",
+  REFUND_TIME_LIMIT_EXCEEDED:
+    "Ce paiement PayPal est trop ancien pour être remboursé automatiquement. Remboursez depuis paypal.com, puis enregistrez le remboursement ici en décochant « rendre l'argent ».",
 };
 
 async function refusPaypal(res: Response): Promise<RefusPaypal> {

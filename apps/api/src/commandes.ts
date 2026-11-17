@@ -28,6 +28,7 @@ import {
 import { db, schema } from "./db/client.js";
 import {
   capturePaypalDeLaCommande,
+  RefusPaypal,
   refundPaypal,
   refundStripe,
 } from "./payments.js";
@@ -1720,7 +1721,9 @@ export function mountOrderRoutes(app: Hono): void {
           externalRef = r.id;
         } catch (e) {
           return {
-            erreur: `PayPal a refusé le remboursement : ${String(e)}`,
+            // L'explication en clair (RefusPaypal) plutôt que « RefusPaypal:
+            // PayPal a refusé : CODE — … » : c'est la boutique qui la lit.
+            erreur: `PayPal a refusé le remboursement. ${e instanceof RefusPaypal ? e.explication : String(e)}`,
             code: 502,
           };
         }
