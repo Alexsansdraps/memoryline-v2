@@ -61,6 +61,7 @@ interface Finances {
   };
   anomalies: Anomalie[];
   mouvements: Mouvement[];
+  chiffreAffaires?: { cents: number; nombre: number };
   parCanal: { canal: string; stand: string | null; cents: number; nombre: number }[];
   parMoyen: { moyen: string; cents: number; nombre: number }[];
   remboursements: SourceChiffree;
@@ -644,7 +645,10 @@ const cadre = "rounded-lg border border-bo-border bg-bo-surface";
           <section>
             <h2 class="mb-1 text-base font-semibold">Par canal de vente</h2>
             <p class="mb-3 text-sm text-bo-muted">
-              Le site, et chaque stand nommément. Total des commandes vendues.
+              Le site, et chaque stand nommément : le chiffre d'affaires
+              {finances.chiffreAffaires && <> ({formatPrice(finances.chiffreAffaires.cents)})</>}.
+              Une carte cadeau compte quand elle est utilisée ; sa vente est
+              de l'argent encaissé d'avance, à part (« Cartes cadeaux vendues »).
             </p>
             <div class={`overflow-x-auto ${cadre}`}>
               <table class="w-full text-sm">

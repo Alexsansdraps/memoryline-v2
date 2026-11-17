@@ -491,6 +491,48 @@ export interface RemiseAppliquee {
 }
 
 /**
+ * Le code de cette commande a-t-il vraiment fait baisser son prix ?
+ *
+ * Décision d'Alexandra (17/11) : un code à usage unique qui n'a RIEN remisé
+ * (minimum d'achat pas atteint…) reste utilisable. Il ne compte comme
+ * utilisé que s'il a fait baisser le prix : une remise sur les affiches, ou
+ * la livraison offerte (port à 0 alors que la règle du code l'offrait).
+ *
+ * Lu sur ce que la commande a FIGÉ au passage en caisse (`promotions`) : les
+ * règles en jeu et le détail des remises. Une commande d'avant cette copie
+ * (`promotions` nul) compte comme avant, par prudence : on ne sait pas ce
+ * que son code a fait.
+ */
+export function codeARemise(
+  commande: {
+    promoCode: string | null | undefined;
+    shippingCents?: number | null;
+    promotions:
+      | {
+          regles?: readonly Pick<RegleParier, "name" | "type" | "code" | "config">[];
+          detail?: readonly RemiseAppliquee[];
+        }
+      | null
+      | undefined;
+  },
+): boolean {
+  const cle = cleDeCode(commande.promoCode);
+  if (!cle) return false;
+  if (!commande.promotions) return true;
+  const regles = (commande.promotions.regles ?? []).filter((r) => cleDeCode(r.code) === cle);
+  if (!regles.length) return false;
+  const noms = new Set(regles.map((r) => r.name ?? r.type));
+  const remise = (commande.promotions.detail ?? []).some(
+    (d) => noms.has(d.regle) && d.montantCents > 0,
+  );
+  if (remise) return true;
+  // La livraison offerte par le code : il a joué si le port est à 0. Un port
+  // déjà gratuit sans lui (retrait…) le compterait aussi : c'est le seul cas
+  // douteux, et il penche du côté de la boutique.
+  return regles.some((r) => offreLaLivraison(r)) && (commande.shippingCents ?? 0) === 0;
+}
+
+/**
  * Remises applicables au panier, règle par règle.
  *
  * Les remises se cumulent dans l'ordre de priorité et le total est borné au

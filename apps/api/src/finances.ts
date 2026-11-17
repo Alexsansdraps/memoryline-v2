@@ -228,6 +228,26 @@ export interface Mouvement {
   client: string;
 }
 
+/**
+ * Ce qu'une commande apporte au CHIFFRE D'AFFAIRES (décision d'Alexandra,
+ * 17/11) : une carte cadeau se compte quand elle est UTILISÉE, pas quand elle
+ * est vendue. Sa vente est de l'argent encaissé d'avance — une dette envers
+ * qui la tient —, affichée à part (« Cartes cadeaux vendues »). Compter les
+ * deux faisait entrer deux fois le même argent : 50 € à la vente de la carte,
+ * puis 50 € à l'achat de l'affiche qu'elle paie.
+ *
+ * Une commande payée avec une carte compte donc en entier ; une commande qui
+ * achète une carte n'en compte que le reste.
+ */
+export function partDuChiffreDAffaires(cmd: {
+  totalCents: number;
+  /** Ce que la commande a payé pour des cartes cadeaux (lignes « carte »). */
+  cartesVenduesCents: number;
+}): { chiffreAffairesCents: number; avanceCents: number } {
+  const avanceCents = Math.max(0, Math.min(cmd.cartesVenduesCents, cmd.totalCents));
+  return { chiffreAffairesCents: cmd.totalCents - avanceCents, avanceCents };
+}
+
 export interface Finances {
   periode: { du: string; au: string };
   sources: {
@@ -238,6 +258,12 @@ export interface Finances {
   };
   anomalies: Anomalie[];
   mouvements: Mouvement[];
+  /**
+   * Le chiffre d'affaires de la période (partDuChiffreDAffaires) : les
+   * commandes, moins les cartes cadeaux qu'elles ont vendues. `parCanal` le
+   * répartit.
+   */
+  chiffreAffaires: SourceChiffree;
   parCanal: { canal: string; stand: string | null; cents: number; nombre: number }[];
   parMoyen: { moyen: string; cents: number; nombre: number }[];
   remboursements: SourceChiffree;
@@ -373,6 +399,8 @@ async function rapprocher(periode: Periode): Promise<Finances> {
       .select({
         orderId: schema.orderItems.orderId,
         cents: raw<number>`coalesce(sum(${schema.orderItems.unitPriceCents} * ${schema.orderItems.quantity}), 0)::int`,
+        // Les cartes cadeaux vendues par la commande : hors chiffre d'affaires.
+        cartesCents: raw<number>`coalesce(sum(${schema.orderItems.unitPriceCents} * ${schema.orderItems.quantity}) filter (where ${schema.orderItems.giftCard} is not null), 0)::int`,
       })
       .from(schema.orderItems)
       .innerJoin(schema.orders, eq(schema.orderItems.orderId, schema.orders.id))
@@ -523,7 +551,11 @@ async function rapprocher(periode: Periode): Promise<Finances> {
   /* --- Ce que chaque source dit, commande par commande ------------------- */
 
   const lignesDe = new Map<number, number>();
-  for (const l of lignesParCommande) lignesDe.set(l.orderId, l.cents);
+  const cartesVenduesDe = new Map<number, number>();
+  for (const l of lignesParCommande) {
+    lignesDe.set(l.orderId, l.cents);
+    cartesVenduesDe.set(l.orderId, Number(l.cartesCents ?? 0));
+  }
 
   /** Encaissements notés au grand livre, et le moyen qui domine. */
   const venteJournalDe = new Map<number, number>();
@@ -594,9 +626,17 @@ async function rapprocher(periode: Periode): Promise<Finances> {
 
   let commandesCents = 0;
   let lignesCents = 0;
+  let chiffreAffairesCents = 0;
+  let chiffreAffairesNombre = 0;
   for (const cmd of commandes) {
     commandesCents += cmd.totalCents;
     lignesCents += lignesDe.get(cmd.id) ?? 0;
+    const part = partDuChiffreDAffaires({
+      totalCents: cmd.totalCents,
+      cartesVenduesCents: cartesVenduesDe.get(cmd.id) ?? 0,
+    });
+    chiffreAffairesCents += part.chiffreAffairesCents;
+    if (part.chiffreAffairesCents > 0) chiffreAffairesNombre++;
   }
 
   /* --- Répartitions ------------------------------------------------------ */
@@ -625,9 +665,18 @@ async function rapprocher(periode: Periode): Promise<Finances> {
       cents: 0,
       nombre: 0,
     };
-    entree.cents += cmd.totalCents;
-    entree.nombre += 1;
-    parCanal.set(cle, entree);
+    // Le chiffre d'affaires, sans les cartes cadeaux vendues : elles comptent
+    // quand elles servent (partDuChiffreDAffaires). Une commande qui n'a
+    // vendu QUE des cartes n'est pas une vente du canal.
+    const part = partDuChiffreDAffaires({
+      totalCents: cmd.totalCents,
+      cartesVenduesCents: cartesVenduesDe.get(cmd.id) ?? 0,
+    });
+    if (part.chiffreAffairesCents > 0 || part.avanceCents === 0) {
+      entree.cents += part.chiffreAffairesCents;
+      entree.nombre += 1;
+      parCanal.set(cle, entree);
+    }
 
     // Une commande peut être réglée en deux temps : une part sur une carte
     // cadeau, le reste chez un prestataire. Chaque euro n'est compté qu'une
@@ -839,6 +888,7 @@ async function rapprocher(periode: Periode): Promise<Finances> {
     },
     anomalies: anomalies.slice(0, LIMITE_ANOMALIES),
     mouvements,
+    chiffreAffaires: { cents: chiffreAffairesCents, nombre: chiffreAffairesNombre },
     parCanal: [...parCanal.values()].sort((a, b) => b.cents - a.cents),
     parMoyen: [...parMoyen.values()].sort((a, b) => b.cents - a.cents),
     remboursements: { cents: remboursementsCents, nombre: remboursementsNombre },

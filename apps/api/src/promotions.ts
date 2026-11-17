@@ -23,6 +23,7 @@ import {
   POSTER_FORMATS,
   cleDeCarte,
   cleDeCode,
+  codeARemise,
   codeCarteMasque,
   estConfigV2,
   estUsageUnique,
@@ -58,7 +59,9 @@ const utiliseVraiment = sql`${schema.orders.status} = 'paid' and not (${schema.o
 
 /**
  * Combien de commandes ont utilisé ce code (voir `utiliseVraiment`), en dehors
- * de la commande `sauf`.
+ * de la commande `sauf`. Seules comptent celles où le code a VRAIMENT fait
+ * baisser le prix (codeARemise, décision du 17/11) : un code à usage unique
+ * qui n'a rien remisé reste utilisable.
  *
  * Lu SOUS LE VERROU de la promotion au moment du paiement (markOrderPaid) :
  * deux commandes payées au même instant avec un code à usage unique passent
@@ -71,8 +74,12 @@ export async function utilisationsDuCode(
 ): Promise<number> {
   const cle = cleDeCode(code);
   if (!cle) return 0;
-  const [r] = await ex
-    .select({ n: sql<number>`count(*)::int` })
+  const lignes = await ex
+    .select({
+      promoCode: schema.orders.promoCode,
+      shippingCents: schema.orders.shippingCents,
+      promotions: schema.orders.promotions,
+    })
     .from(schema.orders)
     .where(
       and(
@@ -81,7 +88,7 @@ export async function utilisationsDuCode(
         sauf != null ? ne(schema.orders.id, sauf) : undefined,
       ),
     );
-  return Number(r?.n ?? 0);
+  return lignes.filter((l) => codeARemise(l)).length;
 }
 
 /**
@@ -431,12 +438,21 @@ export function mountPromotions(app: Hono): void {
         .from(schema.promoRules)
         .orderBy(desc(schema.promoRules.priority), asc(schema.promoRules.id)),
       db
-        .select({ cle: sql<string>`${cleSqlDuCodeCommande}`, n: sql<number>`count(*)::int` })
+        .select({
+          promoCode: schema.orders.promoCode,
+          shippingCents: schema.orders.shippingCents,
+          promotions: schema.orders.promotions,
+        })
         .from(schema.orders)
-        .where(and(sql`coalesce(${schema.orders.promoCode}, '') <> ''`, utiliseVraiment))
-        .groupBy(sql`1`),
+        .where(and(sql`coalesce(${schema.orders.promoCode}, '') <> ''`, utiliseVraiment)),
     ]);
-    const parCle = new Map(usages.map((u) => [u.cle, Number(u.n)]));
+    // Comptées comme le verrou du paiement les compte (codeARemise).
+    const parCle = new Map<string, number>();
+    for (const u of usages) {
+      if (!codeARemise(u)) continue;
+      const cle = cleDeCode(u.promoCode);
+      parCle.set(cle, (parCle.get(cle) ?? 0) + 1);
+    }
     return c.json(
       rows.map((r) => ({
         ...r,
