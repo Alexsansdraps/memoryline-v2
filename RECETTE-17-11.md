@@ -18,6 +18,51 @@ Ce plan vient d'une relecture adverse faite la nuit du 16 au 17/11 : 6 agents, c
 
 Testé sur une copie du schéma 0079 avec un jeu d'essai : une commande live et une d'essai, une vente de stand, un bordereau, un compteur de factures. Le vidage passe. WEB-0016 reste avec son paiement et sa cliente, tout le reste part, le stand est fermé.
 
+### Recette complète du 16-17/11
+
+Elle a été jouée sur la pile locale avec Chrome en tablette et en téléphone simulés, et chaque bug a été contre-vérifié. Ce qui a été **corrigé et mis en ligne le 17/11** (`a7840b6`, `9de3957`) :
+
+- **Bouton ou geste « précédent » pendant la personnalisation** : avant, il quittait la fiche et l'affiche composée était perdue. Maintenant il ferme seulement la fenêtre, comme la croix, et l'affiche reste là. Vérifié dans le navigateur.
+- **BO › Pages › « Où elle se montre »** : ce réglage n'existait pas dans l'éditeur, alors que l'API le connaissait. On peut maintenant choisir « Sur le site », « Sur la tablette du stand seulement » ou « Les deux ». Vérifié au BO local.
+- **Stand** : le nom et l'e-mail du client étaient perdus après « Revenir à ma commande » puis « Modifier » une affiche. Ils restent maintenant tant que c'est le même panier.
+- **Symboles au PDF** : ★ ♡ ♪ → ✓, le grec, le cyrillique et l'arabe sortaient en petites cases à code hexadécimal. Une police de secours (DejaVu) est installée dans l'image de l'API. 16 rendus de commandes existantes ont été comparés avant et après : identiques au pixel près. Le chinois, le japonais et le coréen restent non imprimables.
+- **Remboursement en « % du reste »** : le navigateur refusait 50 % et 100 %. Corrigé.
+- **Commande annulée** : si la cliente revalidait sa caisse, la commande repassait « en attente de paiement ». Elle reste maintenant close, et le site repart d'un panier neuf.
+- **Bouton « Marquer comme remis »** (vente du stand) : la fiche dit maintenant qu'il envoie au client le courriel « Votre affiche est prête ».
+- Courriel de contact reçu par la boutique : la phrase sur le bouton « Répondre » est remise d'accord avec le Reply-To.
+
+Ce qui **marche** (vu) :
+- **La tablette** : mode stand, aucun prix affiché, code du stand, stand fermé pendant la saisie, vente sans double envoi, « Revenir à ma commande », « Client suivant ». Les PDF des affiches personnalisées sortent nets à 300 ppp, emojis en couleur.
+- **Le compte vendeur.**
+- **Le module** en 360, 390, 768 et 1024 px : la rotation ne perd rien, la croix garde l'affiche, la vidéo s'affiche.
+- **Les emojis** : 75 rendus, identiques à l'écran à 0,6 mm près.
+
+**BLOQUANT pour jeudi : les 15 affiches « prêtes à imprimer ».** Leur PDF d'impression est **refusé**, en A4 comme en A3, en prod comme en dev. Elles n'ont que la photo de mise en scène (1020 × 1400 px : l'affiche dans un cadre, devant une plante). Pourtant, la tablette les vend sans prévenir. Il faut choisir l'une de ces options :
+- **Margaux ajoute le visuel HD de chacune** : BO › Produits › la fiche › bloc « Images ». Il faut au moins 1754 × 2480 px pour l'A3, idéalement 2480 × 3508. La photo de mise en scène peut rester en premier, l'impression prend la plus grande image. Contrôle : la mention rouge sous « PDF » disparaît dans Ventes stand.
+- **Ou bien on les retire de la vente** jusque-là : BO › Produits › filtrer « prêtes à imprimer » › tout cocher › statut « Brouillon ».
+- **Ou bien elles sont déjà imprimées en stock** : dans ce cas, rien à faire.
+
+Petits défauts vus, **non corrigés** (pas gênants pour jeudi) :
+- sur un téléphone de 360 px avec un cadre choisi, la barre du bas déborde (les cadres sont éteints sur le site) ;
+- une bulle « Plus bas » couvre deux vignettes de personnages sur petit téléphone, jusqu'au premier défilement ;
+- la poignée ⠿ fait 19 px (l'appui long sur la ligne marche) ;
+- le champ d'une ligne longue ne s'agrandit pas ;
+- les emojis plus récents que Twemoji 15.0 (🫩 🐦‍🔥 🍋‍🟩) disparaissent du papier sans avertissement ;
+- ♥ ☀ ❄ tapés sans sélecteur sont en noir à l'écran mais en couleur sur le papier ;
+- la caisse accepte un code postal ou un téléphone fantaisiste ;
+- la pastille du panier ne suit pas un changement de quantité ;
+- l'ordre des lignes du panier change quand on modifie une quantité ;
+- la facture PDF retire les emojis ;
+- le prénom des courriels est coupé au premier espace ;
+- « Encaissé : Stripe · pi_… » s'affiche sur une commande jamais payée ;
+- le message d'encaissement annonce des PDF prêts alors qu'ils sont encore en fabrication ;
+- la vignette d'aperçu reste sur le disque après qu'on retire l'article du panier.
+
+**Consignes au stand** :
+- pas d'écriture chinoise, japonaise ni coréenne sur une affiche ;
+- **rouvrir le lien de la tablette chaque matin** ;
+- **ne valider aucune vente d'essai** : elle serait réelle.
+
 ---
 
 ## 2. À faire AVANT la bascule (mardi ou mercredi matin)
@@ -30,7 +75,7 @@ Testé sur une copie du schéma 0079 avec un jeu d'essai : une commande live et 
 3. **Au BO, ce que les clientes verraient** :
    - **Page du stand** (BO › Pages › mulhouse, id 10). Aujourd'hui elle s'appelle « TEST TOUT VOIR », elle est publique et elle est dans le plan du site et dans llms.txt.
      - Donne-lui un vrai titre.
-     - Règle « Où la page se montre » sur « tablette du stand seulement ».
+     - Règle **« Où elle se montre »** (nouveau champ du 17/11) sur « Sur la tablette du stand seulement ».
      - Fais viser à son bloc la collection `marche-de-noel-mulhouse-2026`.
    - **Collection du marché** : elle n'apparaît pas dans `/api/collections` du VPS. Vérifie au BO › Collections qu'elle est **active**, non archivée, et que ses affiches sont en vente. Sinon, le bloc de la page reste VIDE, même sur la tablette. Une fois active, elle devient aussi un rayon public.
    - **Vidéo Tuto** : c'est encore la vidéo de test, Big Buck Bunny, sur toutes les fiches. BO › Contenu du site › « Personnalisation — vidéo explicative » : éteins le bouton tant que Margaux n'a pas la sienne.
@@ -46,6 +91,8 @@ Testé sur une copie du schéma 0079 avec un jeu d'essai : une commande live et 
    - S'il n'y a pas de propriété : crée une propriété « Domaine » memoryline.fr et ajoute le TXT donné dans la zone OVH. C'est un TXT **de plus** : ne modifie pas le SPF.
 6. **WEB-0016** : à rembourser quand le PayPal de Margaux aura une banque liée ou quelques euros de plus (voir A-FAIRE § 1). Ce n'est plus un préalable au vidage : le script la garde.
 7. **Ne plus passer de commande d'essai sur le VPS.** C'est de l'argent réel.
+8. **Les 15 affiches « prêtes à imprimer »** : soit Margaux ajoute leurs visuels HD, soit tu les passes en brouillon. Voir § 1, « BLOQUANT ».
+9. **Sur la tablette du stand** : fais un essai à la main du geste « retour » pendant une personnalisation, sans valider de vente. Attendu : la fenêtre se ferme, et l'affiche est toujours là quand on rouvre.
 
 ---
 
@@ -55,7 +102,7 @@ Testé sur une copie du schéma 0079 avec un jeu d'essai : une commande live et 
 
 Toutes les commandes serveur se lancent dans `ssh debian@51.255.34.187`, puis `cd ~/memoryline`. Raccourci : `C="docker compose -f docker-compose.prod.yml"`.
 
-**0. Dernière mise en ligne normale**, avec l'ancien `.env`. Elle a été faite le 17/11 par Claude, avec le script corrigé. Refais-la seulement si de nouveaux commits sont arrivés depuis, avec la méthode habituelle (archive + `mettre-en-ligne.sh`).
+**0. Dernière mise en ligne normale**, avec l'ancien `.env`. Elle a été faite le 17/11 par Claude (`9de3957`), avec le script corrigé. Refais-la seulement si de nouveaux commits sont arrivés depuis, avec la méthode habituelle (archive + `mettre-en-ligne.sh`).
 
 **1. Vider les essais.**
 ```
