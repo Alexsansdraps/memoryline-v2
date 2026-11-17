@@ -1235,7 +1235,10 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           {/* ---------------------------------------------------------- */}
           {/* Bordereau transporteur (SendCloud)                          */}
           {/* ---------------------------------------------------------- */}
-          {order && !estPanier && (
+          {/* Pas de bordereau pour une vente du stand (17/11) : elle est
+              imprimée et remise sur place. Un bordereau déjà acheté reste
+              visible, pour qu'on puisse le suivre ou l'annuler. */}
+          {order && !estPanier && !(auStand && !bordereauActif) && (
             <section id="bordereau" class="rounded-lg border border-bo-border bg-bo-surface">
               <header class="flex items-center justify-between gap-3 border-b border-bo-border px-4 py-3">
                 <h3 class="font-medium">Bordereau transporteur</h3>
