@@ -718,13 +718,19 @@ async function produitsDuneReference(
   source: "collection" | "categorie",
   reference: string,
   limite: number,
+  collectionsMasquees = false,
 ): Promise<LigneProduit[]> {
   const filtre =
     source === "collection"
       ? // `col.archived_at is null` : une collection archivée ne sort plus de
         // produits. La rangée d'une page qui la montrait reste en ligne, vide,
         // et se remplit à nouveau dès qu'on restaure la collection.
-        raw`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${reference} and col.active = true and col.archived_at is null)`
+        //
+        // `collectionsMasquees` : une page réservée à la tablette du stand
+        // peut montrer une collection DÉSACTIVÉE — celle d'un marché, que la
+        // boutique garde hors du site (17/11, marché de Noël de Mulhouse).
+        // Jamais une collection archivée, ni un produit qui n'est pas en vente.
+        raw`exists (select 1 from ${schema.productCollections} pc join ${schema.collections} col on col.id = pc.collection_id where pc.product_id = ${schema.products.id} and col.slug = ${reference} and (col.active = true or ${collectionsMasquees}) and col.archived_at is null)`
       : /^\d+$/.test(reference)
         ? // `cat.archived_at is null` : même règle que pour les collections —
           // une catégorie archivée ne sort plus de produits, et la rangée de
@@ -785,6 +791,7 @@ async function produitsDuneReference(
 async function produitsDuBloc(
   bloc: Extract<BlocPage, { type: "produits" }>,
   langue: string,
+  collectionsMasquees = false,
 ): Promise<ProduitDeBloc[]> {
   const limite = Math.min(Math.max(Math.trunc(bloc.limite) || 0, 0), LIMITE_PRODUITS_MAX);
   if (limite <= 0) return [];
@@ -794,7 +801,7 @@ async function produitsDuBloc(
 
   const lots = await Promise.all(
     references.map((reference) =>
-      produitsDuneReference(bloc.source, reference, limite),
+      produitsDuneReference(bloc.source, reference, limite, collectionsMasquees),
     ),
   );
 
@@ -873,6 +880,7 @@ async function produitsDuBloc(
 async function resoudreBlocs(
   blocs: BlocPage[],
   langue: string,
+  collectionsMasquees = false,
 ): Promise<
   (
     | BlocPage
@@ -883,7 +891,7 @@ async function resoudreBlocs(
   return Promise.all(
     blocs.map(async (bloc) => {
       if (bloc.type === "produits")
-        return { ...bloc, produits: await produitsDuBloc(bloc, langue) };
+        return { ...bloc, produits: await produitsDuBloc(bloc, langue, collectionsMasquees) };
       if (bloc.type === "image") {
         const dimensions = await dimensionsDuVisuel(bloc.url);
         return dimensions ? { ...bloc, ...dimensions } : bloc;
@@ -912,6 +920,9 @@ const COLONNES_PUBLIQUES = {
   seoDescription: schema.pages.seoDescription,
   blocks: schema.pages.blocks,
   translations: schema.pages.translations,
+  // Lu, jamais renvoyé : il dit seulement si la page peut montrer une
+  // collection désactivée (pagePubliee).
+  affichage: schema.pages.affichage,
 };
 
 /** Les colonnes d'une page dont la lecture publique a besoin. */
@@ -923,6 +934,7 @@ interface PageEnregistree {
   seoDescription: string | null;
   blocks: BlocPage[];
   translations: TraductionsPage | null;
+  affichage: string;
 }
 
 /**
@@ -991,7 +1003,9 @@ async function pagePubliee(page: PageEnregistree, langue: string) {
     seoTitle: langue === "fr" ? page.seoTitle : (utile(traduction?.seoTitle) ?? null),
     seoDescription:
       langue === "fr" ? page.seoDescription : (utile(traduction?.seoDescription) ?? null),
-    blocks: await resoudreBlocs(blocs, langue),
+    // Une page « tablette du stand seulement » peut montrer une collection
+    // désactivée (produitsDuneReference) : elle ne se voit jamais sur le site.
+    blocks: await resoudreBlocs(blocs, langue, page.affichage === "stand"),
     // Les langues où la page est vraiment écrite (referencement.ts). Le repli
     // champ par champ sert une page à moitié française sous /en : le site s'en
     // sert pour ne pas la présenter à Google comme une traduction.

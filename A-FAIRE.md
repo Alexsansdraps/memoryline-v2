@@ -9,6 +9,11 @@
 >
 > **Le marché de Noël de Mulhouse commence le VENDREDI 20/11** (Alexandra, 17/11). Tout ce qui touche au stand doit être prêt le 19 au soir : page du stand, collection, les 15 affiches prêtes à imprimer, et un essai sur la tablette sans valider de vente.
 >
+> **Fait par Claude le 17/11 après la bascule (migration 0080, code cms.ts)** :
+> - **Pages légales.** Date « 17 novembre 2026 » dans les CGV et la confidentialité. Téléphone et RCS retirés des CGV. SendCloud et OpenAI ajoutés aux destinataires des données (photo des affiches IA). Notes internes retirées des cookies et des mentions. **Restent 3 « À COMPLÉTER »** : le médiateur (CGV, obligatoire) et les deux durées d'inactivité (confidentialité, à décider).
+> - **Page /pages/mulhouse** : elle devient « Marché de Noël de Mulhouse », réservée à la tablette, et montre la collection `marche-de-noel-mulhouse-2026`. Une page « tablette du stand seulement » peut maintenant montrer une collection DÉSACTIVÉE (jamais archivée) : celle du marché reste invisible sur le site.
+> - **Bouton Tuto éteint** tant que la vidéo est celle de test (Big Buck Bunny).
+>
 > **Reste, dans l'ordre** :
 > 1. **Webhook Stripe live** : passer son URL à https://memoryline.fr/api/payments/stripe/webhook, puis BO › Paiements › « Vérifier ». PayPal n'a rien à faire : pas de webhook, capture par le serveur.
 > 2. **Le stand.** BO › Ventes stand › « Nouveau code » › « Ouvrir ». Ouvrir le nouveau lien sur la tablette.
