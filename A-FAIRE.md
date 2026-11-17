@@ -31,6 +31,14 @@
 >
 > **EN LIGNE depuis le 17/11 au soir (`734c16c`)** : `31755a2`, **Retrait au stand** (migration 0082). Vérifié : « Retrait au stand » à 0 € à la caisse, avec le stand ouvert Marché de Noël Mulhouse. **Reste à saisir son « Emplacement exact »** dans BO › Ventes stand. Sont aussi en ligne : clés de paiement en points sans bouton « Effacer » (`d8a8333`), « Commandes en ligne » sans les paniers, « Abonnez-vous à notre newsletter ». Préparation des fonds relancée UN À LA FOIS, avec arrêt si la charge du serveur dépasse 2,5. Il comprend le champ « Emplacement exact » dans Ventes stand, le lieu de retrait de chaque stand tenu tout seul (`pickup_point.stand_id`), et le mode « Retrait au stand » à 0 €, qui ne propose que les stands ouverts. S'y ajoute `ff16502`, une seule conversion de fond à la fois.
 >
+> **17/11, après-midi — stands (en ligne, `fdf3e2d`)** :
+> - **Calendrier** : premier et dernier jour, horaires de base (matin, après-midi), jours fermés ou à horaires différents. Il se règle à la main jour par jour, OU en une phrase que l'IA applique (`stand-horaires-ia.ts`, OpenAI comme les traductions). Suivi, il ouvre la tablette les jours de marché, toute la journée (`stands-calendrier.ts`, chaque minute). Le bouton prend la main : fermé à la main, il le reste jusqu'à « Rouvrir ».
+> - **Retrait au stand** : tous les stands **activés** (« Activer / Désactiver sur le site », `stand.actif`, 0084), ouverts ou fermés, jusqu'à 3 jours avant la fin. À la caisse, le rectangle « Retrait au stand » contient un bouton par stand avec « Ouvert / Fermé en ce moment ». Dessous : l'emplacement, les horaires et la case « au plus tard le <dernier jour ouvert> à <heure> », vérifiée aussi par l'API.
+> - **« Supprimer » en rouge** : seulement un stand sans vente (archivé puis supprimé d'un geste) ; son lieu de retrait part avec lui.
+> - **Prod au 17/11 midi** : Mulhouse (20/11 → 27/12, 11:00–12:30 / 13:00–20:00), **et un « stand de test » visible à la caisse, à supprimer**.
+> - **Aussi** : recherche instantanée ; mode stand par l'adresse seule ; chargements (squelettes, aperçu léger en 400 px puis net) ; fonds SVG en WebP (`?l=`), sans cache mémoire (`sharp.cache(false)`). La préparation des 250 fonds se fait un à un et s'arrête si le serveur est chargé.
+> - **À faire** : passe 4G sur tout le site (demandée le 17/11). Libérer le disque : `docker builder prune -f --keep-storage 3GB` (19,8 Go de cache de construction, refusé à Claude par ses réglages, Alexandra le lance). Supprimer le « stand de test ».
+>
 > **Reste, dans l'ordre** :
 > 1. **Webhook Stripe live** : passer son URL à https://memoryline.fr/api/payments/stripe/webhook, puis BO › Paiements › « Vérifier ». PayPal n'a rien à faire : pas de webhook, capture par le serveur.
 > 2. **Le stand.** BO › Ventes stand › « Nouveau code » › « Ouvrir ». Ouvrir le nouveau lien sur la tablette.
