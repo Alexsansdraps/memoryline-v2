@@ -64,6 +64,25 @@ export const es: Partial<Record<CleCourriel, string>> = {
   "confirmation.retrait": "Recogida en:",
   "confirmation.question": "¿Tienes alguna pregunta? Solo tienes que responder a este correo.",
   "confirmation.texte": "Tu pedido {numero} está confirmado. Total: {total}.",
+  "confirmation.dontCarte": "De lo cual pagado con la tarjeta regalo {code}",
+  "confirmation.carteEnvoyee": "Tarjeta regalo de {montant} enviada por e-mail a {email}.",
+
+  "lignes.carteCadeau": "Tarjeta regalo",
+  "lignes.carteCadeauPour": "Tarjeta regalo para {email}",
+  "carteCadeau.objet": "Tu tarjeta regalo Memory Line de {montant}",
+  "carteCadeau.objetDe": "{prenom} te regala una tarjeta regalo Memory Line",
+  "carteCadeau.bonjour": "Hola:",
+  "carteCadeau.intro": "Aquí tienes tu tarjeta regalo Memory Line, por un valor de {montant}.",
+  "carteCadeau.introDe": "{prenom} te regala una tarjeta regalo Memory Line, por un valor de {montant}.",
+  "carteCadeau.mot": "Su mensaje:",
+  "carteCadeau.code": "Tu código",
+  "carteCadeau.mode":
+    "Introduce este código al pagar tu pedido en memoryline.fr, en el campo «Código promocional o tarjeta regalo».",
+  "carteCadeau.solde":
+    "Utilizable en una o varias veces: el saldo restante sigue disponible con el mismo código.",
+  "carteCadeau.garder": "Guarda este e-mail: este código vale dinero, como un billete.",
+  "carteCadeau.bouton": "Elegir una lámina",
+  "carteCadeau.texteCode": "Tu código: {code} (valor {montant}).",
 
   /* --- Relance de panier : le courrier d'origine ----------------------------- */
 
@@ -201,6 +220,8 @@ export const es: Partial<Record<CleCourriel, string>> = {
     "El importe se devuelve al método de pago que usaste en el pedido. Cuenta con unos días laborables hasta verlo en tu extracto: ese plazo depende de tu banco, no de nosotros.",
   "remboursee.horsLigne":
     "Este reembolso se hace al margen del pago en línea. Te escribiremos si nos falta algún dato para hacértelo llegar.",
+  "remboursee.carte":
+    "{montant} vuelven a tu tarjeta regalo: su saldo sigue disponible con el mismo código.",
   "remboursee.question":
     "¿Alguna pregunta sobre este reembolso? Solo tienes que responder a este correo.",
   "remboursee.texte": "Se ha registrado un reembolso de {montant} en tu pedido {numero}.",

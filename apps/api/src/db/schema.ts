@@ -20,6 +20,7 @@ import type {
   CouleursProposees,
   GroupeCouleur,
   HorairesStand,
+  LigneCarteCadeau,
   RegleParier,
   RemiseAppliquee,
 } from "@memoryline/types";
@@ -1338,8 +1339,40 @@ export const giftCards = pgTable(
       .defaultNow()
       .notNull(),
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    /* --- Carte vendue sur le site (17/11) ------------------------------- */
+    /**
+     * La commande qui a ACHETÉ cette carte, quand elle a été vendue en ligne.
+     * Null pour une carte vendue au back-office. « set null » : la carte est
+     * une dette, elle survit à tout ce qui arriverait à la commande.
+     */
+    orderId: integer("order_id").references((): AnyPgColumn => orders.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * La ligne de cette commande : une ligne donne UNE carte, jamais deux
+     * (index unique ci-dessous), même si le paiement est confirmé deux fois.
+     */
+    orderItemId: integer("order_item_id").references((): AnyPgColumn => orderItems.id, {
+      onDelete: "set null",
+    }),
+    /** À qui la carte a été envoyée par e-mail, et son prénom s'il a été donné. */
+    recipientEmail: text("recipient_email"),
+    recipientName: text("recipient_name"),
+    /** Le petit mot de l'acheteuse, repris dans le courriel. */
+    message: text("message"),
+    /** Quand le courriel du destinataire est parti. Null = pas encore. */
+    sentAt: timestamp("sent_at", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("gift_card_code_uniq").on(t.code)],
+  (t) => [
+    uniqueIndex("gift_card_code_uniq").on(t.code),
+    // La saisie se compare sans tirets (cleDeCarte) : deux codes ne doivent
+    // pas se confondre une fois leurs tirets retirés.
+    uniqueIndex("gift_card_cle_uniq").on(sql`replace(${t.code}, '-', '')`),
+    uniqueIndex("gift_card_order_item_uniq")
+      .on(t.orderItemId)
+      .where(sql`${t.orderItemId} is not null`),
+    index("gift_card_order_idx").on(t.orderId),
+  ],
 );
 
 /**
@@ -1507,6 +1540,16 @@ export const orders = pgTable(
      * paiement n'a encaissé que la différence.
      */
     giftCardCents: integer("gift_card_cents").notNull().default(0),
+    /**
+     * La carte cadeau retenue à la caisse pour payer `giftCardCents`.
+     *
+     * Posée au passage en caisse, DÉBITÉE seulement quand la commande est
+     * payée (markOrderPaid) : une commande abandonnée ne dépense rien. Le
+     * débit lui-même s'écrit au journal de la carte, qui fait foi.
+     */
+    giftCardId: integer("gift_card_id").references((): AnyPgColumn => giftCards.id, {
+      onDelete: "set null",
+    }),
     legacyId: bigint("legacy_id", { mode: "number" }), // Shopify Order/Draft ID
     legacyName: text("legacy_name"), // ex. '#1042'
     /**
@@ -1516,6 +1559,14 @@ export const orders = pgTable(
      * différentes que la liste doit répondre d'un coup d'œil.
      */
     fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
+    /**
+     * Les étapes de traitement que les expéditions ne disent pas (17/11,
+     * packages/types/src/traitement.ts). `readyAt` : un retrait « Prête à
+     * retirer », rien n'est encore parti. `deliveredAt` : un colis envoyé
+     * est « Livré » (posé à la main au BO). Null = pas à cette étape.
+     */
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     /**
      * Quand la commande a été annulée. Null = elle ne l'est pas.
      *
@@ -1700,6 +1751,16 @@ export const orderItems = pgTable("order_item", {
    */
   frameCents: integer("frame_cents"),
   quantity: integer("quantity").notNull().default(1),
+  /**
+   * Non nul : la ligne est une CARTE CADEAU achetée sur le site, et non une
+   * affiche. Son montant (libre, 10 à 300 €, vérifié par le serveur) est
+   * aussi son prix unitaire ; le destinataire se remplit à la caisse.
+   *
+   * Une telle ligne n'a ni configuration, ni format, ni cadre, ni port, ni
+   * fichier d'impression, et les promotions ne la touchent pas. Sa carte
+   * naît au paiement (gift_card.order_item_id).
+   */
+  giftCard: jsonb("gift_card").$type<LigneCarteCadeau>(),
 });
 
 /**

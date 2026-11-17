@@ -41,7 +41,7 @@
  * pas vendu.
  */
 import type { Context, Hono } from "hono";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
 import { CODES_SENDCLOUD, PREFIXE_SENDCLOUD } from "./sendcloud-points.js";
 import { TRANSPORTEURS } from "./livraison-regles.js";
@@ -532,6 +532,20 @@ export function empechement(order: Commande): string | null {
   return null;
 }
 
+/**
+ * Une commande de CARTES CADEAUX seules n'a pas de colis : ses cartes sont
+ * parties par e-mail au paiement. Aucun bordereau ne s'achète pour elle.
+ */
+async function sansColis(orderId: number): Promise<string | null> {
+  const lignes = await db
+    .select({ giftCard: schema.orderItems.giftCard })
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.orderId, orderId));
+  return lignes.length > 0 && lignes.every((l) => l.giftCard)
+    ? "Cette commande ne contient que des cartes cadeaux, envoyées par e-mail : il n'y a pas de colis à expédier."
+    : null;
+}
+
 /** Ce qui manque à l'étiquette, et où le corriger sur la fiche. */
 export interface Manque {
   /** « destinataire » : le bloc du bordereau le saisit ; « email » : la fiche cliente. */
@@ -741,6 +755,8 @@ const TERRITOIRE_DOUANIER_UE: ReadonlySet<string> = new Set([
  * 4911.91 est la position douanière des images et affiches imprimées.
  */
 async function articlesEnDouane(order: Commande, poidsGrammes: number) {
+  // Les cartes cadeaux ne sont pas dans le colis : elles partent par e-mail,
+  // et ne se déclarent pas en douane comme des affiches.
   const lignes = await db
     .select({
       titre: schema.orderItems.title,
@@ -748,7 +764,7 @@ async function articlesEnDouane(order: Commande, poidsGrammes: number) {
       quantite: schema.orderItems.quantity,
     })
     .from(schema.orderItems)
-    .where(eq(schema.orderItems.orderId, order.id));
+    .where(and(eq(schema.orderItems.orderId, order.id), isNull(schema.orderItems.giftCard)));
   const exemplaires = lignes.reduce((n, l) => n + Math.max(1, l.quantite), 0) || 1;
   const parExemplaire = Math.max(1, Math.floor(poidsGrammes / exemplaires));
   const sousTotal = lignes.reduce((s, l) => s + l.prixCents * Math.max(1, l.quantite), 0);
@@ -864,7 +880,7 @@ export async function acheterBordereau(opts: {
   if (deja) return deja;
 
   const order = await chargerCommande(opts.orderId);
-  const bloque = empechement(order);
+  const bloque = empechement(order) ?? (await sansColis(order.id));
   if (bloque) throw new RefusBordereau(bloque, 409);
   const contexte = await contexteDe(order);
   const manques = await manquesDe(order, contexte.situation);
@@ -1075,7 +1091,7 @@ export function mountBordereaux(app: Hono): void {
           ? Math.round(poidsDemande)
           : Math.max(order.weightGrams || 0, 100);
       const tous = c.req.query("tous") === "1";
-      const bloque = empechement(order);
+      const bloque = empechement(order) ?? (await sansColis(order.id));
       const contexte = await contexteDe(order);
       const vivant =
         bordereau && (bordereau.statut === "achete" || bordereau.statut === "en_cours");

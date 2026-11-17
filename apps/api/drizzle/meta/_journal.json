@@ -610,6 +610,20 @@
       "when": 1794923597879,
       "tag": "0086_pied_de_page",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1794924797879,
+      "tag": "0087_cartes_cadeaux_en_ligne",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1794925997879,
+      "tag": "0088_etapes_de_traitement",
+      "breakpoints": true
     }
   ]
 }

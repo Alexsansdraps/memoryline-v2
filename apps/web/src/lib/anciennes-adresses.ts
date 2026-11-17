@@ -220,7 +220,8 @@ export async function destinationAncienne(
 
   // La recherche, le panier et le compte.
   if (chemin === "/search") return { vers: "/recherche", garder: ["q"] };
-  if (chemin === "/cart") return { vers: "/panier" };
+  // Plus de page panier sur le site (17/11) : le panier est la caisse.
+  if (chemin === "/cart") return { vers: "/commande" };
   if (chemin === "/account/login") return { vers: "/compte/connexion" };
   if (chemin === "/account/register") return { vers: "/compte/inscription" };
   // Droit à la connexion, et non à /compte, qui y renvoie à son tour (302) :

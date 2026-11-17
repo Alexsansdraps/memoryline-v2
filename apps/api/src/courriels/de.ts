@@ -68,6 +68,25 @@ export const de: Partial<Record<CleCourriel, string>> = {
   "confirmation.retrait": "Abholung:",
   "confirmation.question": "Haben Sie eine Frage? Antworten Sie einfach auf diese E-Mail.",
   "confirmation.texte": "Ihre Bestellung {numero} ist bestätigt. Gesamtbetrag: {total}.",
+  "confirmation.dontCarte": "Davon bezahlt mit dem Geschenkgutschein {code}",
+  "confirmation.carteEnvoyee": "Geschenkgutschein über {montant} per E-Mail an {email} gesendet.",
+
+  "lignes.carteCadeau": "Geschenkgutschein",
+  "lignes.carteCadeauPour": "Geschenkgutschein für {email}",
+  "carteCadeau.objet": "Ihr Memory Line Geschenkgutschein über {montant}",
+  "carteCadeau.objetDe": "{prenom} schenkt Ihnen einen Memory Line Geschenkgutschein",
+  "carteCadeau.bonjour": "Hallo,",
+  "carteCadeau.intro": "Hier ist Ihr Memory Line Geschenkgutschein im Wert von {montant}.",
+  "carteCadeau.introDe": "{prenom} schenkt Ihnen einen Memory Line Geschenkgutschein im Wert von {montant}.",
+  "carteCadeau.mot": "Die persönliche Nachricht:",
+  "carteCadeau.code": "Ihr Code",
+  "carteCadeau.mode":
+    "Geben Sie diesen Code beim Bezahlen Ihrer Bestellung auf memoryline.fr im Feld „Gutscheincode oder Geschenkgutschein“ ein.",
+  "carteCadeau.solde":
+    "Ein- oder mehrmals einlösbar: Das Restguthaben bleibt mit demselben Code nutzbar.",
+  "carteCadeau.garder": "Bewahren Sie diese E-Mail auf: Dieser Code ist bares Geld wert.",
+  "carteCadeau.bouton": "Ein Poster auswählen",
+  "carteCadeau.texteCode": "Ihr Code: {code} (Wert {montant}).",
 
   /* --- Relance de panier : le courrier d'origine ----------------------------- */
 
@@ -210,6 +229,8 @@ export const de: Partial<Record<CleCourriel, string>> = {
     "Der Betrag wird auf die Zahlungsart zurückgebucht, mit der Sie bestellt haben. Rechnen Sie mit einigen Werktagen, bis er auf Ihrem Kontoauszug erscheint: Diese Frist hängt von Ihrer Bank ab, nicht von uns.",
   "remboursee.horsLigne":
     "Diese Erstattung erfolgt außerhalb der Online-Zahlung. Wir melden uns bei Ihnen, falls uns noch Angaben fehlen, um Ihnen den Betrag auszuzahlen.",
+  "remboursee.carte":
+    "{montant} werden Ihrem Geschenkgutschein gutgeschrieben: Das Guthaben bleibt mit demselben Code nutzbar.",
   "remboursee.question":
     "Haben Sie eine Frage zu dieser Erstattung? Antworten Sie einfach auf diese E-Mail.",
   "remboursee.texte":

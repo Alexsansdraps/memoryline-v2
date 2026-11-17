@@ -28,6 +28,15 @@ if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
 const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
 const auStand = Astro.locals.stand;
+
+/*
+ * Plus de page panier sur le site (17/11) : le récapitulatif se modifie à la
+ * caisse, qui s'ouvre sans compte. Hors du stand, /panier mène donc à
+ * /commande, dans la même langue, avec ses paramètres (« ?cadres=retires »).
+ * La tablette du stand, elle, garde SA page : c'est sa dernière étape.
+ */
+if (!auStand)
+  return Astro.redirect(`${lien(langue, "/commande")}${Astro.url.search}`, 302);
 ---
 
 <Base
@@ -78,6 +87,19 @@ const auStand = Astro.locals.stand;
       )
     }
 
+    {/* Au stand, rien ne s'affiche tant que le panier n'est pas prêt :
+        un rond qui tourne, puis tout d'un coup (.ml-attente, global.css). */}
+    <noscript>
+      <style>
+        .ml-attente > .ml-attente-contenu { visibility: visible !important; }
+        .ml-attente > .ml-attente-roue { display: none !important; }
+      </style>
+    </noscript>
+    <div id="ml-attente" class="ml-attente">
+    <div class="ml-attente-roue" role="status" aria-label={tr("panier.chargement")}>
+      <span class="ml-spinner" aria-hidden="true"></span>
+    </div>
+    <div class="ml-attente-contenu">
     <CartIsland
       client:only="solid-js"
       langue={langue}
@@ -104,5 +126,13 @@ const auStand = Astro.locals.stand;
         </div>
       </div>
     </CartIsland>
+    </div>
+    </div>
+    <script is:inline>
+      setTimeout(function () {
+        var attente = document.getElementById("ml-attente");
+        if (attente) attente.setAttribute("data-pret", "");
+      }, 8000);
+    </script>
   </section>
 </Base>

@@ -145,8 +145,20 @@ const expeditions = (detail?.expeditions ?? []).filter(
                     />
                   )}
                 <div class="min-w-0">
-                  <p>{ligne.title ?? "—"}</p>
-                  <p class="mt-1 text-sm text-ink-soft">
+                  <p>{ligne.giftCard ? tr("carte.titre") : (ligne.title ?? "—")}</p>
+                  {ligne.giftCard && (
+                    <p class="mt-1 text-sm text-ink-soft">
+                      {[
+                        tr("carte.envoi"),
+                        ligne.giftCard.destinataireEmail
+                          ? tr("carte.pour").replace("{email}", () => ligne.giftCard!.destinataireEmail!)
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
+                  <p class="mt-1 text-sm text-ink-soft" hidden={Boolean(ligne.giftCard)}>
                     {[
                       ligne.config?.format
                         ? `${tr("panier.format")}${deuxPoints}${ligne.config.format}`

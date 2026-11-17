@@ -19,6 +19,7 @@
  */
 
 import {
+  cheminSite,
   mentionTva,
   prixDans,
   remplir,
@@ -542,6 +543,16 @@ export interface ConfirmationCommande {
    * français. Vaut pour tous les courriers destinés aux clients ci-dessous.
    */
   langue?: Langue;
+  /**
+   * La part du total payée par une carte cadeau, et son code masqué
+   * (« ••••-••••-K7R2 ») : elle s'écrit sous le total. Le total, lui, reste
+   * celui de la commande — une carte cadeau est un moyen de paiement, pas une
+   * réduction.
+   */
+  carteCadeauCents?: number;
+  carteCadeauMasque?: string | null;
+  /** Les cartes cadeaux achetées dans la commande, et à qui elles sont parties. */
+  cartesEnvoyees?: { montantCents: number; email: string }[];
 }
 
 /** Un lieu de retrait, découpé pour un courriel (voir `lignesDuLieu`). */
@@ -587,9 +598,30 @@ export function courrierConfirmation(d: ConfirmationCommande): Courrier {
         ? `<tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "confirmation.reduction")}${d.codePromo ? ` — ${h(d.codePromo)}` : ""}</td><td align="right">− ${prix(d.remiseCents, langue)}</td></tr>`
         : ""
     }
-    <tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "confirmation.livraison")}${d.modeLivraison ? ` — ${h(d.modeLivraison)}` : ""}</td><td align="right">${prix(d.portCents, langue)}</td></tr>
+    ${
+      // Une commande de cartes cadeaux seules n'a pas de livraison : pas de
+      // ligne « Livraison 0,00 € » qui laisserait chercher un colis.
+      d.modeLivraison || d.portCents > 0
+        ? `<tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "confirmation.livraison")}${d.modeLivraison ? ` — ${h(d.modeLivraison)}` : ""}</td><td align="right">${prix(d.portCents, langue)}</td></tr>`
+        : ""
+    }
     <tr><td style="padding:10px 0 0;border-top:1px solid #eee"><strong style="font-weight:500">${texteHtml(langue, "confirmation.total")}</strong></td><td align="right" style="padding:10px 0 0;border-top:1px solid #eee"><strong style="font-weight:500">${prix(d.totalCents, langue)}</strong></td></tr>
+    ${
+      (d.carteCadeauCents ?? 0) > 0
+        ? `<tr><td style="padding:4px 0;color:#5b5b54">${texteHtml(langue, "confirmation.dontCarte", { code: h(d.carteCadeauMasque ?? "") })}</td><td align="right">${prix(d.carteCadeauCents ?? 0, langue)}</td></tr>`
+        : ""
+    }
   </table>`;
+  const cartes = (d.cartesEnvoyees ?? []).length
+    ? `<p style="margin:20px 0 0;font-size:14px">${(d.cartesEnvoyees ?? [])
+        .map((c) =>
+          texteHtml(langue, "confirmation.carteEnvoyee", {
+            montant: prix(c.montantCents, langue),
+            email: h(c.email),
+          }),
+        )
+        .join("<br />")}</p>`
+    : "";
 
   const adresse =
     d.adresse && d.adresse.length
@@ -608,6 +640,7 @@ export function courrierConfirmation(d: ConfirmationCommande): Courrier {
       `<p style="margin:0 0 4px">${texteHtml(langue, "confirmation.intro", { numero: `<strong style="font-weight:500">${h(d.numero)}</strong>` })}</p>
        ${tableauLignes(d.lignes, langue)}
        ${totaux}
+       ${cartes}
        ${adresse}
        ${retrait}
        <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "confirmation.question")}</p>`,
@@ -616,6 +649,76 @@ export function courrierConfirmation(d: ConfirmationCommande): Courrier {
     text: `${t("confirmation.titre", { prenom: d.prenomClient })}\n\n${t("confirmation.texte", { numero: d.numero, total: prix(d.totalCents, langue) })}${
       d.retrait ? `\n\n${blocLieuTexte(langue, "confirmation.retrait", d.retrait)}` : ""
     }\n\nMemory Line`,
+  };
+}
+
+/**
+ * La carte cadeau, envoyée à son destinataire après le paiement de la commande
+ * qui l'a achetée (cartes-cadeaux.ts, envoyerCartesDeLaCommande).
+ *
+ * Le code s'écrit en grand, lettres espacées, dans un cadre : il se recopie
+ * signe par signe. Le petit mot de l'acheteuse est cité tel quel, échappé. Le
+ * courriel dit comment s'en servir, et que le solde restant reste utilisable :
+ * c'est la question que tout le monde se pose devant une carte de 50 € et une
+ * affiche de 23 €.
+ */
+export function courrierCarteCadeau(d: {
+  langue?: Langue;
+  prenomDestinataire?: string | null;
+  /** Le prénom de l'acheteuse, quand on le connaît. */
+  deLaPart?: string | null;
+  montantCents: number;
+  code: string;
+  message?: string | null;
+}): Courrier {
+  const langue = d.langue ?? "fr";
+  const t = tc(langue);
+  const montant = prix(d.montantCents, langue);
+  const titre = d.prenomDestinataire?.trim()
+    ? t("commun.bonjour", { prenom: d.prenomDestinataire.trim() })
+    : t("carteCadeau.bonjour");
+  const intro = d.deLaPart?.trim()
+    ? texteHtml(langue, "carteCadeau.introDe", {
+        prenom: `<strong style="font-weight:500">${h(d.deLaPart.trim())}</strong>`,
+        montant: `<strong style="font-weight:500">${montant}</strong>`,
+      })
+    : texteHtml(langue, "carteCadeau.intro", {
+        montant: `<strong style="font-weight:500">${montant}</strong>`,
+      });
+  const mot = d.message?.trim()
+    ? `<p style="margin:20px 0 4px;color:#5b5b54;font-size:14px">${texteHtml(langue, "carteCadeau.mot")}</p>
+       <p style="margin:0;padding:12px 16px;border-left:3px solid #d9d4c7;font-style:italic">${h(d.message.trim()).replace(/\r?\n/g, "<br />")}</p>`
+    : "";
+  const origine = adressePublique();
+  const lienSite = origine ? `${origine}${cheminSite(langue, "/affiches")}` : null;
+  return {
+    to: "",
+    subject: d.deLaPart?.trim()
+      ? t("carteCadeau.objetDe", { prenom: d.deLaPart.trim() })
+      : t("carteCadeau.objet", { montant }),
+    html: gabarit(
+      titre,
+      `<p style="margin:0">${intro}</p>
+       ${mot}
+       <p style="margin:24px 0 6px;color:#5b5b54;font-size:14px">${texteHtml(langue, "carteCadeau.code")}</p>
+       <p style="margin:0;padding:16px;border:1px solid #121212;text-align:center;font-size:22px;letter-spacing:3px;font-weight:600;font-family:Menlo,Consolas,monospace">${h(d.code)}</p>
+       <p style="margin:20px 0 0">${texteHtml(langue, "carteCadeau.mode")}</p>
+       <p style="margin:8px 0 0">${texteHtml(langue, "carteCadeau.solde")}</p>
+       ${
+         lienSite
+           ? `<p style="margin:24px 0"><a href="${h(lienSite)}" style="display:inline-block;background:#121212;color:#ffffff;padding:14px 28px;text-decoration:none">${texteHtml(langue, "carteCadeau.bouton")}</a></p>`
+           : ""
+       }
+       <p style="margin:0;color:#5b5b54;font-size:14px">${texteHtml(langue, "carteCadeau.garder")}</p>`,
+      langue,
+    ),
+    text:
+      `${titre}\n\n${remplir(t(d.deLaPart?.trim() ? "carteCadeau.introDe" : "carteCadeau.intro"), { prenom: d.deLaPart?.trim() ?? "", montant })}\n` +
+      (d.message?.trim() ? `\n${t("carteCadeau.mot")}\n${d.message.trim()}\n` : "") +
+      `\n${t("carteCadeau.texteCode", { code: d.code, montant })}\n` +
+      `${t("carteCadeau.mode")}\n${t("carteCadeau.solde")}\n` +
+      (lienSite ? `\n${lienSite}\n` : "") +
+      `\n${t("carteCadeau.garder")}\n\nMemory Line`,
   };
 }
 
@@ -1407,6 +1510,11 @@ export interface RemboursementCourrier {
   totalCommandeCents: number;
   /** L'argent repart-il par le moyen de paiement d'origine ? */
   viaPaiementEnLigne: boolean;
+  /**
+   * La part rendue sur la carte cadeau qui avait payé la commande : elle
+   * revient sur la carte, pas sur un compte en banque.
+   */
+  surCarteCadeauCents?: number;
   langue?: Langue;
 }
 
@@ -1441,10 +1549,19 @@ export function courrierRemboursee(d: RemboursementCourrier): Courrier {
       ? `<p style="margin:16px 0 0;font-size:14px;color:#5b5b54">${texteHtml(langue, "remboursee.cumul", { total: prix(d.totalRembourseCents, langue), commande: prix(d.totalCommandeCents, langue) })}</p>`
       : "";
 
-  const delai = `<p style="margin:20px 0 0">${texteHtml(
-    langue,
-    d.viaPaiementEnLigne ? "remboursee.delaiEnLigne" : "remboursee.horsLigne",
-  )}</p>`;
+  const surCarte = d.surCarteCadeauCents ?? 0;
+  const carte =
+    surCarte > 0
+      ? `<p style="margin:16px 0 0">${texteHtml(langue, "remboursee.carte", { montant: prix(surCarte, langue) })}</p>`
+      : "";
+  // Tout est revenu sur la carte : il n'y a pas de délai bancaire à annoncer.
+  const delai =
+    surCarte >= d.montantCents
+      ? ""
+      : `<p style="margin:20px 0 0">${texteHtml(
+          langue,
+          d.viaPaiementEnLigne ? "remboursee.delaiEnLigne" : "remboursee.horsLigne",
+        )}</p>`;
 
   return {
     to: "",
@@ -1458,6 +1575,7 @@ export function courrierRemboursee(d: RemboursementCourrier): Courrier {
        ${d.articles.length ? tableauLignes(d.articles, langue) : ""}
        ${port}
        ${cumul}
+       ${carte}
        ${delai}
        <p style="margin:24px 0 0;color:#5b5b54;font-size:14px">${texteHtml(langue, "remboursee.question")}</p>`,
       langue,

@@ -267,7 +267,9 @@ function dateCourte(iso: string | null | undefined): string {
               </tr>
             </thead>
             <tbody>
-              {items.map((it) => (
+              {/* Les cartes cadeaux ne sont pas dans le colis : elles sont
+                  parties par e-mail au paiement. */}
+              {items.filter((it) => !it.carteCadeau).map((it) => (
                 <tr>
                   <td>
                     <strong>{it.title ?? "Affiche personnalisée"}</strong>

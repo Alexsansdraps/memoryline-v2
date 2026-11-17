@@ -66,6 +66,10 @@ interface Saisie {
   code: string;
   priority: number;
   cumulable: boolean;
+  /** Pourcentage ou montant : la livraison est offerte aussi (code « tout gratuit »). */
+  livraisonOfferte: boolean;
+  /** Un code qui ne sert qu'une fois, toutes clientes confondues. */
+  usageUnique: boolean;
   active: boolean;
   startsAt: string;
   endsAt: string;
@@ -126,6 +130,8 @@ const NOUVELLE: Saisie = {
   code: "",
   priority: 0,
   cumulable: true,
+  livraisonOfferte: false,
+  usageUnique: false,
   active: true,
   startsAt: "",
   endsAt: "",
@@ -156,6 +162,8 @@ function depuisRegle(p: PromoRule): Saisie {
     code: p.code ?? "",
     priority: p.priority ?? 0,
     cumulable: cfg.cumulable !== false,
+    livraisonOfferte: cfg.livraisonOfferte === true,
+    usageUnique: cfg.usageUnique === true,
     active: p.active,
     startsAt: pourChamp(p.startsAt),
     endsAt: pourChamp(p.endsAt),
@@ -189,6 +197,8 @@ function depuisFormulaire(f: FormData): Saisie {
     code: texte("code").toUpperCase(),
     priority: nombre("priority", 0),
     cumulable: f.get("cumulable") === "on",
+    livraisonOfferte: f.get("livraisonOfferte") === "on",
+    usageUnique: f.get("usage") === "unique",
     active: f.get("active") === "on",
     startsAt: texte("startsAt"),
     endsAt: texte("endsAt"),
@@ -224,11 +234,25 @@ function versApi(s: Saisie): Partial<PromoRule> & { config: Record<string, unkno
       conditions,
       cumulable: s.cumulable,
     };
-  else if (s.type === "percent") config = { percent: s.percent, conditions, cumulable: s.cumulable };
+  else if (s.type === "percent")
+    config = {
+      percent: s.percent,
+      livraisonOfferte: s.livraisonOfferte,
+      // Sans code, rien à compter : une promotion automatique est réutilisable.
+      usageUnique: Boolean(s.code) && s.usageUnique,
+      conditions,
+      cumulable: s.cumulable,
+    };
   else if (s.type === "fixed") {
     const amountCents = enCentimes(s.amount);
     if (!amountCents || Number.isNaN(amountCents)) throw new Error("Indiquez le montant de la remise, en euros.");
-    config = { amountCents, conditions, cumulable: s.cumulable };
+    config = {
+      amountCents,
+      livraisonOfferte: s.livraisonOfferte,
+      usageUnique: Boolean(s.code) && s.usageUnique,
+      conditions,
+      cumulable: s.cumulable,
+    };
   } else {
     // Le seuil se compare au panier APRÈS remises : c'est le montant que la
     // cliente paie vraiment pour ses affiches.
@@ -485,7 +509,18 @@ const boutonLien = "text-bo-accent hover:underline";
                   </span>
                 )}
               </td>
-              <td class="px-4 py-3">{p.code ?? <span class="text-bo-muted">automatique</span>}</td>
+              <td class="px-4 py-3">
+                {p.code ?? <span class="text-bo-muted">automatique</span>}
+                {p.code && (
+                  <span class="mt-1 block text-xs text-bo-muted">
+                    {(p.config as { usageUnique?: unknown } | null)?.usageUnique === true
+                      ? (p.utilisations ?? 0) > 0
+                        ? "Usage unique · déjà utilisé"
+                        : "Usage unique · pas encore utilisé"
+                      : `Réutilisable · ${p.utilisations ?? 0} utilisation${(p.utilisations ?? 0) > 1 ? "s" : ""}`}
+                  </span>
+                )}
+              </td>
               <td class="px-4 py-3 text-bo-muted">{periode(p)}</td>
               <td class="px-4 py-3">
                 <span class={`inline-block rounded px-2 py-0.5 text-xs ${s.ton}`}>{s.mot}</span>
@@ -634,6 +669,10 @@ const boutonLien = "text-bo-accent hover:underline";
         <label class="block">
           <span class="text-bo-muted">Remise sur tout le panier (%)</span>
           <input name="percent" type="number" min="1" max="100" value={saisie.percent} class={champ} />
+          <span class="mt-1 block text-xs text-bo-muted">
+            Jusqu'à 100 %. Avec « Offrir aussi la livraison », la commande
+            tombe à 0 € et se valide sans paiement.
+          </span>
         </label>
       </fieldset>
       <fieldset data-type="fixed" hidden={!pourLeType(["fixed"])} disabled={!pourLeType(["fixed"])} class="sm:col-span-2">
@@ -641,6 +680,37 @@ const boutonLien = "text-bo-accent hover:underline";
           <span class="text-bo-muted">Montant déduit du panier (€)</span>
           <input name="amount" inputmode="decimal" value={saisie.amount} class={champ} />
         </label>
+      </fieldset>
+      {/* Remise sur le panier : la livraison peut être offerte avec, et le
+          code peut ne servir qu'une fois. */}
+      <fieldset data-type="percent fixed" hidden={!pourLeType(["percent", "fixed"])} disabled={!pourLeType(["percent", "fixed"])} class="grid gap-4 rounded border border-bo-border p-4 sm:col-span-2">
+        <legend class="px-1 font-medium">Options</legend>
+        <label class="flex items-start gap-2">
+          <input type="checkbox" name="livraisonOfferte" checked={saisie.livraisonOfferte} class="mt-0.5" />
+          <span>
+            Offrir aussi la livraison
+            <span class="block text-xs text-bo-muted">
+              Quand la promotion s'applique, les frais de port passent à 0 €,
+              quel que soit le mode de livraison choisi.
+            </span>
+          </span>
+        </label>
+        <div>
+          <span class="text-bo-muted">Avec un code :</span>
+          <label class="ml-3 inline-flex items-center gap-1">
+            <input type="radio" name="usage" value="reutilisable" checked={!saisie.usageUnique} /> Réutilisable
+          </label>
+          <label class="ml-3 inline-flex items-center gap-1">
+            <input type="radio" name="usage" value="unique" checked={saisie.usageUnique} /> Usage unique
+          </label>
+          <span class="mt-1 block text-xs text-bo-muted">
+            Usage unique : le code sert à UNE commande payée, toutes clientes
+            confondues ; ensuite la caisse répond « Ce code a déjà été
+            utilisé ». Une commande annulée ou remboursée en entier le rend
+            utilisable de nouveau. Sans code, la promotion est automatique et
+            ce réglage ne compte pas.
+          </span>
+        </div>
       </fieldset>
       <fieldset data-type="free_shipping_over" hidden={!pourLeType(["free_shipping_over"])} disabled={!pourLeType(["free_shipping_over"])} class="sm:col-span-2">
         <label class="block">
@@ -819,6 +889,7 @@ const boutonLien = "text-bo-accent hover:underline";
           minQuantite: Number(valeur("minQuantite")) || null,
         };
         const cumulable = coche("cumulable");
+        const livraisonOfferte = coche("livraisonOfferte");
         let config: Record<string, unknown> = {};
         if (type === "buy_x_get_y")
           config = {
@@ -834,8 +905,10 @@ const boutonLien = "text-bo-accent hover:underline";
             conditions,
             cumulable,
           };
-        else if (type === "percent") config = { percent: Number(valeur("percent")) || 0, conditions, cumulable };
-        else if (type === "fixed") config = { amountCents: euroEnCentimes(valeur("amount")), conditions, cumulable };
+        else if (type === "percent")
+          config = { percent: Number(valeur("percent")) || 0, livraisonOfferte, conditions, cumulable };
+        else if (type === "fixed")
+          config = { amountCents: euroEnCentimes(valeur("amount")), livraisonOfferte, conditions, cumulable };
         else config = { thresholdCents: euroEnCentimes(valeur("seuil")) };
         return { type, config, active: true, name: valeur("name") || "Promotion" };
       }

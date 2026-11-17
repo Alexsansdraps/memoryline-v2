@@ -1,30 +1,39 @@
 ---
 /**
- * Le tunnel de commande. Un compte est nécessaire pour l'atteindre.
+ * La caisse, et depuis le 17/11 le panier du site : il n'y a plus de page
+ * /panier hors du stand (elle redirige ici). Le récapitulatif s'y modifie —
+ * quantités, retraits, « Modifier » —, et le champ « Code promo ou carte
+ * cadeau » y vit.
+ *
+ * La page s'ouvre SANS compte. Une visiteuse non connectée voit son panier,
+ * le modifie, saisit son code ; à la place des informations et du paiement,
+ * un bloc l'invite à se connecter ou à créer son compte, et l'adresse de
+ * retour la ramène ici, panier intact. Commander demande toujours un compte :
+ * le serveur le vérifie au passage en caisse (POST /orders).
  *
  * Commander en tant qu'invitée créait une fiche cliente par achat : la même
  * personne finissait éparpillée en autant de fiches que de commandes, sans
- * historique, sans carnet d'adresses, et sans moyen de retrouver ce qu'elle
- * avait déjà acheté. On demande donc le compte AVANT de valider le panier.
+ * historique, sans carnet d'adresses. C'est pourquoi le compte reste exigé
+ * pour COMMANDER, pas pour regarder son panier.
  *
- * La redirection emporte l'adresse de retour : après la connexion ou la
- * création du compte, on revient ici, panier intact. Sans cela il faudrait
- * retrouver son panier tout seul, et beaucoup abandonneraient là.
+ * Le retour de la banque (paiement Stripe à redirection) arrive ici avec ses
+ * paramètres, connecté ou non — une session a pu expirer pendant que la
+ * cliente était chez sa banque. La caisse le traite sans formulaire : le
+ * serveur relit le paiement chez Stripe (POST /payments/stripe/retour), sans
+ * avoir besoin de la session.
  *
  * Le compte et le carnet d'adresses sont lus ici, côté serveur, et passés au
- * tunnel : il n'a plus qu'à les afficher, et la cliente retrouve son nom et
- * son adresse déjà remplis.
+ * tunnel : la cliente retrouve son nom et son adresse déjà remplis.
+ *
+ * Rien du contenu ne s'affiche tant que la caisse n'est pas prête (panier lu,
+ * récapitulatif calculé, polices chargées) : un rond qui tourne à la place,
+ * puis tout d'un coup (.ml-attente, global.css). Huit secondes au plus.
  */
 import Base from "../../layouts/Base.astro";
 import { titreDePage } from "../../lib/textes-seo.ts";
 import CheckoutIsland from "../../islands/CheckoutIsland.tsx";
 import { lien, t, type Langue } from "../../i18n/utils.ts";
-import {
-  adresses as lireAdresses,
-  moi,
-  rediriger,
-  type Adresse,
-} from "../../lib/compte.ts";
+import { adresses as lireAdresses, moi, type Adresse } from "../../lib/compte.ts";
 import { estLangue, langueDepuisParam } from "../../i18n/utils.ts";
 
 /** Rendu à la demande : la page dépend de qui est connectée. */
@@ -42,48 +51,20 @@ const ici = lien(langue, "/commande");
  *
  * Le client paie sur place : ni compte, ni adresse, ni carte bancaire. Sa
  * dernière étape est le récapitulatif du panier, où il laisse son nom et son
- * adresse e-mail (CartIsland + CommandeStand). Une tablette qui arrive
- * quand même ici — un lien gardé, un retour arrière — y est renvoyée, plutôt
- * que de tomber sur un écran de connexion puis sur un paiement en ligne.
- *
- * Il y avait auparavant ICI un second formulaire de stand, en plus de celui du
- * panier : deux dernières étapes pour un même parcours, dont une que le
- * panier sans prix ne permettait même plus d'atteindre.
- *
- * La page le DIT, au lieu de renvoyer au panier sans un mot. Ouvrir une fois
- * le stand depuis le back-office (bouton « Ouvrir » de Ventes stand) met le
- * navigateur en mode stand pour vingt-quatre heures, et la boutique qui
- * voulait ensuite passer une commande d'essai sur le site retombait sur le
- * panier du stand, sans rien pour en sortir (carte Trello du 30/09 : « je ne
- * peux pas passer des commandes test sur le site (pas en stand) »). Le lien
- * « Quitter le mode stand » rouvre cette page avec ?stand=0, que le
- * middleware comprend : il referme le mode stand.
+ * adresse e-mail (CartIsland + CommandeStand). Une tablette qui arrive quand
+ * même ici — un lien gardé, un retour arrière — le lit, avec de quoi revenir
+ * au panier du stand ou quitter le mode stand.
  */
 const auStand = Astro.locals.stand;
 
-const session = auStand ? null : await moi(Astro);
-// Le retour de la banque après un paiement Stripe à redirection arrive ici,
-// avec ses paramètres. Une session expirée entre-temps renvoie à la
-// connexion : les paramètres partent avec, sinon la caisse rouverte ne
-// saurait plus qu'un paiement vient d'avoir lieu.
-const retourBanque = new URLSearchParams();
-for (const cle of ["payment_intent", "payment_intent_client_secret", "redirect_status"]) {
-  const v = Astro.url.searchParams.get(cle);
-  if (v) retourBanque.set(cle, v);
-}
-const iciAvecRetour = retourBanque.size ? `${ici}?${retourBanque}` : ici;
-if (session && !session.ok)
-  return rediriger(
-    Astro,
-    `${lien(langue, "/compte/connexion")}?retour=${encodeURIComponent(iciAvecRetour)}`,
-    302,
-  );
-
-const client = session?.donnees ?? null;
+// Une session qui ne répond pas, ou pas de session : la caisse s'ouvre sans
+// compte, le bloc de connexion prend la place du formulaire.
+const session = auStand ? null : await moi(Astro).catch(() => null);
+const client = session?.ok ? (session.donnees ?? null) : null;
 // Le carnet est un confort : s'il ne répond pas, le tunnel s'ouvre quand même
 // avec des champs vides plutôt que de refuser la commande.
 let carnet: Adresse[] = [];
-if (!auStand) {
+if (client) {
   try {
     const r = await lireAdresses(Astro);
     if (r.ok && Array.isArray(r.donnees)) carnet = r.donnees;
@@ -100,83 +81,82 @@ if (!auStand) {
   noindex={true}
 >
   <section class="mx-auto max-w-[1200px] px-4 sm:px-6 pt-12 pb-16">
-    <nav class="text-sm text-ink-soft">
-      <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a> ·
-      <a href={lien(langue, "/panier")} class="hover:text-terracotta"
-        >{tr("nav.panier")}</a
-      >
-    </nav>
-    <h1 class="text-3xl sm:text-4xl mt-4 mb-8">
-      {tr("commande.titre")}
-    </h1>
+    {/* Sans JavaScript, rien n'attend : le contenu se montre tel quel. */}
+    <noscript>
+      <style>
+        .ml-attente > .ml-attente-contenu { visibility: visible !important; }
+        .ml-attente > .ml-attente-roue { display: none !important; }
+      </style>
+    </noscript>
+    <div id="ml-attente" class="ml-attente" data-pret={auStand ? "" : undefined}>
+      <div class="ml-attente-roue" role="status" aria-label={tr("panier.chargement")}>
+        <span class="ml-spinner" aria-hidden="true"></span>
+      </div>
+      <div class="ml-attente-contenu">
+        <nav class="text-sm text-ink-soft">
+          <a href={lien(langue, "/")} class="hover:text-terracotta">Memory Line</a> ·
+          <a href={lien(langue, "/affiches")} class="hover:text-terracotta"
+            >{tr("nav.affiches")}</a
+          >
+        </nav>
+        <h1 class="text-3xl sm:text-4xl mt-4 mb-8">
+          {tr("commande.titre")}
+        </h1>
 
-    {auStand || !client ? (
-      <div class="max-w-xl rounded-2xl border border-ink/10 bg-paper-deep p-6">
-        <h2 class="text-xl font-medium">{tr("commande.stand.titre")}</h2>
-        <p class="mt-3 text-ink-soft">{tr("commande.stand.texte")}</p>
-        <div class="mt-6 flex flex-wrap gap-3">
-          <a
-            href={`${lien(langue, "/commande")}?stand=0`}
-            class="inline-flex items-center justify-center rounded-full bg-ink px-5 py-3 text-paper"
-          >
-            {tr("commande.stand.quitter")}
-          </a>
-          <a
-            href={lien(langue, "/panier")}
-            class="inline-flex items-center justify-center rounded-full border-2 border-ink px-5 py-3 hover:bg-ink hover:text-paper"
-          >
-            {tr("commande.stand.panier")}
-          </a>
-        </div>
-      </div>
-    ) : (
-    <CheckoutIsland
-      client:only="solid-js"
-      langue={langue}
-      compte={{
-        nom: client.name ?? "",
-        prenom: client.firstName ?? undefined,
-        nomFamille: client.lastName ?? undefined,
-        email: client.email,
-        telephone: client.phone ?? "",
-      }}
-      carnet={carnet.map((a) => ({
-        id: a.id,
-        label: a.label,
-        name: a.name,
-        line1: a.line1,
-        line2: a.line2,
-        postalCode: a.postalCode,
-        city: a.city,
-        country: a.country,
-        phone: a.phone,
-        parDefaut: a.isDefaultShipping,
-      }))}
-    >
-      {/* Le temps que la caisse arrive (script et panier) : sa silhouette,
-          plutôt qu'une page blanche (17/11). */}
-      <div
-        slot="fallback"
-        class="grid items-start gap-8 lg:grid-cols-[1fr_320px]"
-        aria-busy="true"
-        aria-label={tr("panier.chargement")}
-      >
-        <div class="space-y-4">
-          <div class="ml-skeleton h-7 w-52" />
-          <div class="grid gap-4 sm:grid-cols-2">
-            <div class="ml-skeleton h-12" />
-            <div class="ml-skeleton h-12" />
+        {auStand ? (
+          <div class="max-w-xl rounded-2xl border border-ink/10 bg-paper-deep p-6">
+            <h2 class="text-xl font-medium">{tr("commande.stand.titre")}</h2>
+            <p class="mt-3 text-ink-soft">{tr("commande.stand.texte")}</p>
+            <div class="mt-6 flex flex-wrap gap-3">
+              <a
+                href={`${lien(langue, "/commande")}?stand=0`}
+                class="inline-flex items-center justify-center rounded-full bg-ink px-5 py-3 text-paper"
+              >
+                {tr("commande.stand.quitter")}
+              </a>
+              <a
+                href={`${lien(langue, "/panier")}?stand=1`}
+                class="inline-flex items-center justify-center rounded-full border-2 border-ink px-5 py-3 hover:bg-ink hover:text-paper"
+              >
+                {tr("commande.stand.panier")}
+              </a>
+            </div>
           </div>
-          <div class="ml-skeleton h-12" />
-          <div class="ml-skeleton mt-8 h-7 w-36" />
-          <div class="ml-skeleton h-12" />
-          <div class="ml-skeleton h-16" />
-          <div class="ml-skeleton h-16" />
-          <div class="ml-skeleton h-16" />
-        </div>
-        <div class="ml-skeleton h-72" />
+        ) : (
+          <CheckoutIsland
+            client:only="solid-js"
+            langue={langue}
+            compte={client
+              ? {
+                  nom: client.name ?? "",
+                  prenom: client.firstName ?? undefined,
+                  nomFamille: client.lastName ?? undefined,
+                  email: client.email,
+                  telephone: client.phone ?? "",
+                }
+              : undefined}
+            carnet={carnet.map((a) => ({
+              id: a.id,
+              label: a.label,
+              name: a.name,
+              line1: a.line1,
+              line2: a.line2,
+              postalCode: a.postalCode,
+              city: a.city,
+              country: a.country,
+              phone: a.phone,
+              parDefaut: a.isDefaultShipping,
+            }))}
+          />
+        )}
       </div>
-    </CheckoutIsland>
-    )}
+    </div>
+    {/* La sécurité : au bout de 8 s, la page se montre quoi qu'il arrive. */}
+    <script is:inline>
+      setTimeout(function () {
+        var attente = document.getElementById("ml-attente");
+        if (attente) attente.setAttribute("data-pret", "");
+      }, 8000);
+    </script>
   </section>
 </Base>

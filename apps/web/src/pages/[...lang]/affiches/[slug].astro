@@ -771,6 +771,7 @@ const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
         ) : (
           <AddToCartButton
             libelles={libelles(langue, LIBELLES_AJOUT)}
+            adresseCommande={lien(langue, "/commande")}
             adressePanier={lien(langue, "/panier")}
             langue={langue}
             client:only="solid-js"

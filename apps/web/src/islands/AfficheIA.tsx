@@ -43,7 +43,7 @@ import {
   type TextBlock,
 } from "@memoryline/types";
 import { createReductionDesLignes } from "@memoryline/configurator";
-import { assetUrl, avecStand, browserApi, formatPrice, getCartId } from "../lib/api.ts";
+import { assetUrl, browserApi, formatPrice, getCartId, versLePanier } from "../lib/api.ts";
 import {
   apercuAbsolu,
   attendreApercu,
@@ -790,7 +790,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         await ajouterUneAffiche(a);
         dejaAuPanier.add(a.publicId);
       }
-      window.location.href = avecStand(lien(props.langue ?? LANGUE_DEFAUT, "/panier"));
+      window.location.href = versLePanier(
+        lien(props.langue ?? LANGUE_DEFAUT, "/commande"),
+        lien(props.langue ?? LANGUE_DEFAUT, "/panier"),
+      );
     } catch {
       setEchec("inconnu");
       setAjout(false);

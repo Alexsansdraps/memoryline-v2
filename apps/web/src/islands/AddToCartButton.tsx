@@ -2,7 +2,7 @@
 import type { CleUi, Langue } from "../i18n/utils.ts";
 import { createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
-import { ajouterAuPanier, avecStand, getCartId } from "../lib/api-navigateur.ts";
+import { ajouterAuPanier, getCartId, versLePanier } from "../lib/api-navigateur.ts";
 import { messageAjoutRefuse } from "../lib/ajout-panier.ts";
 
 /**
@@ -29,7 +29,9 @@ export interface AddToCartButtonProps {
   langue?: Langue;
   /** Les mots du bouton, traduits par la page (libelles(langue, LIBELLES_AJOUT)). */
   libelles: Record<(typeof LIBELLES_AJOUT)[number], string>;
-  /** L'adresse du panier dans la langue de la page. */
+  /** La page de commande dans la langue de la page : le panier du site (17/11). */
+  adresseCommande: string;
+  /** Le panier de la tablette du stand, dans la langue de la page. */
   adressePanier: string;
   product: {
     id: number;
@@ -105,7 +107,7 @@ export default function AddToCartButton(
         config,
         langue: props.langue ?? "fr",
       });
-      window.location.href = avecStand(props.adressePanier);
+      window.location.href = versLePanier(props.adresseCommande, props.adressePanier);
     } catch (e) {
       // Dans la langue de la page, jamais le texte brut de l'API.
       setError(messageAjoutRefuse(e, tr));

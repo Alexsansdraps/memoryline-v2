@@ -238,6 +238,36 @@ h4 {
   border-top-color: currentColor;
 }
 
+/* La caisse, et le panier de la tablette du stand, attendent d'être PRÊTS
+   avant de montrer leur contenu (17/11) : panier lu, récapitulatif calculé,
+   polices chargées. Avant, un rond qui tourne ; après, tout d'un coup, sans
+   texte ni police qui change ensuite. Le contenu garde sa place
+   (visibility), donc rien ne saute à l'apparition. La page lève l'attente
+   d'elle-même au bout de 8 s, et son <noscript> la lève sans JavaScript.
+   Les autres pages n'attendent rien : la 4G du stand ne le permettrait pas. */
+.ml-attente {
+  position: relative;
+  min-height: 60vh;
+}
+.ml-attente:not([data-pret]) > .ml-attente-contenu {
+  visibility: hidden;
+}
+.ml-attente-roue {
+  position: absolute;
+  inset: 0 0 auto 0;
+  display: flex;
+  justify-content: center;
+  padding-top: min(25vh, 12rem);
+}
+.ml-attente[data-pret] > .ml-attente-roue {
+  display: none;
+}
+.ml-attente-roue > .ml-spinner {
+  width: 36px;
+  height: 36px;
+  border-width: 3px;
+}
+
 /* Le voile « Ajout au panier… » de la personnalisation (ConfiguratorIsland) :
    la fenêtre se couvre d'un blanc léger le temps que l'affiche parte, et une
    étiquette noire dit ce qui se passe, au milieu de l'écran — là où l'œil

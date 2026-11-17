@@ -28,7 +28,8 @@ export interface FicheLigne {
 /** Une ligne de panier, réduite à ce que ces fonctions en lisent. */
 interface LigneVue {
   productId: number | null;
-  config: PosterConfig;
+  /** Null pour une carte cadeau : rien à composer, rien à montrer du catalogue. */
+  config: PosterConfig | null;
 }
 
 /**
@@ -117,6 +118,8 @@ export function estPretAImprimer(
   fiches: Map<number, FicheLigne> | undefined,
   it: LigneVue,
 ): boolean {
+  // Une carte cadeau n'est pas une affiche : elle a sa propre vignette.
+  if (!it.config) return false;
   const genre = it.productId != null ? fiches?.get(it.productId)?.kind : null;
   if (genre) return genre === "prete_a_imprimer";
   return !it.config.backgroundUrl && (it.config.characters?.length ?? 0) === 0;

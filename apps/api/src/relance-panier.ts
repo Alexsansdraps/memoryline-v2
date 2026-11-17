@@ -1058,7 +1058,7 @@ async function composerLignes(
       // des courriers (courriers.ts), rendue par le moteur des fichiers
       // d'impression (apercus.ts). Adresse absolue, et signée : la messagerie
       // la charge sans session.
-      imageUrl: origine ? `${origine}/api${cheminApercu(it.id, it.config)}` : null,
+      imageUrl: origine && it.config ? `${origine}/api${cheminApercu(it.id, it.config)}` : null,
       // Une affiche en paysage a une vignette deux fois moins haute.
       paysage: cfg.orientation === "paysage",
       indisponible,

@@ -553,6 +553,9 @@ const LIBELLE_MOYEN: Record<string, string> = {
   paypal: "PayPal",
   stand: "Réglé sur place",
   manuel: "À la main (virement, chèque, espèces)",
+  // 17/11 : la part payée par une carte cadeau, et une commande à 0 €.
+  carte_cadeau: "Carte cadeau",
+  gratuit: "Commande gratuite (rien à encaisser)",
 };
 
 function libelleMoyen(v: string | null | undefined): string {
@@ -970,7 +973,22 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                       <div class="font-medium">
                         {it.title ?? "Affiche personnalisée"}
                       </div>
-                      <div class="mt-0.5 text-bo-muted">
+                      {it.carteCadeau && (
+                        /* Une carte cadeau achetée : rien à imprimer ni à
+                           expédier, elle part par e-mail au paiement. */
+                        <div class="mt-0.5 text-bo-muted">
+                          {[
+                            `Pour ${it.carteCadeau.destinatairePrenom ? `${it.carteCadeau.destinatairePrenom}, ` : ""}${it.carteCadeau.destinataireEmail ?? "l'acheteuse"}`,
+                            it.carteCadeau.carte
+                              ? `${it.carteCadeau.carte.masque} · ${it.carteCadeau.carte.envoyeeLe ? "envoyée par e-mail" : "courriel non parti"}`
+                              : "carte créée au paiement",
+                          ].join(" · ")}
+                          {it.carteCadeau.message && (
+                            <span class="mt-1 block italic">« {it.carteCadeau.message} »</span>
+                          )}
+                        </div>
+                      )}
+                      <div class="mt-0.5 text-bo-muted" hidden={Boolean(it.carteCadeau)}>
                         {[
                           it.format ? `Format ${libelleFormat(it.format)}` : null,
                           // Une affiche IA couchée s'imprime couchée : à voir AVANT de lancer l'impression.
@@ -1693,6 +1711,15 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 <dt>Total</dt>
                 <dd>{formatPrice(total)}</dd>
               </div>
+              {(order.giftCardCents ?? 0) > 0 && (
+                <div class="flex justify-between">
+                  <dt class="text-bo-muted">
+                    Dont carte cadeau
+                    {detail?.carteCadeauPayante ? ` · ${detail.carteCadeauPayante.masque}` : ""}
+                  </dt>
+                  <dd>{formatPrice(order.giftCardCents ?? 0)}</dd>
+                </div>
+              )}
               {rembourse > 0 && (
                 <>
                   <div class="flex justify-between text-violet-700">

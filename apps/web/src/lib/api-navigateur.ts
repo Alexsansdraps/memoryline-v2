@@ -60,6 +60,16 @@ export function avecStand(adresse: string): string {
   }
 }
 
+/**
+ * Où mène « le panier » (17/11, plus de page /panier sur le site) : sur le
+ * site, la page de commande, qui porte le récapitulatif modifiable ; au
+ * stand, la page /panier de la tablette, qui reste sa dernière étape.
+ * Les deux adresses arrivent déjà dans la langue de la page.
+ */
+export function versLePanier(adresseCommande: string, adressePanierDuStand: string): string {
+  return enModeStand() ? avecStand(adressePanierDuStand) : adresseCommande;
+}
+
 /** Clé localStorage du panier (UUID par navigateur). */
 const CART_ID_KEY = "ml_cart_id";
 

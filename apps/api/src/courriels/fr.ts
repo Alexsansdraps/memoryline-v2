@@ -72,6 +72,31 @@ export const fr = {
   "confirmation.retrait": "À retirer :",
   "confirmation.question": "Une question ? Répondez simplement à cet e-mail.",
   "confirmation.texte": "Votre commande {numero} est confirmée. Total : {total}.",
+  /** Sous le total : la part payée par une carte cadeau, code masqué. */
+  "confirmation.dontCarte": "Dont réglé avec la carte cadeau {code}",
+  /** Une carte cadeau achetée dans la commande, envoyée à son destinataire. */
+  "confirmation.carteEnvoyee": "Carte cadeau de {montant} envoyée par e-mail à {email}.",
+
+  /* --- La carte cadeau, envoyée à son destinataire --------------------------- */
+
+  /** Le titre d'une ligne de commande « carte cadeau ». */
+  "lignes.carteCadeau": "Carte cadeau",
+  "lignes.carteCadeauPour": "Carte cadeau pour {email}",
+  "carteCadeau.objet": "Votre carte cadeau Memory Line de {montant}",
+  "carteCadeau.objetDe": "{prenom} vous offre une carte cadeau Memory Line",
+  /** Le titre quand on ne connaît pas le prénom du destinataire. */
+  "carteCadeau.bonjour": "Bonjour,",
+  "carteCadeau.intro": "Voici votre carte cadeau Memory Line, d'une valeur de {montant}.",
+  "carteCadeau.introDe": "{prenom} vous offre une carte cadeau Memory Line, d'une valeur de {montant}.",
+  "carteCadeau.mot": "Son petit mot :",
+  "carteCadeau.code": "Votre code",
+  "carteCadeau.mode":
+    "Indiquez ce code au moment de payer votre commande sur memoryline.fr, dans le champ « Code promo ou carte cadeau ».",
+  "carteCadeau.solde":
+    "Utilisable en une ou plusieurs fois : le solde restant reste utilisable avec le même code.",
+  "carteCadeau.garder": "Gardez cet e-mail : ce code vaut de l'argent, comme un billet.",
+  "carteCadeau.bouton": "Choisir une affiche",
+  "carteCadeau.texteCode": "Votre code : {code} (valeur {montant}).",
 
   /* --- Relance de panier : le courrier d'origine ----------------------------- */
 
@@ -217,6 +242,9 @@ export const fr = {
     "Le montant repart vers le moyen de paiement utilisé pour la commande. Comptez quelques jours ouvrés avant de le voir sur votre relevé : ce délai est celui de votre banque, il ne dépend pas de nous.",
   "remboursee.horsLigne":
     "Ce remboursement se fait en dehors du paiement en ligne. Nous revenons vers vous si une information nous manque pour vous le verser.",
+  /** La part rendue sur la carte cadeau qui avait payé la commande. */
+  "remboursee.carte":
+    "{montant} reviennent sur votre carte cadeau : son solde reste utilisable avec le même code.",
   "remboursee.question":
     "Une question sur ce remboursement ? Répondez simplement à cet e-mail.",
   "remboursee.texte":
