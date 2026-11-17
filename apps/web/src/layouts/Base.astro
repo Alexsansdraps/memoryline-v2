@@ -366,7 +366,9 @@ const liensCompte = Astro.locals.stand
         href: connecte ? "/compte" : "/compte/connexion",
         texte: tr("nav.compte"),
       },
-      { href: "/panier", texte: tr("nav.panier") },
+      // Plus de page panier sur le site (17/11) : le récapitulatif se modifie
+      // dans /commande. Au stand, la tablette garde sa page /panier.
+      { href: "/commande", texte: tr("nav.panier") },
     ];
 
 /**
@@ -422,8 +424,20 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             });
           })();
           gtag("js", new Date());
+          // Tag Manager se charge APRÈS la page (17/11, PageSpeed) : environ
+          // 75 Ko de JavaScript tiers ne retardent plus l'affichage, surtout
+          // en 4G. Le consentement, lui, est posé plus haut, avant tout.
+          (function () {
+            function charger() {
+              var s = document.createElement("script");
+              s.async = true;
+              s.src = "https://www.googletagmanager.com/gtm.js?id=GTM-PJ2BFXCB";
+              document.head.appendChild(s);
+            }
+            if (document.readyState === "complete") setTimeout(charger, 0);
+            else window.addEventListener("load", function () { setTimeout(charger, 0); });
+          })();
         </script>
-        <script is:inline async src="https://www.googletagmanager.com/gtm.js?id=GTM-PJ2BFXCB"></script>
       </>
     )}
     <meta name="generator" content={Astro.generator} />
@@ -959,7 +973,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           </a>
           )}
           <a
-            href={lien(langue, "/panier")}
+            href={lien(langue, Astro.locals.stand ? "/panier" : "/commande")}
             class="ml-panier-lien inline-flex items-center gap-2 hover:text-terracotta transition-colors"
             aria-label={tr("nav.panier")}
           >
