@@ -86,6 +86,7 @@ import {
   type Langue,
 } from "./courriels/index.js";
 import { livraisonDansLaLangue, nomTraduit } from "./traductions.js";
+import { prenomPourCourrier } from "./prenom.js";
 
 /**
  * Le titre de repli d'une ligne (« Affiche personnalisée ») dans la langue du
@@ -1413,6 +1414,7 @@ export function mountOrderRoutes(app: Hono): void {
       const [client] = await db
         .select({
           name: schema.customers.name,
+          firstName: schema.customers.firstName,
           email: schema.customers.email,
           langue: schema.customers.langue,
         })
@@ -1444,7 +1446,7 @@ export function mountOrderRoutes(app: Hono): void {
         };
       });
       const prenom =
-        (client.name ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut");
+        prenomPourCourrier(client) || tc(langue)("commun.prenomParDefaut");
       // Une commande du site à retirer sur place n'est pas « en route » :
       // elle attend au lieu choisi, et c'est ce que dit son courrier.
       const lieu =
@@ -1869,6 +1871,7 @@ export function mountOrderRoutes(app: Hono): void {
       const [client] = await db
         .select({
           name: schema.customers.name,
+          firstName: schema.customers.firstName,
           email: schema.customers.email,
           langue: schema.customers.langue,
         })
@@ -1883,7 +1886,7 @@ export function mountOrderRoutes(app: Hono): void {
       const courrier = courrierRemboursee({
         langue,
         prenomClient:
-          (client.name ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut"),
+          prenomPourCourrier(client) || tc(langue)("commun.prenomParDefaut"),
         numero: commande.number,
         montantCents: remboursement.montantCents,
         portCents: remboursement.portCents,
@@ -2311,6 +2314,7 @@ export function mountOrderRoutes(app: Hono): void {
       const [client] = await db
         .select({
           name: schema.customers.name,
+          firstName: schema.customers.firstName,
           email: schema.customers.email,
           langue: schema.customers.langue,
         })
@@ -2333,7 +2337,7 @@ export function mountOrderRoutes(app: Hono): void {
       const courrier = courrierAnnulee({
         langue,
         prenomClient:
-          (client.name ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut"),
+          prenomPourCourrier(client) || tc(langue)("commun.prenomParDefaut"),
         numero: commande.number,
         motif: motifDAnnulation(annulation.motif.choix, annulation.motif.libre, langue),
         articles: titresDansLaLangue(annulation.articles, langue),
@@ -2996,7 +3000,7 @@ export function mountOrderRoutes(app: Hono): void {
       totalCents: order.totalCents,
       dejaPayee: order.status === "paid",
       clientEmail: client?.email ?? null,
-      prenomClient: (client?.name ?? "").split(" ")[0] || t("commun.prenomParDefaut"),
+      prenomClient: prenomPourCourrier(client) || t("commun.prenomParDefaut"),
       langue,
     };
   }

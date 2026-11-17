@@ -188,6 +188,49 @@ export const PAYS_PROPOSES: readonly string[] = [
 ];
 
 /**
+ * La forme du code postal de chaque pays proposé. Un pays absent d'ici (et
+ * « autre pays », ZZ) se contente d'une forme lâche : 2 à 10 lettres ou
+ * chiffres. Le but n'est pas de valider l'adresse — le transporteur s'en
+ * charge —, mais d'arrêter la faute de frappe avant le paiement : la caisse
+ * acceptait « 123 » ou « abc » (recette du 17/11), et le colis partait sans
+ * pouvoir arriver.
+ */
+const FORMES_CODE_POSTAL: Record<string, RegExp> = {
+  FR: /^\d{5}$/,
+  DE: /^\d{5}$/,
+  ES: /^\d{5}$/,
+  IT: /^\d{5}$/,
+  BE: /^\d{4}$/,
+  CH: /^\d{4}$/,
+  LU: /^(L-?)?\d{4}$/i,
+  NL: /^\d{4} ?[A-Z]{2}$/i,
+  PT: /^\d{4}-?\d{3}$/,
+  GB: /^[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}$/i,
+  CA: /^[A-Z]\d[A-Z] ?\d[A-Z]\d$/i,
+  US: /^\d{5}(-\d{4})?$/,
+};
+
+/** Le code postal a-t-il la forme de ceux de ce pays ? */
+export function codePostalValide(cp: unknown, pays: unknown): boolean {
+  const v = String(cp ?? "").trim();
+  const forme = FORMES_CODE_POSTAL[normaliserPays(pays)];
+  return forme ? forme.test(v) : /^[A-Z0-9][A-Z0-9 -]{1,9}$/i.test(v);
+}
+
+/**
+ * Un numéro de téléphone plausible, ou rien : il est facultatif. Chiffres,
+ * espaces, points, tirets, barres, parenthèses et « + », avec 6 à 15 chiffres
+ * en tout (le maximum international).
+ */
+export function telephoneValide(tel: unknown): boolean {
+  const v = String(tel ?? "").trim();
+  if (!v) return true;
+  if (!/^\+?[\d\s()./-]+$/.test(v)) return false;
+  const chiffres = v.replace(/\D/g, "").length;
+  return chiffres >= 6 && chiffres <= 15;
+}
+
+/**
  * Le code d'un pays tel qu'une adresse l'a gardé : déjà un code (« FR »), ou
  * écrit en toutes lettres dans l'une des cinq langues du site (« France »,
  * « Belgique », « Germany »…). Ce second cas, ce sont les adresses saisies au

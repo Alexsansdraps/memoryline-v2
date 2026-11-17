@@ -2,6 +2,8 @@
 
 > **17/11 matin : pour la bascule de memoryline.fr, lire `RECETTE-17-11.md`** (plan vérifié pas à pas, avec retour arrière, et ce qu'il faut régler au BO avant). Le script de vidage a été corrigé : il GARDE les ventes payées pour de vrai (WEB-0016) et ne se lance qu'une fois. La recette complète (§ 1 de ce fichier) a été faite et ses bugs corrigés et mis en ligne (`9de3957`). **Bloquant restant, côté données : les 15 affiches prêtes à imprimer n'ont pas de visuel HD, leur PDF est refusé** (visuels de Margaux, ou les passer en brouillon).
 
+> **17/11 dans la matinée (PC du bureau)** : 6 des petits défauts de la recette sont corrigés et en ligne. Le code postal et le téléphone sont contrôlés à la caisse (forme du pays, `codePostalValide` et `telephoneValide` dans packages/types/src/livraison.ts). Le panier garde l'ordre des lignes et la pastille suit les quantités. Les courriels emploient le prénom saisi (`apps/api/src/prenom.ts`). « Encaissé » n'apparaît que pour un paiement réussi. Le message d'encaissement ne promet plus des PDF déjà prêts. La liste est barrée dans RECETTE-17-11.md. **Bascule du domaine prévue aujourd'hui** (Alexandra). Au moment de cette mise en ligne, le TTL est encore à 3600 chez OVH.
+
 Fichier de reprise : à lire en premier. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` (messages de commit) et dans les commentaires du code : ce fichier ne garde que ce qui RESTE.
 
 ## 1. Ce qui est en prod (VPS)

@@ -65,6 +65,7 @@ import { livraisonDansLaLangue, nomTraduit } from "./traductions.js";
 // ligne, le banc montre un cadre vide.
 import { cheminApercu } from "./apercus.js";
 import { texteDeHtml } from "@memoryline/types/recherche";
+import { prenomPourCourrier } from "./prenom.js";
 
 /**
  * L'adresse publique du site, pour les images des courriers.
@@ -429,7 +430,7 @@ async function donneesDeCommande(
     // un nouveau, sous peine de le retirer de la suite pour rien.
     numeroFacture: commande.invoiceNumber ?? "F2026-0001",
     dejaPayee: commande.status === "paid",
-    prenomClient: (client?.name ?? "").split(" ")[0] ?? "",
+    prenomClient: prenomPourCourrier(client),
     nomClient: client?.name ?? "client inconnu",
     lignes,
     sousTotalCents,

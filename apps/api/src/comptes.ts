@@ -57,6 +57,7 @@ import {
 import { langueDuVisiteur, livraisonDansLaLangue, nomTraduit } from "./traductions.js";
 import { lieuDeRetrait } from "./lieux-retrait.js";
 import { mountImportClients } from "./import-clients.js";
+import { prenomPourCourrier } from "./prenom.js";
 
 export const COOKIE_CLIENT = "ml_client";
 
@@ -102,8 +103,11 @@ async function previenirLeClient(
 }
 
 /** Le prénom tel que les courriers l'emploient, ou de quoi s'en passer. */
-function prenomDe(nom: string | null, langue: Langue = "fr"): string {
-  return (nom ?? "").split(" ")[0] || tc(langue)("commun.prenomParDefaut");
+function prenomDe(
+  client: { firstName?: string | null; name?: string | null } | null | undefined,
+  langue: Langue = "fr",
+): string {
+  return prenomPourCourrier(client) || tc(langue)("commun.prenomParDefaut");
 }
 
 /**
@@ -798,7 +802,7 @@ export function mountCompteRoutes(app: Hono): void {
     await previenirLeClient(
       client.email,
       courrierBienvenue({
-        prenomClient: prenomDe(client.name, langue),
+        prenomClient: prenomDe(client, langue),
         lien: lienDuCompte(langue, "/compte"),
         langue,
       }),
@@ -1101,7 +1105,7 @@ export function mountCompteRoutes(app: Hono): void {
     await previenirLeClient(
       compte.email,
       courrierMotDePasseModifie({
-        prenomClient: prenomDe(compte.name, langue),
+        prenomClient: prenomDe(compte, langue),
         parReinitialisation: false,
         lien: lienDuCompte(langue, "/compte/mot-de-passe-oublie"),
         langue,
@@ -1145,7 +1149,7 @@ export function mountCompteRoutes(app: Hono): void {
         const origine = (process.env.PUBLIC_ORIGIN ?? "").replace(/\/$/, "");
         const lien = `${origine}${cheminSite(langue, "/compte/reinitialiser")}?jeton=${jeton}`;
         const courrier = courrierReinitialisation({
-          prenomClient: prenomDe(compte.name, langue),
+          prenomClient: prenomDe(compte, langue),
           lien,
           langue,
         });
@@ -1207,6 +1211,7 @@ export function mountCompteRoutes(app: Hono): void {
     const [titulaire] = await db
       .select({
         name: schema.customers.name,
+        firstName: schema.customers.firstName,
         email: schema.customers.email,
         langue: schema.customers.langue,
       })
@@ -1221,7 +1226,7 @@ export function mountCompteRoutes(app: Hono): void {
     await previenirLeClient(
       titulaire?.email ?? null,
       courrierMotDePasseModifie({
-        prenomClient: prenomDe(titulaire?.name ?? null, langue),
+        prenomClient: prenomDe(titulaire, langue),
         parReinitialisation: true,
         lien: lienDuCompte(langue, "/compte/mot-de-passe-oublie"),
         langue,

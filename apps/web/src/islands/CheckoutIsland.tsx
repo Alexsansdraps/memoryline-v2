@@ -19,6 +19,8 @@ import {
 } from "solid-js";
 import {
   codePaysSaisi,
+  codePostalValide,
+  telephoneValide,
   demandeUnPointRelais,
   demandeUneAdresse,
   formaterPoids,
@@ -65,6 +67,7 @@ const ERREURS_PAR_CODE: Record<string, CleUi> = {
   panier_vide: "panier.vide",
   panier_modifie: "commande.err.panier_modifie",
   lieu_retrait_requis: "commande.err.lieu_retrait_requis",
+  telephone_invalide: "livraison.telephone_invalide",
   // La boutique a basculé entre l'essai et le réel pendant la commande : la
   // caisse relit ses moyens de paiement, la cliente choisit de nouveau.
   paiement_reconfigure: "commande.err.paiement_reconfigure",
@@ -861,6 +864,14 @@ export default function CheckoutIsland(props: {
       setModeChoisi(dispo[0]!.mode.slug);
   });
 
+  /**
+   * Le code postal et le téléphone ne se signalent faux qu'une fois le champ
+   * quitté : pendant la frappe, « 8035 » n'est pas une erreur, juste pas
+   * fini. Le bouton de paiement, lui, attend une forme valide dès le début.
+   */
+  const [cpQuitte, setCpQuitte] = createSignal(false);
+  const [telQuitte, setTelQuitte] = createSignal(false);
+
   /** Ce que le mode choisi exige avant de pouvoir payer. */
   const livraisonValide = () => {
     const o = optionChoisie();
@@ -869,8 +880,9 @@ export default function CheckoutIsland(props: {
       const a = adresse();
       return (
         a.line1.trim().length > 0 &&
-        a.postalCode.trim().length > 0 &&
-        a.city.trim().length > 0
+        codePostalValide(a.postalCode, pays()) &&
+        a.city.trim().length > 0 &&
+        telephoneValide(a.phone)
       );
     }
     if (demandeUnPointRelais(o.mode.kind))
@@ -1638,6 +1650,7 @@ export default function CheckoutIsland(props: {
                       <input
                         type="text"
                         value={adresse().postalCode}
+                        onBlur={() => setCpQuitte(true)}
                         onInput={(e) =>
                           setAdresse({
                             ...adresse(),
@@ -1663,6 +1676,17 @@ export default function CheckoutIsland(props: {
                       />
                     </label>
                   </div>
+                  <Show
+                    when={
+                      cpQuitte() &&
+                      adresse().postalCode.trim() !== "" &&
+                      !codePostalValide(adresse().postalCode, pays())
+                    }
+                  >
+                    <p class="-mt-2 text-sm text-red-700" role="alert">
+                      {tr("livraison.code_postal_invalide")}
+                    </p>
+                  </Show>
                   <label class="block">
                     <span class="text-sm font-medium">
                       {tr("livraison.telephone")}
@@ -1670,6 +1694,7 @@ export default function CheckoutIsland(props: {
                     <input
                       type="tel"
                       value={adresse().phone}
+                      onBlur={() => setTelQuitte(true)}
                       onInput={(e) =>
                         setAdresse({ ...adresse(), phone: e.currentTarget.value })
                       }
@@ -1677,6 +1702,11 @@ export default function CheckoutIsland(props: {
                       placeholder="06 12 34 56 78"
                     />
                   </label>
+                  <Show when={telQuitte() && !telephoneValide(adresse().phone)}>
+                    <p class="-mt-2 text-sm text-red-700" role="alert">
+                      {tr("livraison.telephone_invalide")}
+                    </p>
+                  </Show>
                 </div>
               </Show>
 

@@ -424,6 +424,9 @@ export default function CartIsland(props: {
         langue,
       });
       await refetch();
+      // La pastille de l'en-tête compte les exemplaires : elle doit suivre
+      // (CartBadge.tsx, recette du 17/11).
+      window.dispatchEvent(new Event("ml:panier"));
     } finally {
       setBusy(null);
     }
@@ -434,6 +437,7 @@ export default function CartIsland(props: {
     try {
       await browserApi.deleteCartItem(getCartId(), it.id);
       await refetch();
+      window.dispatchEvent(new Event("ml:panier"));
     } finally {
       setBusy(null);
     }

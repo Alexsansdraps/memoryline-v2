@@ -167,7 +167,7 @@ if (Astro.request.method === "POST" && estProprietaire) {
       });
       flash = r.deja
         ? (r.message ?? "Cette commande était déjà marquée payée.")
-        : `Commande encaissée : ${formatPrice(r.montantCents ?? 0)} reçus par ${r.moyen}. La confirmation est partie chez la cliente et les fichiers d'impression sont prêts.`;
+        : `Commande encaissée : ${formatPrice(r.montantCents ?? 0)} reçus par ${r.moyen}. La confirmation est partie chez la cliente. Les fichiers d'impression se préparent : leur état est en bas de la fiche.`;
     } else if (action === "envoyer-facture") {
       const r = await api.envoyerFacture(id, Astro.locals.user?.email ?? undefined);
       flash = `Facture ${r.numeroFacture} envoyée à ${r.destinataire}.`;
@@ -1734,7 +1734,13 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
 
             {paiement && (
               <p class="border-t border-bo-border px-4 py-3 text-sm text-bo-muted">
-                Encaissé : {libelleMoyen(paiement.provider)}
+                {/* « Encaissé » seulement pour un paiement réussi : un paiement
+                    commencé puis abandonné laissait croire la commande réglée
+                    (recette du 17/11). */}
+                {paiement.status === "succeeded"
+                  ? "Encaissé"
+                  : "Paiement commencé, rien d'encaissé"}{" "}
+                : {libelleMoyen(paiement.provider)}
                 {paiement.externalRef && ` · ${paiement.externalRef}`}
               </p>
             )}

@@ -74,6 +74,8 @@ import {
   verifierPoint as verifierPointSendcloud,
 } from "./sendcloud-points.js";
 import {
+  codePostalValide,
+  telephoneValide,
   CODES_NATURE,
   calageNeutre,
   calagePropre,
@@ -147,6 +149,7 @@ import {
 import { commandeVisible, type CommandeABorner } from "./vendeurs.js";
 import { lieuDeRetrait, lieuPourLaCommande, lignesDuLieu } from "./lieux-retrait.js";
 import { libererAdresse } from "./redirections.js";
+import { prenomPourCourrier } from "./prenom.js";
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -1715,7 +1718,7 @@ async function previenirDuPaiement(orderId: number): Promise<void> {
         langue,
         numero: order.number,
         prenomClient:
-          (client.name ?? "").split(" ")[0] || tc(langue)("confirmation.prenomParDefaut"),
+          prenomPourCourrier(client) || tc(langue)("confirmation.prenomParDefaut"),
         lignes,
         sousTotalCents: sousTotal,
         remiseCents: remise,
@@ -2241,10 +2244,14 @@ export function mountConfiguratorRoutes(app: Hono) {
       .from(schema.orders)
       .where(eq(schema.orders.clientOrderId, cartId));
     if (!order) return c.json({ cartId, items: [], poidsGrammes: 0 });
+    // Dans l'ordre où les affiches ont été ajoutées : sans ORDER BY, la base
+    // rendait en dernier la ligne qu'on venait de modifier, et le panier
+    // changeait d'ordre à chaque « + » (recette du 17/11).
     const items = await db
       .select()
       .from(schema.orderItems)
-      .where(eq(schema.orderItems.orderId, order.id));
+      .where(eq(schema.orderItems.orderId, order.id))
+      .orderBy(asc(schema.orderItems.id));
     // Des cadres que le site ne propose plus : le panier les COMPTE sans y
     // toucher. Une lecture ne modifie rien — la pastille de l'en-tête lit ce
     // panier sur chaque page, et le retrait se ferait alors dans le dos de la
@@ -2661,8 +2668,15 @@ export function mountConfiguratorRoutes(app: Hono) {
         return { erreur: "mode de livraison indisponible", statut: 400 as const, code: "mode_indisponible" };
       // Une livraison à domicile sans adresse n'arrive nulle part ; un point
       // relais sans point relais non plus.
-      if (demandeUneAdresse(port.kind) && (!ligne1 || !ville || !cp))
+      // Un code postal à la forme de son pays (codePostalValide) : « 123 » ou
+      // « abc » passaient, et le colis partait sans pouvoir arriver.
+      if (
+        demandeUneAdresse(port.kind) &&
+        (!ligne1 || !ville || !cp || !codePostalValide(cp, pays))
+      )
         return { erreur: "adresse de livraison incomplète", statut: 400 as const, code: "adresse_incomplete" };
+      if (demandeUneAdresse(port.kind) && !telephoneValide(liv.phone))
+        return { erreur: "numéro de téléphone invalide", statut: 400 as const, code: "telephone_invalide" };
       if (demandeUnPointRelais(port.kind) && !idRelais)
         return { erreur: "point relais requis", statut: 400 as const, code: "point_relais_requis" };
       // Quand SendCloud cherche les points de ce transporteur, le point doit

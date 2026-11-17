@@ -285,6 +285,8 @@ export const ui = {
     "livraison.code_postal": "Code postal",
     "livraison.ville": "Ville",
     "livraison.telephone": "Téléphone",
+    "livraison.code_postal_invalide": "Ce code postal n'a pas la forme attendue pour ce pays.",
+    "livraison.telephone_invalide": "Ce numéro de téléphone ne semble pas valide.",
     "livraison.point_relais": "Point relais",
     "livraison.point_relais_aide":
       "Indiquez le nom et l'adresse du point relais Mondial Relay de votre choix.",
@@ -998,6 +1000,8 @@ export const ui = {
     "livraison.code_postal": "Postcode",
     "livraison.ville": "City",
     "livraison.telephone": "Phone",
+    "livraison.code_postal_invalide": "This postcode doesn't look right for this country.",
+    "livraison.telephone_invalide": "This phone number doesn't look valid.",
     "livraison.point_relais": "Pickup point",
     "livraison.point_relais_aide":
       "Enter the name and address of your chosen Mondial Relay pickup point.",
@@ -1678,6 +1682,8 @@ export const ui = {
     "livraison.code_postal": "PLZ",
     "livraison.ville": "Stadt",
     "livraison.telephone": "Telefon",
+    "livraison.code_postal_invalide": "Diese Postleitzahl passt nicht zu diesem Land.",
+    "livraison.telephone_invalide": "Diese Telefonnummer scheint ungültig zu sein.",
     "livraison.point_relais": "Paketshop",
     "livraison.point_relais_aide":
       "Geben Sie Namen und Adresse Ihres Mondial-Relay-Paketshops an.",
@@ -2362,6 +2368,8 @@ export const ui = {
     "livraison.code_postal": "CAP",
     "livraison.ville": "Città",
     "livraison.telephone": "Telefono",
+    "livraison.code_postal_invalide": "Questo CAP non sembra corretto per questo paese.",
+    "livraison.telephone_invalide": "Questo numero di telefono non sembra valido.",
     "livraison.point_relais": "Punto di ritiro",
     "livraison.point_relais_aide":
       "Indica nome e indirizzo del punto di ritiro Mondial Relay scelto.",
@@ -3040,6 +3048,8 @@ export const ui = {
     "livraison.code_postal": "Código postal",
     "livraison.ville": "Ciudad",
     "livraison.telephone": "Teléfono",
+    "livraison.code_postal_invalide": "Este código postal no parece correcto para este país.",
+    "livraison.telephone_invalide": "Este número de teléfono no parece válido.",
     "livraison.point_relais": "Punto de recogida",
     "livraison.point_relais_aide":
       "Indica el nombre y la dirección del punto Mondial Relay elegido.",

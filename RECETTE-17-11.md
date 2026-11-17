@@ -49,13 +49,13 @@ Petits défauts vus, **non corrigés** (pas gênants pour jeudi) :
 - le champ d'une ligne longue ne s'agrandit pas ;
 - les emojis plus récents que Twemoji 15.0 (🫩 🐦‍🔥 🍋‍🟩) disparaissent du papier sans avertissement ;
 - ♥ ☀ ❄ tapés sans sélecteur sont en noir à l'écran mais en couleur sur le papier ;
-- la caisse accepte un code postal ou un téléphone fantaisiste ;
-- la pastille du panier ne suit pas un changement de quantité ;
-- l'ordre des lignes du panier change quand on modifie une quantité ;
+- ~~la caisse accepte un code postal ou un téléphone fantaisiste~~ — **corrigé le 17/11** ;
+- ~~la pastille du panier ne suit pas un changement de quantité~~ — **corrigé le 17/11** ;
+- ~~l'ordre des lignes du panier change quand on modifie une quantité~~ — **corrigé le 17/11** ;
 - la facture PDF retire les emojis ;
-- le prénom des courriels est coupé au premier espace ;
-- « Encaissé : Stripe · pi_… » s'affiche sur une commande jamais payée ;
-- le message d'encaissement annonce des PDF prêts alors qu'ils sont encore en fabrication ;
+- ~~le prénom des courriels est coupé au premier espace~~ — **corrigé le 17/11** ;
+- ~~« Encaissé : Stripe · pi_… » s'affiche sur une commande jamais payée~~ — **corrigé le 17/11** ;
+- ~~le message d'encaissement annonce des PDF prêts alors qu'ils sont encore en fabrication~~ — **corrigé le 17/11** ;
 - la vignette d'aperçu reste sur le disque après qu'on retire l'article du panier.
 
 **Consignes au stand** :
