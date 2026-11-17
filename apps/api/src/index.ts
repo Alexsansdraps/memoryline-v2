@@ -304,6 +304,20 @@ const TAILLES_DIR = resolve(ASSETS_DIR, "tailles");
 const tailleEnCours = new Map<string, Promise<void>>();
 
 /**
+ * UNE conversion de fond SVG à la fois, pour tout le serveur. Chacune décode
+ * des photos collées de plusieurs milliers de pixels : le 17/11, une série
+ * de conversions lancée pendant une mise en ligne a saturé la mémoire et
+ * bloqué le serveur. Les suivantes attendent leur tour ; une fois faite,
+ * l'image est relue sur le disque sans passer par ici.
+ */
+let fileDesSvg: Promise<unknown> = Promise.resolve();
+function unSvgALaFois<T>(travail: () => Promise<T>): Promise<T> {
+  const suite = fileDesSvg.then(travail, travail);
+  fileDesSvg = suite.catch(() => undefined);
+  return suite;
+}
+
+/**
  * Le fichier a servir : l'original, ou la taille demandee.
  *
  * L'original n'est jamais modifie — c'est lui qu'on imprime. La taille
@@ -351,16 +365,18 @@ async function fichierALaTaille(
           // Les images WebP collées dans le SVG d'abord converties : le
           // moteur de dessin les laisserait de côté sans rien dire (pdf.ts,
           // sansWebp). Puis dessiné directement à la largeur demandée.
-          const { sansWebp } = await import("./pdf.js");
-          const source = await sansWebp(await readFile(path));
-          const m = await sharp(source, { unlimited: true }).metadata();
-          const densite = m.width
-            ? Math.min(600, Math.max(36, Math.ceil((72 * largeur) / m.width) + 1))
-            : 150;
-          await sharp(source, { density: densite, unlimited: true })
-            .resize({ width: largeur })
-            .webp({ quality: 82 })
-            .toFile(cache);
+          await unSvgALaFois(async () => {
+            const { sansWebp } = await import("./pdf.js");
+            const source = await sansWebp(await readFile(path));
+            const m = await sharp(source, { unlimited: true }).metadata();
+            const densite = m.width
+              ? Math.min(600, Math.max(36, Math.ceil((72 * largeur) / m.width) + 1))
+              : 150;
+            await sharp(source, { density: densite, unlimited: true })
+              .resize({ width: largeur })
+              .webp({ quality: 82 })
+              .toFile(cache);
+          });
           return;
         }
         await sharp(path)
