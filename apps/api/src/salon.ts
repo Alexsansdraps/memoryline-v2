@@ -21,7 +21,8 @@
  */
 import type { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, count, desc, eq, inArray, isNull, like, ne, sql as raw } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, like, ne, notInArray, sql as raw } from "drizzle-orm";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { randomInt } from "node:crypto";
 import { db, schema } from "./db/client.js";
 import { fr } from "./courriels/fr.js";
@@ -500,6 +501,77 @@ export function mountSalonRoutes(app: Hono): void {
         // Les stands ouverts d'abord : ce sont eux qu'on regarde.
         .sort((a, b) => Number(b.ouvert) - Number(a.ouvert)),
       orphelines,
+    });
+  });
+
+  /**
+   * Les stands EN COURS, pour l'accueil du back-office (17/11) : actifs, non
+   * archivés, et dont la période (date de début à date de fin, à Paris)
+   * comprend aujourd'hui. Pour chacun : aujourd'hui (ventes, montant, et ce
+   * qui reste à encaisser) et depuis le début du stand. Paniers, annulées et
+   * avortées ne comptent pas (HORS_VENTES). Un vendeur ne voit que les
+   * stands qui lui sont confiés.
+   */
+  app.get("/admin/stands/en-cours", async (c) => {
+    const utilisateur = c.get("utilisateur");
+    const confies = estProprietaire(utilisateur) ? null : standsDuVendeur(utilisateur);
+    if (confies && confies.length === 0) return c.json({ aujourdhui: jourAParis(new Date()), stands: [] });
+    const jour = jourAParis(new Date());
+    const tous = await db
+      .select()
+      .from(schema.stands)
+      .where(
+        and(
+          eq(schema.stands.actif, true),
+          isNull(schema.stands.archivedAt),
+          confies ? inArray(schema.stands.id, confies) : undefined,
+        ),
+      );
+    const enCours = tous.filter(
+      (s) => s.dateDebut && s.dateDebut <= jour && (s.dateFin ?? s.dateDebut) >= jour,
+    );
+    if (!enCours.length) return c.json({ aujourdhui: jour, stands: [] });
+    const ids = enCours.map((s) => s.id);
+    const leJour = raw`(${schema.orders.createdAt} at time zone ${FUSEAU_BOUTIQUE})::date = ${jour}::date`;
+    const lignes = await db
+      .select({
+        standId: schema.orders.standId,
+        ventes: count(),
+        cents: raw<number>`coalesce(sum(${schema.orders.totalCents}), 0)::int`,
+        ventesJour: raw<number>`count(*) filter (where ${leJour})::int`,
+        centsJour: raw<number>`coalesce(sum(${schema.orders.totalCents}) filter (where ${leJour}), 0)::int`,
+        aEncaisserJour: raw<number>`count(*) filter (where ${leJour} and ${schema.orders.status} = 'pending')::int`,
+        aEncaisserCentsJour: raw<number>`coalesce(sum(${schema.orders.totalCents}) filter (where ${leJour} and ${schema.orders.status} = 'pending'), 0)::int`,
+      })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.channel, "salon"),
+          inArray(schema.orders.standId, ids),
+          notInArray(schema.orders.status, HORS_VENTES),
+        ),
+      )
+      .groupBy(schema.orders.standId);
+    const parStand = new Map(lignes.map((l) => [l.standId, l]));
+    return c.json({
+      aujourdhui: jour,
+      stands: enCours.map((s) => {
+        const l = parStand.get(s.id);
+        return {
+          id: s.id,
+          nom: s.nom,
+          ouvert: s.ouvert,
+          dateDebut: s.dateDebut,
+          dateFin: s.dateFin ?? s.dateDebut,
+          aujourdhui: {
+            ventes: Number(l?.ventesJour ?? 0),
+            cents: Number(l?.centsJour ?? 0),
+            aEncaisser: Number(l?.aEncaisserJour ?? 0),
+            aEncaisserCents: Number(l?.aEncaisserCentsJour ?? 0),
+          },
+          depuisLeDebut: { ventes: Number(l?.ventes ?? 0), cents: Number(l?.cents ?? 0) },
+        };
+      }),
     });
   });
 

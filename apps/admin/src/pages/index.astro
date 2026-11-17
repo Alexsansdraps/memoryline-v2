@@ -110,6 +110,38 @@ const panierMoyenAvant =
  * regarde tous les jours, plutôt que de le découvrir en se demandant pourquoi
  * personne ne paie par PayPal.
  */
+/**
+ * Les ventes des stands EN COURS (17/11) : aujourd'hui, ce qui reste à
+ * encaisser, et depuis le début du stand. Rien quand aucun stand ne se tient.
+ */
+interface StandEnCours {
+  id: number;
+  nom: string;
+  ouvert: boolean;
+  dateDebut: string;
+  dateFin: string;
+  aujourdhui: { ventes: number; cents: number; aEncaisser: number; aEncaisserCents: number };
+  depuisLeDebut: { ventes: number; cents: number };
+}
+let standsEnCours: StandEnCours[] = [];
+try {
+  const res = await fetch(`${apiInterne()}/admin/stands/en-cours`, {
+    headers: { cookie: Astro.request.headers.get("cookie") ?? "" },
+  });
+  if (res.ok) standsEnCours = ((await res.json()) as { stands: StandEnCours[] }).stands;
+} catch {
+  // Sans ce module, l'accueil reste lisible.
+}
+/** « 20 nov. », pour dire la période du stand. */
+function leJourCourt(iso: string): string {
+  const [a, m, j] = iso.split("-").map(Number);
+  return new Date(Date.UTC(a!, m! - 1, j!)).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
 let paiements: { stripe: boolean; paypal: boolean } | null = null;
 if (isOwner) {
   try {
@@ -157,6 +189,61 @@ const teinte = (sens: string) =>
 
 <Admin title="Accueil">
   {error && <p class="mb-4 text-sm text-red-600">API injoignable : {error}</p>}
+
+  {/* Les ventes des stands en cours (17/11) : ce qu'on regarde d'abord un
+      jour de marché. Rien quand aucun stand ne se tient aujourd'hui. */}
+  {standsEnCours.length > 0 && (
+    <section class="mb-6 rounded-lg border border-bo-border bg-bo-surface p-4">
+      <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="font-semibold">Ventes des stands en cours</h2>
+        <a href={url("/ventes-salon")} class="text-sm text-bo-accent hover:underline">
+          Ventes stand →
+        </a>
+      </div>
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {standsEnCours.map((s) => (
+          <div class="rounded border border-bo-border p-3">
+            <p class="font-medium">
+              {s.nom}
+              <span class="ml-2 text-xs font-normal text-bo-muted">
+                {s.dateDebut === s.dateFin
+                  ? leJourCourt(s.dateDebut)
+                  : `du ${leJourCourt(s.dateDebut)} au ${leJourCourt(s.dateFin)}`}
+                {s.ouvert ? " · ouvert" : " · fermé"}
+              </span>
+            </p>
+            <div class="mt-2 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p class="text-xs text-bo-muted">Aujourd'hui</p>
+                <p class="text-lg font-semibold">
+                  {s.aujourdhui.ventes} vente{s.aujourdhui.ventes > 1 ? "s" : ""}
+                  {isOwner && <span class="ml-1 font-normal">· {formatPrice(s.aujourdhui.cents)}</span>}
+                </p>
+                {s.aujourdhui.aEncaisser > 0 ? (
+                  <a
+                    href={`${url("/ventes-salon")}?onglet=a-encaisser`}
+                    class="mt-0.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900"
+                  >
+                    {s.aujourdhui.aEncaisser} à encaisser
+                    {isOwner && ` · ${formatPrice(s.aujourdhui.aEncaisserCents)}`}
+                  </a>
+                ) : (
+                  <p class="mt-0.5 text-xs text-bo-muted">rien à encaisser</p>
+                )}
+              </div>
+              <div>
+                <p class="text-xs text-bo-muted">Depuis le début du stand</p>
+                <p class="text-lg font-semibold">
+                  {s.depuisLeDebut.ventes} vente{s.depuisLeDebut.ventes > 1 ? "s" : ""}
+                  {isOwner && <span class="ml-1 font-normal">· {formatPrice(s.depuisLeDebut.cents)}</span>}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
 
   {
     isOwner && (
@@ -219,7 +306,7 @@ const teinte = (sens: string) =>
               <p class="mt-1 text-2xl font-semibold">{p.aTraiter}</p>
               <p class="mt-1 text-xs text-bo-muted">
                 {p.aTraiter > 0 ? (
-                  <a class="text-bo-accent hover:underline" href={url("/commandes")}>
+                  <a class="text-bo-accent hover:underline" href={`${url("/commandes")}?onglet=a-preparer`}>
                     Voir ce qui attend
                   </a>
                 ) : (
