@@ -1161,6 +1161,8 @@ export interface EtatSalon {
   evenement: string | null;
   /** Le code présenté ouvre-t-il le stand ? Le code n'est jamais renvoyé. */
   autorise: boolean;
+  /** Le code est celui d'un stand fermé (salon.ts). */
+  standFerme?: boolean;
 }
 
 /**

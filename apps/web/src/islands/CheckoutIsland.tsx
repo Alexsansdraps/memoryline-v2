@@ -1423,14 +1423,9 @@ export default function CheckoutIsland(props: {
                   }`}
                   placeholder="camille@example.com"
                 />
-                {/* Celle du compte : c'est elle qui identifie la commande et
-                    l'historique. La changer ici rattacherait la commande à
-                    quelqu'un d'autre. */}
-                <Show when={props.compte}>
-                  <span class="mt-1 block text-xs text-ink-soft">
-                    {tr("commande.email_compte")}
-                  </span>
-                </Show>
+                {/* Celle du compte, grisée : c'est elle qui identifie la
+                    commande. La phrase qui l'expliquait est retirée (17/11) :
+                    le champ grisé se comprend tout seul. */}
                 <Show when={email().length > 0 && !emailValid()}>
                   <span class="mt-1 block text-xs text-terracotta-deep">
                     {tr("commande.email_invalide")}

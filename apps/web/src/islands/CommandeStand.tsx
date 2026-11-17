@@ -121,6 +121,13 @@ export default function CommandeStand(props: {
     setEtatCode("saisie");
   }
 
+  /**
+   * Le stand de ce code est FERMÉ (17/11) : on ne valide rien, et on le dit
+   * — la même phrase que la bande du haut (lib/stand-etat.ts). Le code reste
+   * retenu : le stand rouvert demain, la tablette repart sans rien retaper.
+   */
+  const [standFerme, setStandFerme] = createSignal(false);
+
   const [nom, setNom] = createSignal("");
   const [courriel, setCourriel] = createSignal("");
   const [envoi, setEnvoi] = createSignal(false);
@@ -140,6 +147,8 @@ export default function CommandeStand(props: {
     const lente = setTimeout(() => setVerificationLente(true), 600);
     try {
       const etat = await salonApi.etat(saisi);
+      const ferme = !etat.autorise && (etat.standFerme === true || !etat.ouvert);
+      setStandFerme(ferme);
       if (etat.autorise) {
         retenirCode(saisi);
         setCode(saisi);
@@ -149,9 +158,11 @@ export default function CommandeStand(props: {
       }
       // Un code retenu devenu faux — stand fermé depuis hier, code changé —
       // est effacé : sinon la tablette le réessaierait à chaque client.
-      if (retenu) oublierCode();
+      if (retenu && !ferme) oublierCode();
       setCode(null);
-      setErreurCode(tr(retenu ? "stand.code_perime" : "stand.code_refuse"));
+      setErreurCode(
+        ferme ? tr("stand.ferme") : tr(retenu ? "stand.code_perime" : "stand.code_refuse"),
+      );
     } catch {
       // Le stand n'a pas répondu : une coupure de réseau n'est pas un code
       // faux, on garde donc celui que la tablette a retenu pour réessayer.
@@ -202,7 +213,7 @@ export default function CommandeStand(props: {
 
   async function valider(e: Event) {
     e.preventDefault();
-    if (envoi() || props.occupe || props.nombre === 0) return;
+    if (envoi() || props.occupe || props.nombre === 0 || standFerme()) return;
     const n = nom().trim();
     const m = courriel().trim();
     if (!n) {
@@ -379,7 +390,11 @@ export default function CommandeStand(props: {
           type="submit"
           class={PRINCIPAL}
           disabled={
-            envoi() || props.occupe || props.nombre === 0 || etatCode() === "verification"
+            envoi() ||
+            props.occupe ||
+            props.nombre === 0 ||
+            etatCode() === "verification" ||
+            standFerme()
           }
           aria-busy={envoi()}
         >

@@ -97,6 +97,12 @@ export function mountSalonRoutes(app: Hono): void {
       evenement: autorise ? stand!.nom : null,
       /** Vrai si la requête porte le code d'un stand ouvert. */
       autorise,
+      /**
+       * Vrai si le code est celui d'un stand FERMÉ (17/11) : la tablette le
+       * dit en haut de l'écran (« Stand fermé ») et ne laisse pas valider,
+       * au lieu de croire le code faux et d'en redemander un.
+       */
+      standFerme: !!stand && !stand.ouvert,
     });
   });
 

@@ -332,7 +332,12 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 ---
 
 <!doctype html>
-<html lang={langue} data-stand={Astro.locals.stand ? "1" : undefined}>
+<html
+  lang={langue}
+  data-stand={Astro.locals.stand ? "1" : undefined}
+  data-mdp-afficher={tr("compte.mdp_afficher")}
+  data-mdp-masquer={tr("compte.mdp_masquer")}
+>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -494,6 +499,18 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           role="status"
         >
           <span aria-hidden="true">●</span> {tr("stand.mode")}
+        </p>
+      )}
+      {/* Stand fermé : dit juste sous la bande, et seulement dans ce cas
+          (lib/stand-etat.ts). Stand ouvert : rien. */}
+      {Astro.locals.stand && (
+        <p
+          id="ml-stand-ferme"
+          hidden
+          class="bg-ink py-1.5 text-center text-xs font-semibold uppercase tracking-[0.15em] text-paper"
+          role="alert"
+        >
+          {tr("stand.ferme")}
         </p>
       )}
       {/*
@@ -1184,6 +1201,10 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
     <script>
       import { brancherRechercheInstantanee } from "../lib/recherche-instantanee.ts";
       brancherRechercheInstantanee();
+      import { signalerStandFerme } from "../lib/stand-etat.ts";
+      void signalerStandFerme();
+      import { brancherMotsDePasse } from "../lib/mots-de-passe.ts";
+      brancherMotsDePasse();
     </script>
 
     <script is:inline>

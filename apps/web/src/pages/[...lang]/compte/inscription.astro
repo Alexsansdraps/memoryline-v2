@@ -47,9 +47,14 @@ if (Astro.request.method === "POST") {
   const langueChoisie = String(formulaire.get("langue") ?? "");
   if (estLangue(langueChoisie)) langueCourriels = langueChoisie;
   const motDePasse = String(formulaire.get("password") ?? "");
+  const confirmation = String(formulaire.get("passwordConfirm") ?? "");
 
   if (!email || !motDePasse) {
     erreur = "compte.err.champs";
+  } else if (motDePasse !== confirmation) {
+    // Un second champ, pour qu'une faute de frappe ne ferme pas le compte
+    // dès sa création (17/11).
+    erreur = "compte.err.mdp_different";
   } else if (motDePasse.length < 8) {
     // Contrôlé ici aussi : autant le dire avant l'aller-retour réseau.
     erreur = "compte.err.mdp_court";
@@ -162,6 +167,18 @@ const champ =
         class={champ}
       />
       <span class="mt-1 block text-xs text-ink-soft">{tr("compte.mdp_aide")}</span>
+    </label>
+    <label class="block">
+      <span class="text-sm font-medium">{tr("compte.mdp_confirmer")}</span>
+      <input
+        type={essai ? "text" : "password"}
+        name="passwordConfirm"
+        value={essai?.motDePasse ?? ""}
+        required
+        minlength="8"
+        autocomplete="new-password"
+        class={champ}
+      />
     </label>
     <label class="block">
       <span class="text-sm font-medium">{tr("compte.langue_courriels")}</span>
