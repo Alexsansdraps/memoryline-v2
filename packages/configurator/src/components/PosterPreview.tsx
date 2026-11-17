@@ -158,6 +158,45 @@ export function PosterPreview(props: {
   const texteVide = () => remplies().length === 0;
   const lignesADessiner = () => (texteVide() ? lignesExemple() : remplies());
 
+  /*
+   * Les polices de l'affiche, chargées AVANT que le texte se montre
+   * (Alexandra, 17/11 : le texte apparaissait dans une autre police, puis
+   * changeait — « ça fait vraiment un effet bizarre »). Tant que la police
+   * d'une ligne n'est pas là, le texte reste caché (sa place est gardée) et
+   * une roue tourne à sa place. Une police déjà chargée ne fait rien
+   * attendre : changer de police une seconde fois est immédiat. Au pire,
+   * quatre secondes, puis le texte se montre quand même.
+   */
+  const [policesPretes, setPolicesPretes] = createSignal(true);
+  createEffect(() => {
+    if (typeof document === "undefined" || !document.fonts) return;
+    const familles = new Set<string>();
+    lignesADessiner().forEach((ligne, rang) => {
+      const police = policeParId(ligne.font, policeDefautLigne(rang));
+      familles.add(police.famille);
+      for (const sousLigne of sousLignes(ligne.value))
+        for (const morceau of morceauxDeTexte(sousLigne, police)) familles.add(morceau.police.famille);
+    });
+    const manquantes = [...familles].filter((f) => !document.fonts.check(`1em '${f}'`));
+    if (!manquantes.length) {
+      setPolicesPretes(true);
+      return;
+    }
+    setPolicesPretes(false);
+    let fini = false;
+    const finir = () => {
+      if (fini) return;
+      fini = true;
+      setPolicesPretes(true);
+    };
+    void Promise.all(manquantes.map((f) => document.fonts.load(`1em '${f}'`))).then(finir, finir);
+    const garde = window.setTimeout(finir, 4000);
+    onCleanup(() => {
+      fini = true;
+      window.clearTimeout(garde);
+    });
+  });
+
   /** Le calque des lignes de texte, que mesure la réduction ci-dessous. */
   let coucheTexte: HTMLDivElement | undefined;
   /** Une ligne trop longue pour le bloc est réduite, comme à l'impression. */
@@ -619,6 +658,7 @@ export function PosterPreview(props: {
           padding: `0 ${MARGE_DU_TEXTE * 100}%`,
           "container-type": "inline-size",
           "z-index": "200",
+          visibility: policesPretes() ? "visible" : "hidden",
         }}
       >
         <For each={lignesADessiner()}>
@@ -669,6 +709,27 @@ export function PosterPreview(props: {
           }}
         </For>
       </div>
+
+      {/* La police de l'affiche arrive : une roue à la place du texte. */}
+      <Show when={!policesPretes()}>
+        <div
+          role="status"
+          aria-label="Chargement de la police"
+          style={{
+            position: "absolute",
+            left: "0",
+            right: "0",
+            top: `${HAUT_DU_TEXTE * 100}%`,
+            display: "flex",
+            "justify-content": "center",
+            "padding-top": "4%",
+            "pointer-events": "none",
+            "z-index": "201",
+          }}
+        >
+          <span class="ml-spinner" aria-hidden="true" />
+        </div>
+      </Show>
 
       {/* Pas de signature de la boutique ici : elle n'est posée que sur le
           fichier d'impression (apps/api/src/pdf.ts, signaturePosee). La
