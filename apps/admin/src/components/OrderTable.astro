@@ -524,6 +524,19 @@ const filtreActif =
                   <span class="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
                   {p.texte}
                 </span>
+                {/* Une vente du stand pas encore réglée (17/11) : Margaux la
+                    marque payée d'ici, sans ouvrir la fiche. */}
+                {channel === "salon" &&
+                  (o.statutFinancier ?? "pending") === "pending" &&
+                  o.status === "pending" && (
+                    <form method="POST" action={url(`/commandes/${o.id}`)} class="mt-1">
+                      <input type="hidden" name="_action" value="encaisser" />
+                      <input type="hidden" name="moyen" value="sur_place" />
+                      <button class="rounded border border-bo-border px-2 py-0.5 text-xs hover:bg-bo-bg">
+                        Marquer payée
+                      </button>
+                    </form>
+                  )}
                 {/* Payée avec les clés d'essai alors que la boutique encaisse
                     pour de vrai : sans ce mot, elle passe pour une vente. */}
                 {o.payeeEnEssai && (

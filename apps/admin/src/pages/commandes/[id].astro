@@ -167,7 +167,10 @@ if (Astro.request.method === "POST" && estProprietaire) {
       });
       flash = r.deja
         ? (r.message ?? "Cette commande était déjà marquée payée.")
-        : `Commande encaissée : ${formatPrice(r.montantCents ?? 0)} reçus par ${r.moyen}. La confirmation est partie chez la cliente. Les fichiers d'impression se préparent : leur état est en bas de la fiche.`;
+        : f.get("moyen") === "sur_place"
+          ? // Une vente du stand (17/11) : aucun courrier ne part.
+            `Vente du stand marquée payée : ${formatPrice(r.montantCents ?? 0)} réglés sur place.`
+          : `Commande encaissée : ${formatPrice(r.montantCents ?? 0)} reçus par ${r.moyen}. La confirmation est partie chez la cliente. Les fichiers d'impression se préparent : leur état est en bas de la fiche.`;
     } else if (action === "envoyer-facture") {
       const r = await api.envoyerFacture(id, Astro.locals.user?.email ?? undefined);
       flash = `Facture ${r.numeroFacture} envoyée à ${r.destinataire}.`;
@@ -1790,7 +1793,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   pour {formatPrice(total)}.
                 </p>
                 <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
-                  Encaisser {formatPrice(total)} · réglé sur place
+                  Marquer payée · {formatPrice(total)} réglés sur place
                 </button>
               </form>
             )}

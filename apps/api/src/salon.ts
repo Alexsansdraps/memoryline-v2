@@ -21,7 +21,7 @@
  */
 import type { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, count, eq, inArray, isNull, ne, sql as raw } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, like, ne, sql as raw } from "drizzle-orm";
 import { randomInt } from "node:crypto";
 import { db, schema } from "./db/client.js";
 import { fr } from "./courriels/fr.js";
@@ -159,7 +159,9 @@ export function mountSalonRoutes(app: Hono): void {
         .for("no key update");
       if (!commande) return { erreur: "Commande introuvable.", statut: 404 as const };
       if (commande.status === "draft") return { ok: true as const };
-      if (commande.status !== "paid" || commande.cancelledAt)
+      // « pending » : une vente validée depuis le 17/11, à encaisser par
+      // Margaux au BO. « paid » : une vente d'avant, encaissée à la validation.
+      if ((commande.status !== "pending" && commande.status !== "paid") || commande.cancelledAt)
         return { erreur: "Cette commande ne peut plus être modifiée ici.", statut: 409 as const };
 
       const [remise] = await tx
@@ -186,8 +188,29 @@ export function mountSalonRoutes(app: Hono): void {
         );
       if (ecritures.some((e) => e.kind === "refund"))
         return { erreur: "Cette commande a été remboursée : corrigez-la au back-office.", statut: 409 as const };
+      // Déjà encaissée au BO par Margaux (17/11) : la tablette ne défait pas
+      // un encaissement qu'elle n'a pas écrit.
+      if (ecritures.some((e) => e.kind === "sale" && e.gateway !== "stand"))
+        return { erreur: "Cette vente a déjà été encaissée : corrigez-la au back-office.", statut: 409 as const };
       const vente = ecritures.find((e) => e.kind === "sale" && e.gateway === "stand");
-      if (vente && Date.now() - vente.createdAt.getTime() > 2 * 3600_000)
+      // Validée quand ? L'encaissement d'une vente d'avant le 17/11, sinon la
+      // ligne « Commande prise au stand » de son journal.
+      let valideeLe = vente?.createdAt ?? null;
+      if (!valideeLe) {
+        const [prise] = await tx
+          .select({ le: schema.orderEvents.createdAt })
+          .from(schema.orderEvents)
+          .where(
+            and(
+              eq(schema.orderEvents.orderId, commande.id),
+              like(schema.orderEvents.message, "Commande prise au stand%"),
+            ),
+          )
+          .orderBy(desc(schema.orderEvents.createdAt))
+          .limit(1);
+        valideeLe = prise?.le ?? null;
+      }
+      if (valideeLe && Date.now() - valideeLe.getTime() > 2 * 3600_000)
         return { erreur: "Validée il y a plus de deux heures : corrigez-la au back-office.", statut: 409 as const };
 
       await tx
@@ -222,7 +245,9 @@ export function mountSalonRoutes(app: Hono): void {
       await tx.insert(schema.orderEvents).values({
         orderId: commande.id,
         kind: "event",
-        message: "Commande rouverte au stand pour être corrigée (encaissement annulé).",
+        message: vente
+          ? "Commande rouverte au stand pour être corrigée (encaissement annulé)."
+          : "Commande rouverte au stand pour être corrigée.",
       });
       return { ok: true as const };
     });
