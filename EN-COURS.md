@@ -1,8 +1,8 @@
-# Reprise de la branche `wip/17-11-soir` (rien de tout ceci n'est en ligne)
+# En cours au 17/11 au soir (fusionné dans main et en ligne, sauf ce qui est dit « à faire »)
 
-Le PC a été éteint le 17/11 à 16 h 30, en plein travail. `main` est ce qui tourne en prod ; cette branche ajoute deux chantiers. Ils se reprennent depuis n'importe quel PC.
+Ce fichier remplace la branche de travail, supprimée à la demande d’Alexandra : tout est dans `main`.
 
-## 1. Codes promo, cartes cadeaux, commandes à 0 €, /commande sans panier : FINI et vérifié en local
+## 1. Codes promo, cartes cadeaux, commandes à 0 €, /commande sans panier : EN LIGNE le 17/11 (vérifié en local, plus un paiement Stripe normal en mode test)
 Vérifications : `tsc` de l'API, 342 tests, astro check du BO à 0 erreur, `tsc` du site (3 erreurs StandSalon, anciennes), configurateur. Essai de bout en bout en local, sans Stripe ni PayPal réels.
 
 **Ce qui est fait :**
@@ -43,7 +43,7 @@ Vérifications : `tsc` de l'API, 342 tests, astro check du BO à 0 erreur, `tsc`
 
 Scripts d'essai, dans le scratchpad de la session (perdu au redémarrage) : `essai-cartes.mjs`, `essai-navigateur.mjs`, `essai-menage.mjs`.
 
-## 2. États de traitement en étapes et module des stands à l'accueil : INTERROMPU
+## 2. États de traitement en étapes et module des stands à l'accueil : INTERROMPU (le code de l'API est en ligne mais en sommeil : aucun écran ne s'en sert encore, et les boutons actuels gardent leur règle d'avant)
 
 **EXIGENCE (Alexandra, 17/11, 16 h 30) : UN SEUL STATUT par commande.** Sur la fiche, il ne doit plus y avoir deux en-têtes « Payée » (bloc paiement) et « Traitée » (bloc remise ou expédition). Un seul statut dit où en est la commande dans SON parcours : la frise ci-dessous, avec l’étape en cours. Il en va de même dans la liste du BO : une seule colonne « Statut » au lieu de « Paiement » et « Traitement », avec les filtres adaptés. Le détail des mouvements d’argent et des remises reste lisible plus bas, mais sans statut à lui.
 Les parcours voulus, définis par Alexandra :

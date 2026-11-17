@@ -1,7 +1,7 @@
 # À faire — état au 17 novembre, fin de matinée (écrit pour une reprise dans un autre contexte)
 
 > **17/11 au soir : À REPRENDRE.**
-> - **Les travaux non finis** (codes promo et cartes cadeaux, /commande sans panier, états de traitement en frise, module des stands à l’accueil) sont sauvegardés sur la branche **`wip/17-11-soir`**, poussée, PAS en ligne. Pour reprendre : `git checkout wip/17-11-soir`, lire le rapport plus bas, finir, vérifier, puis fusionner dans main.
+> - **Les travaux du 17/11 sont fusionnés dans `main` et en ligne** (codes promo et cartes cadeaux, 0 €, /commande sans panier). Le statut unique en étapes est interrompu : il est en sommeil côté API. **Ce qui reste à faire est dans `EN-COURS.md`.**
 > - **PageSpeed (17/11, 16:19, mobile)** : SEO 100, Accessibilité 100, Bonnes pratiques 100, Agents 3/3. Le 42 de 16:17 venait de la page de maintenance. **Performance 78** (4G lente simulée) : FCP 2,6 s, LCP 4,4 s, TBT 100 ms, CLS 0. À faire :
 >   - charger Tag Manager après le chargement de la page (environ 75 Ko de JS tiers inutilisé, 3 tâches longues) ;
 >   - alléger l’image LCP de l’accueil (92 Ko à gagner, format et taille, `fetchpriority="high"`, préchargement) ;
