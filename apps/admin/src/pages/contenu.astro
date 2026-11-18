@@ -166,7 +166,10 @@ type Champ = {
         | "image"
         | "lien"
         | "collection"
-        | "video";
+        | "video"
+        // Des montants en euros, séparés par des virgules (carte cadeau,
+        // 18/11) : les mêmes dans les cinq langues.
+        | "montants";
     }
   | { type: "nombre"; min: number; max: number; defaut: number }
 );
@@ -351,6 +354,42 @@ const SECTIONS: { titre: string; aide: string; champs: Champ[] }[] = [
     titre: "Accueil — lettre d'information",
     aide: "Le bloc d'inscription, tout en bas de la page d'accueil.",
     champs: [{ key: "home.newsletter.title", label: "Intitulé", type: "texte" }],
+  },
+  {
+    titre: "Carte cadeau",
+    aide:
+      "La page de la carte cadeau (/carte-cadeau) et sa vignette dans les " +
+      "rayons. Laissez un texte vide pour celui de la boutique, déjà traduit " +
+      "dans les cinq langues. Le montant reste libre (5 € au moins) : le " +
+      "client peut toujours taper le sien.",
+    champs: [
+      {
+        key: "carte_cadeau.montants",
+        label: "Montants proposés d'un clic, en euros",
+        type: "montants",
+        aide:
+          "Séparés par des virgules, par exemple « 20, 30, 50, 100 » (c'est " +
+          "le réglage de la boutique si vous laissez vide). Six au plus, " +
+          "5 € au moins chacun, sans centimes. Celui du milieu est choisi " +
+          "d'avance.",
+      },
+      {
+        key: "carte_cadeau.nom",
+        label: "Nom dans les rayons (sous la vignette)",
+        type: "texte",
+      },
+      { key: "carte_cadeau.titre", label: "Titre de la page", type: "texte" },
+      { key: "carte_cadeau.intro", label: "Texte d'introduction", type: "long" },
+      { key: "carte_cadeau.point1", label: "1er point (l'envoi)", type: "texte" },
+      { key: "carte_cadeau.point2", label: "2e point (le solde)", type: "texte" },
+      { key: "carte_cadeau.point3", label: "3e point (le destinataire)", type: "texte" },
+      {
+        key: "carte_cadeau.description",
+        label: "Description pour Google et le partage",
+        type: "long",
+        aide: "Deux phrases au plus : c'est le texte sous le titre dans les résultats de Google.",
+      },
+    ],
   },
   {
     titre: "Pied de page",
@@ -679,6 +718,24 @@ const entre = (b: { min: number; max: number }) =>
                     )}
                   </div>
                 </div>
+              ) : champ.type === "montants" ? (
+                <label class="block">
+                  <span class="text-bo-muted">{champ.label}</span>
+                  <span class="ml-2 text-xs text-bo-muted">
+                    (vaut pour les 5 langues)
+                  </span>
+                  <input
+                    type="text"
+                    inputmode="numeric"
+                    name={champ.key}
+                    value={valeur(champ.key)}
+                    placeholder="20, 30, 50, 100"
+                    class="mt-1 w-full max-w-xs rounded border border-bo-border px-3 py-2 tabular-nums"
+                  />
+                  {champ.aide && (
+                    <span class="mt-1 block text-xs text-bo-muted">{champ.aide}</span>
+                  )}
+                </label>
               ) : champ.type === "lien" ? (
                 <label class="block">
                   <span class="text-bo-muted">{champ.label}</span>

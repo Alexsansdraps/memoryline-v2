@@ -418,6 +418,31 @@ export default function CheckoutIsland(props: {
   };
   const retirerLigne = (it: OrderItem) =>
     void changerLigne(() => browserApi.deleteCartItem(getCartId(), it.id), it.id);
+  /**
+   * Le montant d'une carte cadeau, changé dans le récapitulatif (18/11) : en
+   * euros ronds, 5 € au moins (10 000 € de garde-fou, comme sur sa page). Le
+   * serveur le revérifie et en fait le prix de la ligne.
+   */
+  const [erreurMontant, setErreurMontant] = createSignal<{ id: number; texte: string } | null>(null);
+  const changerMontantCarte = (it: OrderItem, champ: HTMLInputElement) => {
+    const brut = champ.value.trim();
+    const euros = Number(brut);
+    if (!/^\d{1,6}$/.test(brut) || euros < 5 || euros > 10_000) {
+      // Le mot sous le champ, là où l'on regarde ; le montant d'avant revient.
+      setErreurMontant({
+        id: it.id,
+        texte: euros > 10_000 ? tr("carte.page.montant_trop") : tr("carte.page.montant_invalide"),
+      });
+      champ.value = String(Math.round(it.unitPriceCents / 100));
+      return;
+    }
+    setErreurMontant(null);
+    if (euros * 100 === it.unitPriceCents) return;
+    void changerLigne(
+      () => browserApi.changerMontantCarte(getCartId(), it.id, euros * 100, langue),
+      it.id,
+    );
+  };
   /** « Modifier » rouvre la composition sur la fiche ; pas pour une carte, une IA, une affiche prête. */
   const lienModifier = (it: OrderItem): string | null => {
     if (it.giftCard || !it.config || it.config.aiPublicId) return null;
@@ -2843,14 +2868,44 @@ export default function CheckoutIsland(props: {
                             ? tr("carte.titre")
                             : (nomDeLaLigne(fiches(), it) ?? tr("panier.affiche_sans_titre"))}
                         </span>
-                        <span class="block text-ink-soft">
-                          {it.giftCard
-                            ? tr("carte.envoi")
-                            : `${it.config?.format ?? "A4"} · ${formatPrice(it.unitPriceCents, locale)}`}
-                        </span>
+                        {/* Plus de « Envoyée par e-mail, sans frais de port »
+                            sous une carte cadeau (18/11) : son montant se
+                            change juste en dessous. */}
+                        <Show when={!it.giftCard}>
+                          <span class="block text-ink-soft">
+                            {`${it.config?.format ?? "A4"} · ${formatPrice(it.unitPriceCents, locale)}`}
+                          </span>
+                        </Show>
                         {/* Les gestes du panier : la quantité, le retrait,
                             « Modifier ». Figés pendant le paiement. */}
                         <div class="mt-1.5 flex flex-wrap items-center gap-2">
+                          <Show when={it.giftCard}>
+                            <label class="inline-flex items-center gap-1">
+                              <span class="sr-only">{tr("carte.page.montant")}</span>
+                              <input
+                                type="number"
+                                inputmode="numeric"
+                                min="5"
+                                step="1"
+                                value={Math.round(it.unitPriceCents / 100)}
+                                disabled={occupe() === it.id || phase() === "pay" || submitting()}
+                                onChange={(e) => changerMontantCarte(it, e.currentTarget)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    e.currentTarget.blur();
+                                  }
+                                }}
+                                class="w-20 rounded-md border border-ink/20 px-2 py-0.5 text-right tabular-nums disabled:opacity-40"
+                              />
+                              <span aria-hidden="true">€</span>
+                            </label>
+                          </Show>
+                          <Show when={erreurMontant()?.id === it.id}>
+                            <span class="order-last basis-full text-xs text-terracotta-deep" role="status">
+                              {erreurMontant()!.texte}
+                            </span>
+                          </Show>
                           <Show when={!it.giftCard}>
                             <span class="inline-flex items-center rounded-md border border-ink/20">
                               <button

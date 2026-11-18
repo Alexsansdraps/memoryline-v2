@@ -28,6 +28,28 @@ export const ALPHABET_CARTE = "ACEFHJKLRUWXY23456789";
 export const CARTE_MONTANT_MIN_CENTS = 500;
 export const CARTE_MONTANT_MAX_CENTS = 1_000_000;
 
+/** Les montants proposés d'un clic, tant que la boutique n'en a pas réglé d'autres. */
+export const MONTANTS_PROPOSES_PAR_DEFAUT: readonly number[] = [20, 30, 50, 100];
+
+/**
+ * Les montants proposés d'un clic sur la page de la carte (18/11), tels que
+ * la boutique les a tapés au BO (Contenu du site › Carte cadeau) :
+ * « 20, 30, 50, 100 », « 25 € ; 40 € », peu importe le séparateur. Seuls
+ * des euros ronds vendables passent (montantCarteValide), sans doublon, du
+ * plus petit au plus grand, six au plus. Rien de lisible : ceux de la
+ * boutique.
+ */
+export function montantsProposes(saisie: string | null | undefined): number[] {
+  const vus = new Set<number>();
+  for (const morceau of String(saisie ?? "").split(/[^0-9]+/)) {
+    if (!morceau) continue;
+    const euros = Number(morceau);
+    if (montantCarteValide(euros * 100)) vus.add(euros);
+  }
+  const liste = [...vus].sort((a, b) => a - b).slice(0, 6);
+  return liste.length ? liste : [...MONTANTS_PROPOSES_PAR_DEFAUT];
+}
+
 /**
  * Le montant demandé est-il celui d'une carte qu'on peut vendre ?
  *

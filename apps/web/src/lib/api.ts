@@ -1076,6 +1076,16 @@ export const browserApi = {
     },
   ) => browserSend<OrderItem>("PUT", `/cart/${cartId}/items/${itemId}`, body),
 
+  /**
+   * Change le montant d'une carte cadeau du panier (18/11) : le serveur le
+   * revérifie (5 € au moins, en euros ronds) et en fait le prix de la ligne.
+   */
+  changerMontantCarte: (cartId: string, itemId: number, montantCents: number, langue?: string) =>
+    browserSend<OrderItem>("PUT", `/cart/${cartId}/items/${itemId}`, {
+      carteCadeau: { montantCents },
+      langue,
+    }),
+
   deleteCartItem: (cartId: string, itemId: number) =>
     browserSend<{ ok: boolean }>("DELETE", `/cart/${cartId}/items/${itemId}`),
 

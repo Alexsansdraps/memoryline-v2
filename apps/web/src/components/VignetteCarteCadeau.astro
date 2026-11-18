@@ -10,7 +10,7 @@
  * (public/carte-cadeau/vignette-*.webp). Le prix dit « Dès 5 € » : le
  * montant est libre (CARTE_MONTANT_MIN_CENTS de @memoryline/types).
  */
-import { formatPrice } from "../lib/api.ts";
+import { formatPrice, setting } from "../lib/api.ts";
 import { LOCALE_COMPLETE, lien, t, type Langue } from "../i18n/utils.ts";
 
 interface Props {
@@ -23,6 +23,8 @@ interface Props {
 const { langue, sizes, titre: Titre = "h3" } = Astro.props;
 const tr = t(langue);
 const prix = tr("carte.vignette.prix").replace("{montant}", formatPrice(500, LOCALE_COMPLETE[langue]));
+/** Son nom, réglable au BO (Contenu du site › Carte cadeau) ; vide, « Carte cadeau ». */
+const nom = await setting("carte_cadeau.nom", tr("carte.titre"), langue);
 ---
 
 <li class="group ml-apparition">
@@ -32,7 +34,7 @@ const prix = tr("carte.vignette.prix").replace("{montant}", formatPrice(500, LOC
         src="/carte-cadeau/vignette-600.webp"
         srcset="/carte-cadeau/vignette-400.webp 400w, /carte-cadeau/vignette-600.webp 600w, /carte-cadeau/vignette-1020.webp 1020w"
         sizes={sizes}
-        alt={`${tr("carte.titre")} Memory Line`}
+        alt={`${nom} Memory Line`}
         width="1020"
         height="1400"
         loading="lazy"
@@ -42,7 +44,7 @@ const prix = tr("carte.vignette.prix").replace("{montant}", formatPrice(500, LOC
     <div class="px-2 pt-2.5 sm:pt-3">
       {/* En capitales, comme les noms d'affiches de la boutique. */}
       <Titre class="ml-vignette-nom text-[13px] uppercase leading-snug group-hover:underline underline-offset-4 lg:text-[14px]">
-        {tr("carte.titre")}
+        {nom}
       </Titre>
       <p class="mt-1 text-[14px] font-semibold tracking-[0.6px] text-ink-soft sm:text-[15px]">{prix}</p>
     </div>

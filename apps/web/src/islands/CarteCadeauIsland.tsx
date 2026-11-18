@@ -25,7 +25,10 @@ export const LIBELLES_CARTE = [
   "carte.page.stand",
 ] as const satisfies readonly CleUi[];
 
-/** Les montants proposés d'un clic. */
+/**
+ * Les montants proposés d'un clic, tant que la page n'en donne pas d'autres :
+ * ils se règlent au BO (18/11, Contenu du site › Carte cadeau).
+ */
 const MONTANTS = [20, 30, 50, 100];
 /**
  * 5 € au moins ; pas de plafond annoncé (18/11). MIN et MAX sont ceux du
@@ -41,6 +44,8 @@ export default function CarteCadeauIsland(props: {
   /** « fr-FR », « en-GB »… : les montants s'écrivent à la manière de la langue. */
   locale: string;
   libelles: Record<(typeof LIBELLES_CARTE)[number], string>;
+  /** Les montants proposés d'un clic, réglés au BO (montantsProposes). */
+  montants?: number[];
   /** La caisse (le panier du site) et le panier du stand, dans la langue de la page. */
   adresseCommande: string;
   adressePanier: string;
@@ -48,7 +53,9 @@ export default function CarteCadeauIsland(props: {
   stand?: boolean;
 }): JSX.Element {
   const l = props.libelles;
-  const [euros, setEuros] = createSignal<number>(50);
+  const montants = props.montants?.length ? props.montants : MONTANTS;
+  // Celui du milieu, choisi d'avance (50 € parmi 20, 30, 50, 100).
+  const [euros, setEuros] = createSignal<number>(montants[Math.floor(montants.length / 2)]!);
   const [autre, setAutre] = createSignal("");
   const [occupe, setOccupe] = createSignal(false);
   const [erreur, setErreur] = createSignal<string | null>(null);
@@ -61,8 +68,14 @@ export default function CarteCadeauIsland(props: {
     const n = Number(tape);
     return n >= MIN && n <= MAX ? n : null;
   };
+  // Des euros ronds : « 25 € », pas « 25,00 € ».
   const enEuros = (n: number) =>
-    new Intl.NumberFormat(props.locale, { style: "currency", currency: "EUR" }).format(n);
+    new Intl.NumberFormat(props.locale, {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(n);
 
   async function ajouter(e: Event) {
     e.preventDefault();
@@ -102,7 +115,7 @@ export default function CarteCadeauIsland(props: {
         <fieldset>
           <legend class="text-sm font-medium">{l["carte.page.montant"]}</legend>
           <div class="mt-2 flex flex-wrap gap-2">
-            <For each={MONTANTS}>
+            <For each={montants}>
               {(m) => (
                 <button
                   type="button"

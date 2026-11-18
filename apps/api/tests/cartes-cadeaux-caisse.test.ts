@@ -19,6 +19,7 @@ import {
   cleDeCode,
   codeCarteMasque,
   montantCarteValide,
+  montantsProposes,
   optionsLivraison,
   partCarteCadeau,
   reglesActives,
@@ -218,6 +219,18 @@ test("le montant d'une carte vendue : 5 € au moins, en euros ronds, sans plafo
   assert.equal(montantCarteValide(1_000_000), true);
   for (const faux of [999, 1_000_100, 0, -5000, 2550, 1000.5, Number.NaN, "5000", null])
     assert.equal(montantCarteValide(faux), false, String(faux));
+});
+
+test("les montants proposés d'un clic, réglés au BO", () => {
+  assert.deepEqual(montantsProposes("20, 30, 50, 100"), [20, 30, 50, 100]);
+  assert.deepEqual(montantsProposes("100 € ; 25€ / 40"), [25, 40, 100]);
+  // Doublons, montants trop petits, centimes et zéros de trop : écartés.
+  assert.deepEqual(montantsProposes("50, 50, 3, 12,5, 999999"), [5, 12, 50]);
+  assert.deepEqual(montantsProposes("10 20 30 40 50 60 70 80"), [10, 20, 30, 40, 50, 60]);
+  // Rien de lisible : ceux de la boutique.
+  assert.deepEqual(montantsProposes(""), [20, 30, 50, 100]);
+  assert.deepEqual(montantsProposes("abc"), [20, 30, 50, 100]);
+  assert.deepEqual(montantsProposes(null), [20, 30, 50, 100]);
 });
 
 /* ------------------------------------------------------------------------ */

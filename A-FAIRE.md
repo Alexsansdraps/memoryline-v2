@@ -29,6 +29,13 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
     Les pages du site, elles, se choisissent toujours.
   - Avec 4 entrées, l'en-tête tient en 1024 px pour une visiteuse ; pour une administratrice connectée, le bouton « Back-office » le fait déborder à cette largeur.
   - En local, le BO s'essaie sur `http://localhost:4322/bo` : par le proxy du port 8080, ses scripts de développement (`/src/…`) partent vers le site et répondent 500.
+- **18/11, vers 11 h 15, carte cadeau** :
+  - au récapitulatif de la caisse : l'image de la carte, plus de « Envoyée par e-mail… », et le montant se change dans la ligne (PUT `carteCadeau`, revérifié par le serveur ; message sous le champ s'il ne va pas) ;
+  - BO › Contenu du site › **Carte cadeau** : montants proposés (`carte_cadeau.montants`, celui du milieu choisi d'avance), nom dans les rayons, titre, introduction, les 3 points et la description Google, en 5 langues (vide = texte de la boutique).
+- **À FAIRE ensuite : carnet d'adresses client** (demande du 18/11) :
+  - le client gère ses adresses dans son compte ;
+  - l'adresse qu'il choisit par défaut est son adresse de FACTURATION ;
+  - à la caisse, la livraison se fait à cette adresse, à une autre de ses adresses enregistrées, ou à une nouvelle.
 
 ## 2. Dans le code (Claude)
 

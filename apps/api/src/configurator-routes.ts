@@ -2754,12 +2754,14 @@ export function mountConfiguratorRoutes(app: Hono) {
   });
 
   /**
-   * Ajoute une CARTE CADEAU au panier : un montant libre, de 10 à 300 €.
+   * Ajoute une CARTE CADEAU au panier : un montant libre, 5 € au moins, en
+   * euros ronds, sans plafond annoncé (18/11).
    *
    * Le montant est vérifié ici (montantCarteValide) et devient le prix de la
-   * ligne : le navigateur n'a pas d'autre mot à dire. Il ne bouge plus ensuite
-   * — la ligne ne se modifie pas (PUT la refuse), elle se retire. Quantité 1 :
-   * chaque carte a son destinataire, saisi à la caisse.
+   * ligne : le navigateur n'a pas d'autre mot à dire. Il se change ensuite
+   * dans le récapitulatif, revérifié de même (changerLeMontantDUneCarte) ;
+   * rien d'autre ne bouge. Quantité 1 : chaque carte a son destinataire,
+   * saisi à la caisse.
    *
    * Pas au stand : la carte part par e-mail après un paiement en ligne, le
    * stand encaisse de la main à la main.
@@ -2774,7 +2776,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (!montantCarteValide(montant))
       return c.json(
         {
-          error: "Le montant d'une carte cadeau va de 10 à 300 €, en euros ronds.",
+          error: "Le montant d'une carte cadeau est de 5 € au moins, en euros ronds.",
           code: "montant_carte",
         },
         400,
@@ -2813,6 +2815,55 @@ export function mountConfiguratorRoutes(app: Hono) {
       return ecrite ?? null;
     });
     if (!ligne) return c.json({ error: "panier_clos" }, 409);
+    return c.json({ ...ligne, cadreCents: 0 });
+  }
+
+  /**
+   * Change le MONTANT d'une carte cadeau du panier (18/11, Alexandra : « on
+   * peut changer ici le montant », dans le récapitulatif de la caisse).
+   *
+   * Revérifié comme à l'ajout (montantCarteValide). Le prix de la ligne et le
+   * montant de la carte suivent ensemble ; le destinataire déjà saisi reste.
+   * Sous le verrou du panier, comme toute modification de ligne : un panier
+   * payé ou clos ne bouge plus (panierModifiable).
+   */
+  async function changerLeMontantDUneCarte(
+    c: Context,
+    cartId: string,
+    itemId: number,
+    body: Record<string, unknown>,
+  ): Promise<Response> {
+    const brut = (body.carteCadeau ?? {}) as { montantCents?: unknown };
+    const montant = Number(brut.montantCents);
+    if (!montantCarteValide(montant))
+      return c.json(
+        {
+          error: "Le montant d'une carte cadeau est de 5 € au moins, en euros ronds.",
+          code: "montant_carte",
+        },
+        400,
+      );
+    const ligne = await db.transaction(async (tx) => {
+      const trouve = await loadCartItem(tx, cartId, itemId);
+      if (!trouve) return null;
+      if (!trouve.item.giftCard) return "pas_une_carte" as const;
+      const [ecrite] = await tx
+        .update(schema.orderItems)
+        .set({
+          unitPriceCents: montant,
+          giftCard: { ...trouve.item.giftCard, montantCents: montant },
+        })
+        .where(eq(schema.orderItems.id, itemId))
+        .returning();
+      await panierModifie(tx, trouve.order, false, langueDeLaPage(c, body.langue));
+      return ecrite ?? null;
+    });
+    if (!ligne) return c.notFound();
+    if (ligne === "pas_une_carte")
+      return c.json(
+        { error: "Cette ligne n'est pas une carte cadeau.", code: "pas_une_carte" },
+        400,
+      );
     return c.json({ ...ligne, cadreCents: 0 });
   }
 
@@ -2934,6 +2985,14 @@ export function mountConfiguratorRoutes(app: Hono) {
   app.put("/cart/:cartId/items/:itemId", async (c) => {
     const itemId = Number(c.req.param("itemId"));
     const body = await c.req.json();
+    // Le montant d'une carte cadeau, et rien d'autre (changerLeMontantDUneCarte).
+    if (body && typeof body === "object" && (body as Record<string, unknown>).carteCadeau != null)
+      return changerLeMontantDUneCarte(
+        c,
+        c.req.param("cartId"),
+        itemId,
+        body as Record<string, unknown>,
+      );
     const parsed = posterConfigSchema.safeParse(body.config);
     if (!parsed.success)
       return c.json({ error: "config invalide", details: parsed.error.issues }, 400);
@@ -2950,8 +3009,8 @@ export function mountConfiguratorRoutes(app: Hono) {
     const item = await db.transaction(async (tx) => {
       const trouve = await loadCartItem(tx, c.req.param("cartId"), itemId);
       if (!trouve) return null;
-      // Une carte cadeau ne se modifie pas : son montant a été vérifié à
-      // l'ajout, et ni sa quantité ni son prix ne bougent ensuite.
+      // Une carte cadeau ne prend pas de composition d'affiche : seul son
+      // montant change, par sa propre demande (carteCadeau, plus haut).
       if (trouve.item.giftCard) return "carte" as const;
       const { unitPriceCents, frameCents } = await resolvePrixLigne(
         trouve.item.productId,
@@ -2985,8 +3044,7 @@ export function mountConfiguratorRoutes(app: Hono) {
     if (item === "carte")
       return c.json(
         {
-          error:
-            "Une carte cadeau ne se modifie pas : retirez-la du panier, puis ajoutez-en une autre.",
+          error: "Une carte cadeau n'a pas de composition : seul son montant se change.",
           code: "carte_non_modifiable",
         },
         409,
