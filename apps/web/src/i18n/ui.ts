@@ -826,6 +826,8 @@ export const ui = {
     "caisse.connexion.titre": "Connectez-vous ou créez votre compte pour finaliser",
     "caisse.connexion.texte": "Votre panier vous attend : vous revenez ici juste après, avec tout ce que vous avez choisi.",
     "caisse.connexion.se_connecter": "Me connecter",
+    "caisse.invite.texte":
+      "Pas besoin de compte pour commander. Vous en avez déjà un ? Connectez-vous pour retrouver vos adresses :",
     "caisse.connexion.creer": "Créer mon compte",
     "caisse.vide": "Votre panier est vide.",
     "carte.titre": "Carte cadeau",
@@ -1594,6 +1596,7 @@ export const ui = {
     "caisse.connexion.titre": "Log in or create your account to finish",
     "caisse.connexion.texte": "Your basket is waiting: you'll come straight back here, with everything you chose.",
     "caisse.connexion.se_connecter": "Log in",
+    "caisse.invite.texte": "No account needed to order. Already have one? Log in to use your saved addresses:",
     "caisse.connexion.creer": "Create my account",
     "caisse.vide": "Your basket is empty.",
     "carte.titre": "Gift card",
@@ -2371,6 +2374,8 @@ export const ui = {
     "caisse.connexion.titre": "Melden Sie sich an oder erstellen Sie ein Konto, um abzuschließen",
     "caisse.connexion.texte": "Ihr Warenkorb wartet auf Sie: Danach kommen Sie direkt hierher zurück, mit allem, was Sie ausgewählt haben.",
     "caisse.connexion.se_connecter": "Anmelden",
+    "caisse.invite.texte":
+      "Zum Bestellen brauchen Sie kein Konto. Sie haben schon eins? Melden Sie sich an, um Ihre Adressen zu nutzen:",
     "caisse.connexion.creer": "Konto erstellen",
     "caisse.vide": "Ihr Warenkorb ist leer.",
     "carte.titre": "Geschenkgutschein",
@@ -3140,6 +3145,8 @@ export const ui = {
     "caisse.connexion.titre": "Accedi o crea il tuo account per concludere",
     "caisse.connexion.texte": "Il tuo carrello ti aspetta: tornerai qui subito dopo, con tutto ciò che hai scelto.",
     "caisse.connexion.se_connecter": "Accedi",
+    "caisse.invite.texte":
+      "Non serve un account per ordinare. Ne hai già uno? Accedi per ritrovare i tuoi indirizzi:",
     "caisse.connexion.creer": "Crea il mio account",
     "caisse.vide": "Il tuo carrello è vuoto.",
     "carte.titre": "Carta regalo",
@@ -3909,6 +3916,8 @@ export const ui = {
     "caisse.connexion.titre": "Inicia sesión o crea tu cuenta para terminar",
     "caisse.connexion.texte": "Tu cesta te espera: vuelves aquí justo después, con todo lo que has elegido.",
     "caisse.connexion.se_connecter": "Iniciar sesión",
+    "caisse.invite.texte":
+      "No necesitas cuenta para hacer un pedido. ¿Ya tienes una? Inicia sesión para usar tus direcciones:",
     "caisse.connexion.creer": "Crear mi cuenta",
     "caisse.vide": "Tu cesta está vacía.",
     "carte.titre": "Tarjeta regalo",

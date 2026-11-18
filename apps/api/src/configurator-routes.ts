@@ -3120,20 +3120,12 @@ export function mountConfiguratorRoutes(app: Hono) {
     // fiches que d'achats. On rattache donc la commande au compte connecté
     // quand il y en a un, sinon à la fiche qui porte déjà cette adresse, et on
     // n'en crée une qu'en dernier recours.
+    // Commander SANS COMPTE, en invitée (18/11, Alexandra) : la commande va
+    // à la fiche qui porte déjà cette adresse e-mail, ou à une fiche créée
+    // pour elle — jamais une fiche par achat. Une invitée ne lit ni n'écrit
+    // aucun carnet d'adresses (plus bas) : l'e-mail tapé peut être celui
+    // d'une autre, et son carnet ne la regarde pas.
     const connecte = await clientDeLaRequete(c);
-    // Commander depuis le site demande un compte. Sans lui, la même personne
-    // se retrouvait en autant de fiches que d'achats, sans historique ni
-    // carnet d'adresses. Le contrôle est ici et pas seulement à l'écran : une
-    // règle qui ne vit que dans la page se contourne en rechargeant.
-    if (!connecte)
-      return c.json(
-        {
-          error:
-            "Il faut être connectée pour valider la commande. Créez votre compte ou connectez-vous, votre panier vous attend.",
-          code: "compte_requis",
-        },
-        401,
-      );
     const emailNormalise = email.toLowerCase();
     let customer = connecte
       ? (
@@ -3472,8 +3464,10 @@ export function mountConfiguratorRoutes(app: Hono) {
       // entre au carnet quand elle le demande (« Garder cette adresse dans
       // mon compte »), ou d'office si le carnet est vide : elle devient alors
       // son adresse par défaut, donc celle de la facture. Jamais en double.
-      const carnet = await carnetDe(tx, customer!.id);
-      let facturation = carnet[0] ?? null;
+      // Une INVITÉE (sans session) n'a pas de carnet ici : la fiche trouvée
+      // par son e-mail peut être celle d'une autre personne. Sa facturation
+      // est l'adresse de livraison qu'elle vient de saisir, rien d'autre.
+      const carnet = connecte ? await carnetDe(tx, customer!.id) : [];
       const saisie = {
         name: String(liv.name ?? "").trim() || name || null,
         line1: ligne1,
@@ -3483,7 +3477,14 @@ export function mountConfiguratorRoutes(app: Hono) {
         country: pays,
         phone: String(liv.phone ?? "").trim() || null,
       };
+      let facturation: { name: string | null; line1: string | null; line2: string | null; postalCode: string | null; city: string | null; country: string | null } | null =
+        connecte
+          ? (carnet[0] ?? null)
+          : avecAffiches && !lieu && ligne1 && cp && ville
+            ? saisie
+            : null;
       if (
+        connecte &&
         avecAffiches &&
         !lieu &&
         ligne1 &&
@@ -3593,47 +3594,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       );
     const { order, port, total, carteCents } = resultat;
 
-    // L'adresse rejoint le carnet de la cliente : saisie une fois, elle
-    // revient toute seule la prochaine fois. Une livraison en point relais n'a
-    // pas d'adresse à elle, il n'y a rien à ranger.
-    if (demandeUneAdresse(port.kind) && ligne1 && ville && cp) {
-      try {
-        const connues = await db
-          .select()
-          .from(schema.customerAddresses)
-          .where(eq(schema.customerAddresses.customerId, customer!.id));
-        const meme = (a: string | null, b: string) =>
-          (a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
-        const dejaLa = connues.some(
-          (a) =>
-            meme(a.line1, ligne1) &&
-            meme(a.postalCode, cp) &&
-            meme(a.city, ville) &&
-            meme(a.country ?? "", pays),
-        );
-        if (!dejaLa) {
-          await db.insert(schema.customerAddresses).values({
-            customerId: customer!.id,
-            label: null,
-            name: String(liv.name ?? "").trim() || name,
-            line1: ligne1,
-            line2: String(liv.line2 ?? "").trim() || null,
-            postalCode: cp,
-            city: ville,
-            country: pays,
-            phone: String(liv.phone ?? "").trim() || null,
-            // La première adresse enregistrée devient celle par défaut : sans
-            // cela le carnet se remplit sans que rien ne soit proposé.
-            isDefaultShipping: connues.length === 0,
-            isDefaultBilling: false,
-          });
-        }
-      } catch (e) {
-        // Le carnet est un confort : une commande valide ne doit pas échouer
-        // parce qu'on n'a pas su ranger une adresse.
-        console.warn("[commande] adresse non rangée au carnet", String(e));
-      }
-    }
+    // Le carnet se remplit DANS la transaction, plus haut (18/11) : la case
+    // « Garder cette adresse dans mon compte », ou d'office si le carnet est
+    // vide, et jamais pour une invitée. Le rangement systématique d'avant,
+    // ici, est retiré : il ignorait la case, et rangeait l'adresse d'une
+    // invitée dans le carnet de la fiche qui porte son e-mail.
 
     return c.json({
       orderId: order.id,
@@ -4211,18 +4176,15 @@ export function mountConfiguratorRoutes(app: Hono) {
   app.post("/payments/gratuit", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const connecte = await clientDeLaRequete(c);
-    if (!connecte)
-      return c.json(
-        {
-          error:
-            "Il faut être connectée pour valider la commande. Connectez-vous, votre panier vous attend.",
-          code: "compte_requis",
-        },
-        401,
-      );
     const order = await loadPayableOrder(Number((body as { orderId?: unknown }).orderId));
-    if (!order || order.customerId !== connecte.id)
-      return c.json({ error: "commande introuvable" }, 404);
+    // Connectée : la commande doit être la sienne. Invitée (18/11) : son
+    // PANIER en est la preuve — l'identifiant tiré au hasard que seul son
+    // navigateur connaît, et que la commande garde (clientOrderId).
+    const panier = String((body as { cartId?: unknown }).cartId ?? "").trim();
+    const sienne = connecte
+      ? order?.customerId === connecte.id
+      : panier.length >= 16 && order?.clientOrderId === panier;
+    if (!order || !sienne) return c.json({ error: "commande introuvable" }, 404);
     if (order.status === "paid") return c.json({ status: "paid", number: order.number });
     if (order.status !== "pending")
       return c.json({ error: PANIER_A_REVALIDER, code: "panier_modifie" }, 409);

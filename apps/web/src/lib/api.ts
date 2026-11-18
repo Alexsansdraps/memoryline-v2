@@ -1027,8 +1027,13 @@ export const browserApi = {
    * offerte, ou carte cadeau qui couvre tout). Le serveur recalcule tout et
    * refuse le moindre centime à payer.
    */
-  validerGratuite: (orderId: number) =>
-    browserSend<{ status: string; number: string }>("POST", "/payments/gratuit", { orderId }),
+  validerGratuite: (orderId: number, cartId?: string) =>
+    // Sans compte (18/11), le panier est la preuve que c'est bien elle :
+    // son identifiant ne vit que dans ce navigateur.
+    browserSend<{ status: string; number: string }>("POST", "/payments/gratuit", {
+      orderId,
+      cartId,
+    }),
   backgrounds: (productId: number | string) =>
     browserGet<BackgroundDTO[]>(`/backgrounds?productId=${productId}`),
 

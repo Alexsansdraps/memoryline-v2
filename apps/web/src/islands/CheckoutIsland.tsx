@@ -1087,7 +1087,8 @@ export default function CheckoutIsland(props: {
     optionsPort().find((o) => o.mode.slug === modeChoisi()) ?? null;
   // Sans compte, le mode de livraison ne se choisit pas encore : pas de
   // port dans le total, il s'y ajoute une fois connectée.
-  const fraisPort = () => (props.compte ? (optionChoisie()?.fraisCents ?? 0) : 0);
+  // Avec ou sans compte (18/11, commande en invitée), le mode choisi compte.
+  const fraisPort = () => optionChoisie()?.fraisCents ?? 0;
 
   // Premier mode disponible par défaut, et repli si le choix devient
   // impossible — changer de pays peut retirer le retrait sur place.
@@ -1462,7 +1463,7 @@ export default function CheckoutIsland(props: {
    * livraison, carte) et refuse le moindre centime à payer.
    */
   async function validerSansPaiement(oid: number): Promise<void> {
-    const r = await browserApi.validerGratuite(oid);
+    const r = await browserApi.validerGratuite(oid, getCartId());
     if (r.status !== "paid") throw new Error("API POST /payments/gratuit -> 409 {\"code\":\"montant_non_nul\"}");
     setOrderNumber(r.number);
     setSansPaiement(true);
@@ -1769,32 +1770,22 @@ export default function CheckoutIsland(props: {
 
       <Show when={cart() && cart()!.items.length > 0}>
         <div class="grid lg:grid-cols-[1fr_320px] gap-8 items-start">
-          {/* Sans compte (17/11) : le récapitulatif reste modifiable, à droite,
-              et la connexion n'est demandée qu'ici, au moment des
-              informations et du paiement. Le retour ramène à cette page,
-              panier intact. */}
-          <Show when={!props.compte}>
-            <div class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-6">
-              <h2 class="text-2xl">{tr("caisse.connexion.titre")}</h2>
-              <p class="mt-3 text-ink-soft">{tr("caisse.connexion.texte")}</p>
-              <div class="mt-6 flex flex-wrap gap-3">
+          {/* Commander SANS COMPTE, en invitée (18/11, Alexandra). Le même
+              formulaire pour toutes ; se connecter reste proposé, pour
+              retrouver ses adresses (carnet, facturation). Le retour ramène
+              à cette page, panier intact. */}
+          <div class="space-y-8">
+            <Show when={!props.compte}>
+              <p class="rounded-xl border border-ink/10 bg-paper-deep/40 px-4 py-3 text-sm text-ink-soft">
+                {tr("caisse.invite.texte")}{" "}
                 <a
                   href={`${lien(langue, "/compte/connexion")}?retour=${encodeURIComponent(lien(langue, "/commande"))}`}
-                  class="inline-flex items-center justify-center rounded-full bg-ink px-6 py-3 font-medium text-paper hover:bg-ink/85 transition-colors"
+                  class="font-medium text-ink underline underline-offset-2 hover:text-terracotta"
                 >
                   {tr("caisse.connexion.se_connecter")}
                 </a>
-                <a
-                  href={`${lien(langue, "/compte/inscription")}?retour=${encodeURIComponent(lien(langue, "/commande"))}`}
-                  class="inline-flex items-center justify-center rounded-full border-2 border-ink px-6 py-3 font-medium hover:bg-ink hover:text-paper transition-colors"
-                >
-                  {tr("caisse.connexion.creer")}
-                </a>
-              </div>
-            </div>
-          </Show>
-          <Show when={props.compte}>
-          <div class="space-y-8">
+              </p>
+            </Show>
             {/* Coordonnées */}
             <fieldset class="space-y-4" disabled={phase() === "pay"}>
               <legend class="text-2xl mb-2">{tr("commande.coordonnees")}</legend>
@@ -2833,7 +2824,6 @@ export default function CheckoutIsland(props: {
               </Show>
             </fieldset>
           </div>
-          </Show>
 
           {/* Récapitulatif */}
           <aside class="rounded-2xl border border-ink/10 bg-paper-deep/40 p-6 lg:sticky lg:top-24">
@@ -3042,7 +3032,7 @@ export default function CheckoutIsland(props: {
                 <span>− {formatPrice(discount(), locale)}</span>
               </div>
             </Show>
-            <Show when={props.compte && avecAffiches() && optionChoisie()}>
+            <Show when={avecAffiches() && optionChoisie()}>
               <div class="mt-1 flex justify-between text-sm text-ink-soft">
                 <span>{optionChoisie()!.mode.name}</span>
                 <span>

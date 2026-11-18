@@ -5,16 +5,15 @@
  * quantités, retraits, « Modifier » —, et le champ « Code promo ou carte
  * cadeau » y vit.
  *
- * La page s'ouvre SANS compte. Une visiteuse non connectée voit son panier,
- * le modifie, saisit son code ; à la place des informations et du paiement,
- * un bloc l'invite à se connecter ou à créer son compte, et l'adresse de
- * retour la ramène ici, panier intact. Commander demande toujours un compte :
- * le serveur le vérifie au passage en caisse (POST /orders).
+ * La page s'ouvre SANS compte, et depuis le 18/11 on y COMMANDE sans compte,
+ * en invitée (Alexandra). Le formulaire est le même pour toutes ; un bandeau
+ * propose de se connecter pour retrouver ses adresses, et l'adresse de
+ * retour ramène ici, panier intact.
  *
- * Commander en tant qu'invitée créait une fiche cliente par achat : la même
- * personne finissait éparpillée en autant de fiches que de commandes, sans
- * historique, sans carnet d'adresses. C'est pourquoi le compte reste exigé
- * pour COMMANDER, pas pour regarder son panier.
+ * Une invitée ne fait pas une fiche par achat (le défaut d'avant le 17/11) :
+ * le serveur rattache la commande à la fiche qui porte déjà son e-mail, et
+ * n'en crée une qu'en dernier recours. Il ne lit ni n'écrit aucun carnet
+ * d'adresses pour elle : sa facturation est l'adresse qu'elle saisit.
  *
  * Le retour de la banque (paiement Stripe à redirection) arrive ici avec ses
  * paramètres, connecté ou non — une session a pu expirer pendant que la
