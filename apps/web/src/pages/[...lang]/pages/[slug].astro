@@ -22,12 +22,22 @@ import { api, assetSrcset, assetUrl, codeErreurApi, type PageCms } from "../../.
 import { pageLibre } from "@memoryline/types";
 import {
   grilleProduits,
+  sizesGrille,
   sizesGrilleColonne,
   styleGrille,
 } from "../../../lib/grille.ts";
 /** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
  *  celles des pages du site s'il y en a, le réglage général sinon. */
 const grille = await grilleProduits("pages");
+/**
+ * La page d'un stand, sur sa tablette (18/11 : « les pages stands doivent être
+ * en grand ») : toute la largeur de l'écran et de grandes vignettes, deux par
+ * ligne sur une tablette tenue en hauteur, trois en largeur. Hors du stand, la
+ * page garde sa colonne de lecture et les colonnes réglées au back-office.
+ */
+const enGrand = !!Astro.locals.stand;
+const grilleAffichee = enGrand ? { mobile: 2, tablette: 2, ordinateur: 3 } : grille;
+const sizesVignettes = enGrand ? sizesGrille(grilleAffichee) : sizesGrilleColonne(grille);
 import { htmlSur } from "../../../lib/html-sur.ts";
 import { languesDuContenu } from "../../../lib/referencement.ts";
 import {
@@ -185,7 +195,11 @@ const descriptionPage =
   {/* Les bandeaux visuels choisis pour cette page, bord à bord sous
       l'en-tête, hors de la colonne de lecture. */}
   <BandeauxVisuels pages={[pageLibre(page.slug)]} langue={langue} />
-  <article class="mx-auto max-w-[1000px] px-6 py-12 lg:px-12">
+  <article
+    class={enGrand
+      ? "mx-auto max-w-[1600px] px-2 py-8 sm:px-6 lg:px-10"
+      : "mx-auto max-w-[1000px] px-6 py-12 lg:px-12"}
+  >
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-3xl sm:text-4xl">{page.title}</h1>
       {/* Le raccourci d'édition, pour la boutique seulement.
@@ -334,7 +348,7 @@ const descriptionPage =
             <VignetteAffiche
               affiche={enVignette(p)}
               langue={langue}
-              sizes={sizesGrilleColonne(grille)}
+              sizes={sizesVignettes}
               titre={intertitreAuDessus ? "h3" : "h2"}
               donnees={donneesDuFiltre(p)}
             />
@@ -406,7 +420,7 @@ const descriptionPage =
                 groupes.map((g) => (
                   <section data-section class="mt-8">
                     {g.titre && <h2 class="text-2xl font-medium">{g.titre}</h2>}
-                    <ul class={`${classeGrille} mt-6`} style={styleGrille(grille)}>
+                    <ul class={`${classeGrille} mt-6`} style={styleGrille(grilleAffichee)}>
                       {g.produits
                         .map((id) => parId.get(Number(id)))
                         .filter((p): p is AfficheChoisie => !!p)
@@ -415,7 +429,7 @@ const descriptionPage =
                   </section>
                 ))
               ) : (
-                <ul class={`${classeGrille} mt-6`} style={styleGrille(grille)}>
+                <ul class={`${classeGrille} mt-6`} style={styleGrille(grilleAffichee)}>
                   {produits.map(vignette)}
                 </ul>
               )}
@@ -445,13 +459,13 @@ const descriptionPage =
           return (
             <ul
               class="ml-grille-produits mt-10 -mx-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8"
-              style={styleGrille(grille)}
+              style={styleGrille(grilleAffichee)}
             >
               {produits.map((p) => (
                 <VignetteAffiche
                   affiche={enVignette(p)}
                   langue={langue}
-                  sizes={sizesGrilleColonne(grille)}
+                  sizes={sizesVignettes}
                   titre={intertitreAuDessus ? "h3" : "h2"}
                 />
               ))}
