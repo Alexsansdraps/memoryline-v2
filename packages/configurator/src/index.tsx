@@ -747,7 +747,9 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           : "minmax(280px, 1fr) minmax(320px, 420px)",
         gap: "20px",
         "align-items": "start",
-        "font-family": "system-ui, sans-serif",
+        // La police du site qui accueille le module (« ML Inter » sur
+        // memoryline.fr, 18/11), celle du système à défaut.
+        "font-family": "var(--font-sans, system-ui, sans-serif)",
         color: "#111827",
       }}
     >

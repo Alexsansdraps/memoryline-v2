@@ -49,6 +49,8 @@ const code = String(Astro.params.code ?? "")
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/* La police du site, demandée tout de suite, comme dans Base.astro. */}
+    <link rel="preload" href="/fonts/Inter-latin.woff2" as="font" type="font/woff2" crossorigin />
     {/* Comme Base.astro, que cette page n'utilise pas : sans un écouteur de
         contact, Safari sur iPhone n'affiche pas l'appui (:active) du bouton
         « Choisir une photo ». */}

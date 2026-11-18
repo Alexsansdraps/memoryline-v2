@@ -8,12 +8,9 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - **La boutique encaisse pour de vrai depuis le 16/11 à 22 h 29.** Stripe live (compte « Vestiairesauvage »), PayPal live, vrais courriels par Resend (`commandes@memoryline.fr`), bordereaux SendCloud facturés. **Aucune commande d'essai sur le VPS : c'est de l'argent réel.**
 - **Marché de Noël de Mulhouse : du vendredi 20/11 au 27/12** (11:00–12:30 / 13:00–20:00).
 - 18/11 : tous les écrans clients contrôlés en ligne sur tablette (768 × 1024 et 1024 × 768, 16 pages) : rien ne déborde, aucune image cassée.
-- **18/11 : commité, PAS ENCORE EN LIGNE. Alexandra donne le feu vert** (« je veux pas perturber Margaux ») :
-  - écran d'accueil (logo et barre, au premier affichage de la visite, de 0,5 à 2,5 s) ;
-  - barre de chargement en haut de l'écran quand on change de page ;
-  - reflet d'attente sur les images des bandeaux, de l'accueil, des pages, du compte et de la caisse ;
-  - polices des affiches en `font-display: block`, et les deux polices de départ chargées avec le module ;
-  - nettoyage de la mise en ligne (fichiers retirés du dépôt) et journaux Docker limités.
+- **Mise en ligne seulement sur le feu vert d'Alexandra** (18/11 : « je veux pas perturber Margaux »).
+- En ligne le 18/11 au matin : écran d'accueil (logo et barre, au premier affichage de la visite, de 0,5 à 2,5 s) ; barre de chargement quand on change de page ; reflet d'attente sur les images ; polices des affiches en `font-display: block`, celles de départ chargées avec le module ; nettoyage de la mise en ligne et journaux Docker limités.
+- **18/11, commité, PAS ENCORE EN LIGNE : Inter servie par le site** (« ML Inter », `apps/web/public/fonts/Inter-*.woff2`, préchargée, `font-display: block`). Avant, le site nommait Inter sans la fournir : dans le Chrome d'Alexandra, Inter arrivait 0,6 s après le reste et le texte passait de Segoe UI à Inter en se remettant en page (vidéo du 18/11 ; Firefox n'avait pas le défaut). Le module de personnalisation suit aussi la police du site.
 
 ## 2. Dans le code (Claude)
 

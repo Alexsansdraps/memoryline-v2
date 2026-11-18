@@ -399,6 +399,12 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {/* La police du site (« ML Inter », global.css), demandée avant tout le
+        reste : le texte l'attend au lieu de s'afficher dans celle du
+        système puis de changer (18/11). Le seul fichier dont chaque page a
+        besoin ; le latin étendu et l'italique viennent s'ils servent. */}
+    <link rel="preload" href="/fonts/Inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+
     {/* Google Tag Manager (17/11), sur le site en production seulement : en
         local, il mesurerait nos propres essais. Le consentement passe AVANT
         (« Consent Mode » de Google) : tout est refusé tant que la visiteuse

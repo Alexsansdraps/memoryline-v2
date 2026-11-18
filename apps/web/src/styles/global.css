@@ -7,10 +7,18 @@
    `--font-serif` garde son nom (des dizaines de `font-serif` s'y réfèrent)
    mais pointe désormais sur Inter : les titres du site sont en Inter, poids
    400. Les polices calligraphiques restent chargées plus bas — ce sont
-   celles des AFFICHES, pas celles de l'habillage. */
+   celles des AFFICHES, pas celles de l'habillage.
+
+   Inter est SERVIE PAR LE SITE depuis le 18/11 (« ML Inter », plus bas).
+   Avant, le site la nommait sans la fournir : un visiteur sans Inter voyait
+   la police du système (Segoe UI sous Windows) ; un autre, chez qui Inter
+   arrivait un peu après (installée, ou apportée par une extension du
+   navigateur), voyait le texte passer de l'une à l'autre et toute la page
+   se remettre en page (Alexandra, vidéo du 18/11). Le nom à nous empêche
+   qu'une autre « Inter » s'en mêle. */
 @theme {
-  --font-serif: "Inter", system-ui, sans-serif;
-  --font-sans: "Inter", system-ui, sans-serif;
+  --font-serif: "ML Inter", system-ui, sans-serif;
+  --font-sans: "ML Inter", system-ui, sans-serif;
 
   --color-paper: #ffffff;
   --color-paper-deep: #f3f3f3;
@@ -137,7 +145,64 @@ h4 {
  * photo ; l'aperçu de l'affiche, lui, montre une roue à la place
  * (PosterPreview.tsx). Les deux polices de départ arrivent avec le module,
  * au repos sur la fiche (ProductConfigurator.tsx).
+ *
+ * « ML Inter » : la police de l'HABILLAGE du site (18/11), Inter 4 en
+ * variable (poids 100 à 900 dans un seul fichier), © The Inter Project
+ * Authors, licence SIL OFL 1.1. Fichiers de Google Fonts, découpés comme
+ * chez eux : le navigateur ne télécharge que ce dont la page a besoin (48 Ko
+ * pour le français ; latin étendu et italique seulement s'ils servent). Le
+ * fichier latin est demandé dès le <head> (preload, Base.astro), et le texte
+ * attend la police (block) : jamais de Segoe UI qui se change en Inter sous
+ * les yeux. Au premier affichage, c'est l'écran d'accueil qui couvre
+ * l'attente ; ensuite, le fichier est en cache.
+ *
+ * L'ORDRE compte, le même que chez Google : latin étendu d'abord, latin
+ * ensuite. Pour un caractère des deux jeux (U+0304, U+0308, U+0329), c'est
+ * le DERNIER déclaré qui sert ; dans l'autre ordre, le latin étendu (85 Ko)
+ * se téléchargeait sur chaque page.
  * ------------------------------------------------------------------------ */
+@font-face {
+  font-family: "ML Inter";
+  src: url("/fonts/Inter-latin-ext.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "ML Inter";
+  src: url("/fonts/Inter-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "ML Inter";
+  src: url("/fonts/Inter-italique-latin-ext.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: block;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "ML Inter";
+  src: url("/fonts/Inter-italique-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: block;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 @font-face {
   font-family: "DM Serif Display";
   src: url("/fonts/DMSerifDisplay-Regular.ttf") format("truetype");
