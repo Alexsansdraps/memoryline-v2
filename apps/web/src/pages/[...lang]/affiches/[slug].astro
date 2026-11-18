@@ -430,7 +430,18 @@ const pageDuGenre = {
 const pageDuRayon = rayon
   ? { nom: rayon.name, href: lien(langue, adresseDuRayon(rayon.genre, rayon.slug)) }
   : null;
-const fil = [pageDuGenre, ...(pageDuRayon ? [pageDuRayon] : [])];
+/**
+ * La tablette d'un stand qui a sa page (18/11) : la fiche ne mène qu'à elle
+ * — le fil d'Ariane et les voisines restent dans la page du stand, le reste
+ * du catalogue n'y est pas ouvert (middleware).
+ */
+const pageDuStand = Astro.locals.pageDuStand;
+const retourAuStand = pageDuStand
+  ? { nom: pageDuStand.titre, href: lien(langue, `/pages/${pageDuStand.slug}`) }
+  : null;
+const fil = retourAuStand
+  ? [retourAuStand]
+  : [pageDuGenre, ...(pageDuRayon ? [pageDuRayon] : [])];
 const breadcrumbLd = {
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
@@ -468,7 +479,9 @@ const nombreDeVoisines = Math.min(
   Math.max(grille.ordinateur <= 4 ? grille.ordinateur * 2 : grille.ordinateur, 4),
   8,
 );
-const voisines = (product.voisines ?? []).slice(0, nombreDeVoisines);
+const voisines = (product.voisines ?? [])
+  .filter((v) => !pageDuStand || pageDuStand.affiches.includes(v.slug))
+  .slice(0, nombreDeVoisines);
 /*
  * L'image de partage : le visuel servi en 900 px de large (`image`), jamais
  * agrandi par l'API. Ses dimensions sont celles de CE fichier-là, et non de
@@ -483,7 +496,7 @@ const imagePartage = image
     }
   : undefined;
 const voisinesDuRayon = product.voisinesDe === "rayon" && !!pageDuRayon;
-const pageDesVoisines = voisinesDuRayon ? pageDuRayon! : pageDuGenre;
+const pageDesVoisines = retourAuStand ?? (voisinesDuRayon ? pageDuRayon! : pageDuGenre);
 ---
 
 <Base

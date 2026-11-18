@@ -162,6 +162,18 @@ let entreesMenu: EntreeMenuPublique[] = MENU_DE_SECOURS;
 if (reponseMenu?.entrees.length) entreesMenu = reponseMenu.entrees;
 
 /**
+ * La tablette d'un stand qui a sa page (18/11, BO › Ventes stand) n'affiche
+ * qu'elle : le menu ne propose plus qu'elle, le logo y mène, et ni la
+ * recherche ni les colonnes du pied de page n'ouvrent le reste du catalogue
+ * (le middleware y ramènerait de toute façon).
+ */
+const pageDuStand = Astro.locals.pageDuStand;
+if (pageDuStand)
+  entreesMenu = [
+    { id: 0, label: pageDuStand.titre, href: `/pages/${pageDuStand.slug}`, enfants: [] },
+  ];
+
+/**
  * Une adresse de menu, prête à être cliquée.
  *
  * Une adresse interne reçoit le préfixe de langue : sans lui, un visiteur
@@ -323,7 +335,11 @@ const colonnesDuBo: ColonnePied[] = (
   }))
   .filter((c) => c.liens.length > 0 || c.href !== "")
   .slice(0, COLONNES_PIED_MAX);
-const colonnesPied = colonnesDuBo.length ? colonnesDuBo : PIED_DE_SECOURS;
+const colonnesPied: ColonnePied[] = pageDuStand
+  ? []
+  : colonnesDuBo.length
+    ? colonnesDuBo
+    : PIED_DE_SECOURS;
 
 /**
  * La grille du pied de page : le logo, les colonnes, puis « Compte », soit
@@ -393,6 +409,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 <html
   lang={langue}
   data-stand={Astro.locals.stand ? "1" : undefined}
+  data-stand-valeur={Astro.locals.standValeur ?? undefined}
   data-mdp-afficher={tr("compte.mdp_afficher")}
   data-mdp-masquer={tr("compte.mdp_masquer")}
 >
@@ -629,12 +646,15 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       Astro.locals.stand && (
         <script is:inline>
           (function () {
+            // La valeur de l'adresse (le numéro du stand, 18/11) : la
+            // tablette reste sur SON stand, donc sur sa page.
+            var valeur = document.documentElement.getAttribute("data-stand-valeur") || "1";
             function garder(adresse) {
               try {
                 var u = new URL(adresse, window.location.href);
                 if (u.origin !== window.location.origin) return null;
                 if (u.searchParams.has("stand")) return null;
-                u.searchParams.set("stand", "1");
+                u.searchParams.set("stand", valeur);
                 return u.href;
               } catch (e) {
                 return null;
@@ -661,7 +681,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
                     var champ = document.createElement("input");
                     champ.type = "hidden";
                     champ.name = "stand";
-                    champ.value = "1";
+                    champ.value = valeur;
                     f.appendChild(champ);
                   }
                 } else {
@@ -893,9 +913,9 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           </details>
 
           <a
-            href={lien(langue, "/")}
+            href={lien(langue, pageDuStand ? `/pages/${pageDuStand.slug}` : "/")}
             class="inline-flex shrink-0 items-center"
-            aria-label={tr("nav.accueil")}
+            aria-label={pageDuStand ? pageDuStand.titre : tr("nav.accueil")}
           >
             <img
               src={logoEnTete.src}
@@ -979,7 +999,9 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             Windows. À 170 px, la phrase se coupait. Le cadre bleu et le gras
             sont dans global.css (`ml-recherche`), partagés avec le champ de
             la page de recherche. */}
-        <div class="relative hidden w-[clamp(230px,18vw,360px)] lg:block">
+        <div
+          class={pageDuStand ? "hidden" : "relative hidden w-[clamp(230px,18vw,360px)] lg:block"}
+        >
           {/* La recherche instantanée (lib/recherche-instantanee.ts) : les
               affiches trouvées s'affichent ici, en grandes vignettes, à
               chaque lettre. Entrée mène toujours à la page de résultats. */}
@@ -1042,7 +1064,9 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           <a
             id="ml-q-loupe"
             href={lien(langue, "/recherche")}
-            class="inline-flex items-center hover:text-terracotta transition-colors lg:hidden"
+            class={pageDuStand
+              ? "hidden"
+              : "inline-flex items-center hover:text-terracotta transition-colors lg:hidden"}
             aria-label={tr("recherche.titre")}
             aria-controls="ml-q-ecran"
           >

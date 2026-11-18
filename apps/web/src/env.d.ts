@@ -27,6 +27,20 @@ declare namespace App {
      */
     stand: boolean;
     /**
+     * La valeur de `?stand=` en mode stand (null sinon) : le NUMÉRO du stand
+     * de la tablette (18/11). Les liens de la tablette la recopient telle
+     * quelle (Base.astro, `avecStand`), pour rester sur le même stand.
+     */
+    standValeur: string | null;
+    /**
+     * La page que la tablette de ce stand affiche, et elle seule (18/11,
+     * BO › Ventes stand) : son adresse, son titre dans la langue de la page,
+     * et les adresses de ses affiches. Le middleware y ramène toute autre
+     * adresse ; la mise en page n'offre plus qu'elle dans le menu. Null hors
+     * stand, ou pour un stand sans page : tout le catalogue, comme avant.
+     */
+    pageDuStand: { slug: string; titre: string; affiches: string[] } | null;
+    /**
      * Le code que la page d'erreur (404.astro) doit répondre quand une page
      * s'y réécrit elle-même, faute de pouvoir se servir : 410 pour une
      * affiche archivée (partie pour de bon : Google la retire plus vite),

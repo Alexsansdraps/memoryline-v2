@@ -9,6 +9,7 @@ export * from "./promo.js";
 export * from "./carte-cadeau.js";
 export * from "./livraison.js";
 export * from "./stand-horaires.js";
+export * from "./tablette-stand.js";
 export * from "./traitement.js";
 export * from "./poids.js";
 export * from "./fonts.js";

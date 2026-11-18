@@ -47,6 +47,47 @@ import {
   type Destination,
 } from "./lib/anciennes-adresses.ts";
 import { planDuSite } from "./lib/referencement.ts";
+import { cheminPermisALaTablette, numeroDuStand, valeurDuStand } from "@memoryline/types";
+
+/**
+ * La page de la tablette d'un stand (18/11, `stand.page_id`, BO › Ventes
+ * stand), gardée cinq secondes par stand et par langue : chaque page de la
+ * tablette la demande, et une page choisie au back-office doit s'appliquer
+ * dans la minute. API muette : rien n'est restreint (la tablette montre tout
+ * le catalogue, comme avant) plutôt qu'une tablette bloquée en plein marché.
+ */
+const PAGE_TABLETTE_MS = 5 * 1000;
+const pagesDesTablettes = new Map<string, { a: number; page: App.Locals["pageDuStand"] }>();
+
+async function pageDeLaTablette(valeur: string, langue: string): Promise<App.Locals["pageDuStand"]> {
+  if (numeroDuStand(valeur) === null) return null;
+  const cle = `${valeur}|${langue}`;
+  const maintenant = Date.now();
+  const gardee = pagesDesTablettes.get(cle);
+  if (gardee && maintenant - gardee.a < PAGE_TABLETTE_MS) return gardee.page;
+  let page: App.Locals["pageDuStand"] = null;
+  try {
+    const p = new URLSearchParams({ stand: valeur });
+    if (langue !== "fr") p.set("lang", langue);
+    const res = await fetch(`${apiInterne()}/stand/page-de-la-tablette?${p.toString()}`);
+    if (!res.ok) return gardee?.page ?? null;
+    const r = (await res.json()) as {
+      page: { slug: string; titre: string } | null;
+      affiches?: string[];
+    };
+    if (r.page?.slug)
+      page = {
+        slug: r.page.slug,
+        titre: r.page.titre || r.page.slug,
+        affiches: Array.isArray(r.affiches) ? r.affiches : [],
+      };
+  } catch {
+    return gardee?.page ?? null;
+  }
+  if (pagesDesTablettes.size > 200) pagesDesTablettes.clear();
+  pagesDesTablettes.set(cle, { a: maintenant, page });
+  return page;
+}
 
 /**
  * Les redirections du back-office, gardées en mémoire, relues dès qu'elles
@@ -351,6 +392,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // qui le lit ensuite n'aurait aucun moyen de savoir que la question n'a
   // simplement pas été posée.
   context.locals.stand = false;
+  context.locals.standValeur = null;
+  context.locals.pageDuStand = null;
 
   // Les images de memoryline.fr (/cdn/shop/files/…) mènent au même visuel
   // du nouveau site (anciennes-adresses.ts, imageAncienne). Traitées à part :
@@ -437,6 +480,38 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const stand = demande !== null && demande !== "0";
   context.locals.stand = stand;
 
+  /*
+   * La tablette n'affiche que la page de SON stand (18/11, Alexandra : « quand
+   * je vais sur memoryline.fr/?stand=1, je dois avoir que la page /mulhouse »).
+   *
+   * `?stand=` ne désignait aucun stand : c'était un simple « mode stand »,
+   * sans cookie depuis le 17/11, et le code du stand ne vit que dans la
+   * tablette (son stockage), envoyé en en-tête à la validation. Sa valeur est
+   * désormais le NUMÉRO du stand (BO › Ventes stand donne
+   * « /?stand=<numéro>&code=… ») ; l'ancienne adresse « ?stand=1 » désigne le
+   * stand n° 1, celui de Mulhouse. La tablette se range d'elle-même sur le
+   * stand de son code (lib/stand-etat.ts).
+   *
+   * Un stand qui a une page : toute adresse hors de la page, de la fiche de
+   * ses affiches, du panier et de la caisse y ramène (tablette-stand.ts). Le
+   * code éventuel suit : la tablette le range en arrivant (Base.astro).
+   */
+  const valeurStand = stand ? valeurDuStand(demande) : null;
+  context.locals.standValeur = valeurStand;
+  if (valeurStand) {
+    const page = await pageDeLaTablette(valeurStand, prefixe ? prefixe.slice(1) : "fr");
+    context.locals.pageDuStand = page;
+    if (page && lecture && !cheminPermisALaTablette(sansLangue, page)) {
+      const suite = new URLSearchParams({ stand: valeurStand });
+      const code = context.url.searchParams.get("code");
+      if (code) suite.set("code", code);
+      return context.redirect(
+        `${prefixe}/pages/${encodeURIComponent(page.slug)}?${suite.toString()}`,
+        302,
+      );
+    }
+  }
+
   let reponse = await next();
 
   /*
@@ -464,7 +539,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     try {
       const u = new URL(vers, context.url);
       if ((vers.startsWith("/") || u.host === context.url.host) && !u.searchParams.has("stand")) {
-        u.searchParams.set("stand", "1");
+        u.searchParams.set("stand", valeurStand ?? "1");
         const entetes = new Headers(reponse.headers);
         entetes.set("location", u.pathname + u.search + u.hash);
         reponse = new Response(reponse.body, {

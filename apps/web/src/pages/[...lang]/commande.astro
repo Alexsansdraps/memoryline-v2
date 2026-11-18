@@ -114,7 +114,7 @@ if (client) {
                 {tr("commande.stand.quitter")}
               </a>
               <a
-                href={`${lien(langue, "/panier")}?stand=1`}
+                href={`${lien(langue, "/panier")}?stand=${encodeURIComponent(Astro.locals.standValeur ?? "1")}`}
                 class="inline-flex items-center justify-center rounded-full border-2 border-ink px-5 py-3 hover:bg-ink hover:text-paper"
               >
                 {tr("commande.stand.panier")}

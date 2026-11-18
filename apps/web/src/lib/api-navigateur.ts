@@ -53,7 +53,9 @@ export function avecStand(adresse: string): string {
   try {
     const u = new URL(adresse, window.location.href);
     if (u.origin !== window.location.origin || u.searchParams.has("stand")) return adresse;
-    u.searchParams.set("stand", "1");
+    // La valeur de la page (le numéro du stand, 18/11), pas toujours « 1 » :
+    // la tablette reste sur SON stand et sa page (Base.astro).
+    u.searchParams.set("stand", document.documentElement.dataset.standValeur || "1");
     return u.pathname + u.search + u.hash;
   } catch {
     return adresse;

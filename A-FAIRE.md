@@ -69,6 +69,21 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
     - la recherche dans ces langues ;
     - un texte japonais ou chinois tapé SUR une affiche : les polices d'impression n'ont pas ces caractères.
 - **18/11** : « TOUT VOIR » en double dans le menu du haut : l'entrée de premier niveau est masquée (migration 0097), celle du menu déroulant reste.
+- **18/11, soir** :
+  - les 257 fiches existent maintenant en japonais et en chinois (migration 0099) ;
+  - les pages légales sont traduites bloc pour bloc avec le français (migration 0098, correctif de la 0095).
+- **18/11, soir, une page par stand** (migrations 0100 et 0101, packages/types/src/tablette-stand.ts) :
+  - **Réglage dans BO › Ventes stand** : chaque stand a UNE page, choisie dans « Page de la tablette » (`stand.page_id`), avec un lien pour choisir ses affiches. Un avertissement apparaît si le stand n'a pas de page, ou si sa page n'est pas en ligne.
+  - **Adresse de la tablette** : `?stand=` porte maintenant le NUMÉRO du stand ; le 1 est le marché de Noël de Mulhouse. L'aperçu depuis le BO utilise `?stand=apercu`.
+  - **Ce que montre la tablette** : seulement sa page. L'accueil, le catalogue, la recherche, le compte, la carte cadeau, le contact et les pages légales y ramènent. Restent ouverts : la fiche d'une affiche de la page, le panier et la vente. Sur la page, le client cherche par nom ou lieu, et filtre par lieu ou par collection.
+  - **BO › Pages › [page]** :
+    - un tableau de toutes les affiches, avec recherche et filtres (collection, genre, dans la page ou non) ;
+    - on coche une affiche, tout ce qui est filtré, ou une collection entière ;
+    - l'ordre se règle par glisser-déposer (flèches sur écran tactile), avec des tris rapides ;
+    - un mode « groupées par collection » ;
+    - un plafond de 200 affiches.
+  - **Page /mulhouse** : 64 affiches d'Alsace, Mulhouse en tête, posées par la 0101 si la page n'avait pas encore de grille. Laissées dehors : Bâle, Fribourg, La Bresse-Hohneck, les Vosges, Metz, Nancy.
+  - **Correctif au passage** : enregistrer une traduction de page dans le BO effaçait sa grille d'affiches. Ce n'est plus le cas.
 
 ## 2. Dans le code (Claude)
 

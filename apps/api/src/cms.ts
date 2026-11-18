@@ -50,7 +50,9 @@ import { cibleDuLien, menuSuitLOrdre } from "./menu-ordre.js";
 import { supprimerPourToujours } from "./suppression.js";
 import { languesDeLaPage } from "./referencement.js";
 import { dimensionsDuVisuel } from "./dimensions-visuels.js";
-import { traductionDe } from "./traductions.js";
+import { texteDansLaLangue, traductionDe } from "./traductions.js";
+import { villeDuNom } from "./ville-du-nom.js";
+import { numeroDuStand, RAYONS_FUSIONNES } from "@memoryline/types";
 
 /**
  * L'ordre des pages, partout où elles se listent : celles que la boutique a
@@ -400,6 +402,100 @@ function lireReferences(
 }
 
 /**
+ * Les affiches choisies UNE À UNE d'une rangée « affiches » (18/11) : leurs
+ * numéros, dans l'ordre voulu, sans doublon.
+ *
+ * Un numéro illisible n'est pas passé sous silence : l'écran du back-office
+ * n'envoie que des numéros, et autre chose veut dire un écran désynchronisé —
+ * l'enregistrer donnerait une page qui ne montre pas ce qu'on croit.
+ */
+export function lireAffichesChoisies(brutes: unknown, ou: string): string[] {
+  if (!Array.isArray(brutes))
+    throw new SaisieRefusee(
+      `${ou} : la liste des affiches n'a pas pu être lue. Rechargez la page et réessayez.`,
+    );
+  const affiches: string[] = [];
+  for (const brute of brutes) {
+    const texte = String(brute ?? "").trim();
+    if (!/^[1-9][0-9]{0,9}$/.test(texte))
+      throw new SaisieRefusee(
+        `${ou} : une des affiches choisies n'a pas pu être reconnue. Rechargez la page et réessayez.`,
+      );
+    if (!affiches.includes(texte)) affiches.push(texte);
+  }
+  if (affiches.length > LIMITE_PRODUITS_MAX)
+    throw new SaisieRefusee(
+      `${ou} : une page montre au plus ${LIMITE_PRODUITS_MAX} affiches, et ${affiches.length} sont choisies. Retirez-en, ou faites deux pages.`,
+    );
+  return affiches;
+}
+
+/** Une section d'une rangée « affiches » rangée par collection. */
+export interface SectionAffiches {
+  /** L'adresse de la collection (« villes »), ou "" pour « Autres affiches ». */
+  collection: string;
+  affiches: string[];
+}
+
+/**
+ * Les sections d'une rangée « affiches » rangée par collection : chaque
+ * collection une fois, chaque affiche une fois (dans la première section qui
+ * la cite), les sections vides écartées.
+ */
+export function lireSections(brut: unknown, ou: string): SectionAffiches[] {
+  if (!Array.isArray(brut))
+    throw new SaisieRefusee(
+      `${ou} : le rangement par collection n'a pas pu être lu. Rechargez la page et réessayez.`,
+    );
+  const sections: SectionAffiches[] = [];
+  const vues = new Set<string>();
+  for (const s of brut) {
+    const section = objet(s, `${ou} : une section`);
+    const collection = String(section.collection ?? "").trim().slice(0, 120);
+    if (collection && !/^[a-z0-9][a-z0-9-]*$/.test(collection))
+      throw new SaisieRefusee(
+        `${ou} : une des collections du rangement n'a pas pu être reconnue. Rechargez la page et réessayez.`,
+      );
+    const affiches = lireAffichesChoisies(section.affiches ?? [], ou).filter((a) => !vues.has(a));
+    for (const a of affiches) vues.add(a);
+    const deja = sections.find((x) => x.collection === collection);
+    if (deja) deja.affiches.push(...affiches);
+    else if (affiches.length) sections.push({ collection, affiches });
+  }
+  if (vues.size > LIMITE_PRODUITS_MAX)
+    throw new SaisieRefusee(
+      `${ou} : une page montre au plus ${LIMITE_PRODUITS_MAX} affiches, et ${vues.size} sont choisies. Retirez-en, ou faites deux pages.`,
+    );
+  return sections;
+}
+
+/** Les numéros d'affiches des sections, mis bout à bout dans l'ordre. */
+export function affichesDesSections(sections: readonly SectionAffiches[]): string[] {
+  return sections.flatMap((s) => s.affiches);
+}
+
+/**
+ * Remet des lignes lues en base dans l'ordre choisi (la base les rend dans
+ * le sien). Une affiche choisie qui n'est plus là — retirée de la vente,
+ * supprimée — est simplement absente.
+ */
+export function dansLOrdreChoisi<T extends { id: number }>(
+  lignes: readonly T[],
+  ordre: readonly string[],
+): T[] {
+  const parId = new Map(lignes.map((l) => [String(l.id), l]));
+  const rangees: T[] = [];
+  for (const id of ordre) {
+    const ligne = parId.get(id);
+    if (ligne) {
+      rangees.push(ligne);
+      parId.delete(id);
+    }
+  }
+  return rangees;
+}
+
+/**
  * Relit un bloc, ou refuse la page en nommant le bloc fautif.
  *
  * Nommer le bloc est tout l'intérêt du message : « le 3e bloc » se retrouve à
@@ -450,6 +546,36 @@ function lireBloc(brut: unknown, ou: string): BlocPage {
 
   if (type === "produits") {
     const source = String(b.source ?? "");
+    if (source === "affiches") {
+      // Des affiches choisies une à une (18/11), en une liste ou rangées par
+      // collection. Le nombre montré est celui des affiches choisies : la
+      // liste EST la limite.
+      const sections =
+        b.sections !== undefined && b.sections !== null ? lireSections(b.sections, ou) : null;
+      const references = sections
+        ? affichesDesSections(sections)
+        : lireAffichesChoisies(
+            b.references !== undefined && b.references !== null
+              ? b.references
+              : b.reference === undefined || b.reference === null
+                ? []
+                : [b.reference],
+            ou,
+          );
+      const premiere = references[0];
+      if (premiere === undefined)
+        throw new SaisieRefusee(`${ou} : choisissez au moins une affiche à montrer.`);
+      const rangee = {
+        type,
+        source,
+        reference: premiere,
+        references,
+        limite: references.length,
+      } as const;
+      return sections
+        ? { ...rangee, sections, titresSections: b.titresSections !== false }
+        : rangee;
+    }
     if (source !== "collection" && source !== "categorie")
       throw new SaisieRefusee(
         `${ou} : choisissez une collection ou une catégorie de produits à afficher.`,
@@ -681,6 +807,13 @@ interface ProduitDeBloc {
   basePriceCents: number;
   image: string | null;
   variants: { format: string; priceCents: number }[];
+  /**
+   * Rangée « affiches » seulement (18/11) : de quoi filtrer sur la tablette —
+   * le lieu lu dans le nom français (ville-du-nom.ts, la règle du filtre du
+   * catalogue) et les rayons de l'affiche (adresses de ses collections).
+   */
+  lieu?: string;
+  rayons?: string[];
 }
 
 /**
@@ -703,7 +836,9 @@ function referencesDuBloc(
     const reference = String(brute ?? "").trim();
     if (reference && !references.includes(reference)) references.push(reference);
   }
-  return references.slice(0, REFERENCES_MAX);
+  // Des affiches choisies une à une se comptent par centaines, des
+  // collections par dizaines au plus.
+  return references.slice(0, bloc.source === "affiches" ? LIMITE_PRODUITS_MAX : REFERENCES_MAX);
 }
 
 /** Un produit retenu par une référence, avant que la rangée soit habillée. */
@@ -806,20 +941,44 @@ async function produitsDuneReference(
  * mettrait bout à bout les allers-retours de chacune, sur une route que
  * traverse chaque visiteuse.
  */
-async function produitsDuBloc(
-  bloc: Extract<BlocPage, { type: "produits" }>,
-  langue: string,
-  collectionsMasquees = false,
-): Promise<ProduitDeBloc[]> {
-  const limite = Math.min(Math.max(Math.trunc(bloc.limite) || 0, 0), LIMITE_PRODUITS_MAX);
-  if (limite <= 0) return [];
+/**
+ * Les affiches EN VENTE parmi celles choisies une à une, dans l'ordre choisi.
+ * Une affiche retirée de la vente depuis ne s'y montre plus, sans trou.
+ */
+async function affichesChoisiesEnVente(references: readonly string[]): Promise<LigneProduit[]> {
+  const ids = references.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  if (!ids.length) return [];
+  const lignes = await db
+    .select({
+      id: schema.products.id,
+      slug: schema.products.slug,
+      name: schema.products.name,
+      basePriceCents: schema.products.basePriceCents,
+      translations: schema.products.translations,
+    })
+    .from(schema.products)
+    .where(and(eq(schema.products.status, "active"), inArray(schema.products.id, ids)));
+  return dansLOrdreChoisi(lignes, references);
+}
 
+/**
+ * Les produits que montre un bloc, avant habillage : ses affiches choisies
+ * (« affiches »), ou ce que donnent ses collections ou sa catégorie.
+ */
+async function lignesDuBloc(
+  bloc: Extract<BlocPage, { type: "produits" }>,
+  collectionsMasquees: boolean,
+): Promise<LigneProduit[]> {
   const references = referencesDuBloc(bloc);
   if (!references.length) return [];
+  if (bloc.source === "affiches")
+    return (await affichesChoisiesEnVente(references)).slice(0, LIMITE_PRODUITS_MAX);
 
+  const limite = Math.min(Math.max(Math.trunc(bloc.limite) || 0, 0), LIMITE_PRODUITS_MAX);
+  if (limite <= 0) return [];
   const lots = await Promise.all(
     references.map((reference) =>
-      produitsDuneReference(bloc.source, reference, limite, collectionsMasquees),
+      produitsDuneReference(bloc.source as "collection" | "categorie", reference, limite, collectionsMasquees),
     ),
   );
 
@@ -834,9 +993,50 @@ async function produitsDuBloc(
     }
     if (lignes.length >= limite) break;
   }
+  return lignes;
+}
 
+/**
+ * Les rayons de chaque affiche, pour le filtre de la page : ses collections
+ * ouvertes, dans l'ordre des collections, sans les rayons techniques hérités
+ * de Shopify (« Tout voir », « Personnages de dos »…), qui ne sont pas des
+ * rayons du site.
+ */
+async function rayonsDesAffiches(ids: readonly number[]): Promise<Map<number, string[]>> {
+  const parProduit = new Map<number, string[]>();
+  if (!ids.length) return parProduit;
+  const lignes = await db
+    .select({ productId: schema.productCollections.productId, slug: schema.collections.slug })
+    .from(schema.productCollections)
+    .innerJoin(schema.collections, eq(schema.collections.id, schema.productCollections.collectionId))
+    .where(
+      and(
+        inArray(schema.productCollections.productId, [...ids]),
+        eq(schema.collections.active, true),
+        isNull(schema.collections.archivedAt),
+      ),
+    )
+    .orderBy(...ordreDesCollections());
+  for (const l of lignes) {
+    if (RAYONS_FUSIONNES[l.slug]) continue;
+    const liste = parProduit.get(l.productId);
+    if (liste) liste.push(l.slug);
+    else parProduit.set(l.productId, [l.slug]);
+  }
+  return parProduit;
+}
+
+async function produitsDuBloc(
+  bloc: Extract<BlocPage, { type: "produits" }>,
+  langue: string,
+  collectionsMasquees = false,
+): Promise<ProduitDeBloc[]> {
+  const lignes = await lignesDuBloc(bloc, collectionsMasquees);
   const ids = lignes.map((p) => p.id);
   if (!ids.length) return [];
+  // Les filtres de la page (lieu, rayon) : seulement pour des affiches
+  // choisies une à une, les seules pages qui les proposent.
+  const rayons = bloc.source === "affiches" ? await rayonsDesAffiches(ids) : null;
 
   const variantes = await db
     .select({
@@ -876,7 +1076,65 @@ async function produitsDuBloc(
     basePriceCents: p.basePriceCents,
     image: imageParProduit.get(p.id) ?? null,
     variants: parProduit.get(p.id) ?? [],
+    // Le lieu se lit dans le nom FRANÇAIS, comme le filtre du catalogue :
+    // « MULHOUSE » reste « MULHOUSE » dans toutes les langues.
+    ...(rayons ? { lieu: villeDuNom(p.name), rayons: rayons.get(p.id) ?? [] } : {}),
   }));
+}
+
+/** Une collection nommée pour le filtre ou le titre d'une section. */
+interface RayonNomme {
+  slug: string;
+  nom: string;
+}
+
+/**
+ * Ce qu'une rangée « affiches » montre en plus de ses affiches : les rayons
+ * du filtre (ceux de ses affiches, nommés dans la langue de la page), et ses
+ * sections quand elle est rangée par collection — le titre de chacune, et les
+ * affiches en vente qu'elle contient, dans l'ordre.
+ */
+async function habillageDesAffiches(
+  bloc: Extract<BlocPage, { type: "produits" }>,
+  produits: readonly ProduitDeBloc[],
+  langue: string,
+): Promise<{
+  rayons: RayonNomme[];
+  groupes?: { collection: string; titre: string | null; produits: number[] }[];
+}> {
+  const slugs = new Set<string>();
+  for (const p of produits) for (const r of p.rayons ?? []) slugs.add(r);
+  for (const s of bloc.sections ?? []) if (s.collection) slugs.add(s.collection);
+  const collections = slugs.size
+    ? await db
+        .select({
+          slug: schema.collections.slug,
+          name: schema.collections.name,
+          translations: schema.collections.translations,
+        })
+        .from(schema.collections)
+        .where(inArray(schema.collections.slug, [...slugs]))
+        .orderBy(...ordreDesCollections())
+    : [];
+  const nomDe = new Map(
+    collections.map((c) => [c.slug, String(texteDansLaLangue(c.translations, langue, "name", c.name))]),
+  );
+  const presents = new Set(produits.flatMap((p) => p.rayons ?? []));
+  const rayons = collections
+    .filter((c) => presents.has(c.slug))
+    .map((c) => ({ slug: c.slug, nom: nomDe.get(c.slug) ?? c.name }));
+  if (!bloc.sections?.length) return { rayons };
+
+  const enVente = new Set(produits.map((p) => String(p.id)));
+  const groupes = bloc.sections
+    .map((s) => ({
+      collection: s.collection,
+      titre:
+        bloc.titresSections === false || !s.collection ? null : (nomDe.get(s.collection) ?? null),
+      produits: s.affiches.filter((a) => enVente.has(a)).map(Number),
+    }))
+    .filter((s) => s.produits.length > 0);
+  return { rayons, groupes };
 }
 
 /**
@@ -908,6 +1166,10 @@ async function resoudreBlocs(
 > {
   return Promise.all(
     blocs.map(async (bloc) => {
+      if (bloc.type === "produits" && bloc.source === "affiches") {
+        const produits = await produitsDuBloc(bloc, langue, collectionsMasquees);
+        return { ...bloc, produits, ...(await habillageDesAffiches(bloc, produits, langue)) };
+      }
       if (bloc.type === "produits")
         return { ...bloc, produits: await produitsDuBloc(bloc, langue, collectionsMasquees) };
       if (bloc.type === "image") {
@@ -1060,6 +1322,49 @@ async function standOuvertDuCode(code: string) {
     .from(schema.stands)
     .where(and(eq(schema.stands.code, propre), eq(schema.stands.ouvert, true)));
   return stand;
+}
+
+/**
+ * La page qu'affiche la tablette d'un stand (`stand.page_id`, 18/11), avec
+ * les adresses des affiches qu'elle montre — ce que la tablette a le droit
+ * d'ouvrir en plus d'elle. Null quand le stand n'existe pas, est archivé,
+ * n'a pas de page, ou que sa page n'est pas en ligne : la tablette montre
+ * alors tout le catalogue, comme avant.
+ *
+ * Les affiches sont celles que la page montre vraiment : choisies une à une,
+ * ou tirées de ses collections — les mêmes lectures que pour l'afficher.
+ */
+export async function pageDeLaTablette(
+  numero: number,
+  langue: string,
+): Promise<{ slug: string; titre: string; affiches: string[] } | null> {
+  const [stand] = await db
+    .select({ pageId: schema.stands.pageId })
+    .from(schema.stands)
+    .where(and(eq(schema.stands.id, numero), isNull(schema.stands.archivedAt)));
+  if (!stand?.pageId) return null;
+  const [page] = await db
+    .select(COLONNES_PUBLIQUES)
+    .from(schema.pages)
+    .where(
+      and(
+        eq(schema.pages.id, stand.pageId),
+        eq(schema.pages.status, "active"),
+        isNull(schema.pages.archivedAt),
+      ),
+    );
+  if (!page) return null;
+  const traduction = langue === "fr" ? undefined : traductionDe(page.translations, langue);
+  const lots = await Promise.all(
+    (page.blocks ?? [])
+      .filter((b): b is Extract<BlocPage, { type: "produits" }> => b.type === "produits")
+      .map((b) => lignesDuBloc(b, page.affichage === "stand")),
+  );
+  return {
+    slug: page.slug,
+    titre: utile(traduction?.title) ?? page.title,
+    affiches: [...new Set(lots.flat().map((l) => l.slug))],
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1523,6 +1828,24 @@ export function mountCms(app: Hono): void {
     });
   });
 
+  /**
+   * La page de la tablette d'un stand, pour le site en mode stand (18/11) :
+   * son adresse, son titre dans la langue demandée, et les adresses des
+   * affiches qu'elle montre. Le middleware du site y ramène toute adresse
+   * hors d'elle (packages/types, tablette-stand.ts).
+   *
+   * `?stand=` est la valeur de l'adresse de la tablette : le numéro du stand.
+   * Rien de secret ici — la page s'ouvre déjà à qui ajoute ?stand=1 à son
+   * adresse, et le mode stand ne donne aucun droit. Un stand inconnu,
+   * archivé, sans page, ou dont la page n'est pas en ligne : `page: null`,
+   * et la tablette montre tout le catalogue, comme avant.
+   */
+  app.get("/stand/page-de-la-tablette", async (c) => {
+    const numero = numeroDuStand(c.req.query("stand"));
+    const page = numero ? await pageDeLaTablette(numero, langueDemandee(c)) : null;
+    return c.json(page ? { page: { slug: page.slug, titre: page.titre }, affiches: page.affiches } : { page: null, affiches: [] });
+  });
+
   /* ---------------------------------------------------------------------- */
   /*  Pages — back-office                                                   */
   /* ---------------------------------------------------------------------- */
@@ -1669,8 +1992,20 @@ export function mountCms(app: Hono): void {
         ),
       )
       .orderBy(asc(schema.productCategories.position), asc(schema.productCategories.name));
+    // Les stands dont la tablette affiche cette page (18/11) : l'éditeur le
+    // dit en lecture seule. Le choix se fait dans BO › Ventes stand.
+    const stands = await db
+      .select({
+        id: schema.stands.id,
+        nom: schema.stands.nom,
+        archivedAt: schema.stands.archivedAt,
+      })
+      .from(schema.stands)
+      .where(eq(schema.stands.pageId, page.id))
+      .orderBy(asc(schema.stands.nom));
 
     return c.json({
+      stands: stands.map((s) => ({ id: s.id, nom: s.nom, archive: s.archivedAt != null })),
       page: {
         id: page.id,
         slug: page.slug,
@@ -1803,8 +2138,11 @@ export function mountCms(app: Hono): void {
    * elle ; les images de ses blocs restent sur le disque. Son adresse
    * redevient libre.
    *
-   * Aucune clé étrangère ne pointe vers une page : ce qui la vise passe par
-   * son ADRESSE, que la base ne surveille pas. On vérifie donc à la main les
+   * Une seule clé étrangère pointe vers une page : la page de la tablette
+   * d'un stand (`stand.page_id`, 18/11), qui se vide d'elle-même (« set
+   * null ») ; le stand montre alors tout le catalogue, et Ventes stand le
+   * signale. Le reste vise la page par son ADRESSE, que la base ne surveille
+   * pas. On vérifie donc à la main les
    * deux choses qui y mènent encore et qu'un effacement condamnerait pour de
    * bon, alors qu'une restauration les répare :
    *  - un lien du menu (masqué compris : il est prêt à reparaître ; un lien

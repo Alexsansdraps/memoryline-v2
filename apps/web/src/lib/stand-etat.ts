@@ -32,7 +32,26 @@ export async function signalerStandFerme(): Promise<void> {
       ouvert: boolean;
       autorise: boolean;
       standFerme?: boolean;
+      standId?: number | null;
     };
+    /*
+     * La tablette se range sur le stand de SON code (18/11) : l'adresse dit
+     * le numéro du stand (`?stand=`), et c'est lui qui choisit la seule page
+     * qu'elle affiche (middleware). Une tablette réglée avec l'adresse d'un
+     * autre stand — ou l'ancienne « ?stand=1 » — repart aussitôt sur le bon.
+     */
+    // Seulement quand l'adresse désigne un stand par son numéro : un aperçu
+    // ouvert depuis le back-office (« ?stand=apercu ») n'est d'aucun stand.
+    const actuel = new URL(window.location.href).searchParams.get("stand") ?? "";
+    if (code && etat.standId && /^[0-9]+$/.test(actuel)) {
+      const voulu = String(etat.standId);
+      const adresse = new URL(window.location.href);
+      if (actuel !== voulu) {
+        adresse.searchParams.set("stand", voulu);
+        window.location.replace(adresse.pathname + adresse.search + adresse.hash);
+        return;
+      }
+    }
     const ferme = code ? !etat.autorise && (etat.standFerme === true || !etat.ouvert) : !etat.ouvert;
     bande.hidden = !ferme;
     if (ferme) document.documentElement.dataset.standFerme = "1";

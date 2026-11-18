@@ -40,6 +40,7 @@ import {
   estLangue,
   langueDepuisParam,
   lien,
+  t,
   type Langue,
 } from "../../../i18n/utils.ts";
 
@@ -49,6 +50,7 @@ export const prerender = false;
 if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
   return new Response(null, { status: 404 });
 const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
 
 const slug = Astro.params.slug ?? "";
 
@@ -101,6 +103,44 @@ function enVignette(p: Record<string, unknown>) {
       ? (p.variants as { priceCents: number }[])
       : [],
   };
+}
+
+/** Sans accents ni capitales : « Ribeauvillé » se trouve en tapant « ribeauville ». */
+function aplatir(texte: string): string {
+  return texte
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+/** Une affiche d'une rangée « affiches », telle que l'API la rend. */
+type AfficheChoisie = Record<string, unknown> & { id?: unknown; lieu?: unknown; rayons?: unknown };
+
+/**
+ * Ce que les filtres de la page lisent sur une vignette (18/11) : le nom
+ * (dans la langue de la page) et le lieu, aplatis pour la recherche ; le lieu
+ * exact pour la liste des lieux ; les rayons de l'affiche.
+ */
+function donneesDuFiltre(p: AfficheChoisie): Record<string, string> {
+  const lieu = String(p.lieu ?? "");
+  return {
+    nom: aplatir(`${String(p.name ?? "")} ${lieu}`),
+    lieu,
+    rayons: Array.isArray(p.rayons) ? p.rayons.map(String).join(" ") : "",
+  };
+}
+
+/** Les lieux d'une rangée, avec leur nombre d'affiches, par ordre alphabétique. */
+function lieuxDe(produits: AfficheChoisie[]): { nom: string; nombre: number }[] {
+  const comptes = new Map<string, number>();
+  for (const p of produits) {
+    const lieu = String(p.lieu ?? "").trim();
+    if (lieu) comptes.set(lieu, (comptes.get(lieu) ?? 0) + 1);
+  }
+  return [...comptes.entries()]
+    .map(([nom, nombre]) => ({ nom, nombre }))
+    .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
 }
 
 /*
@@ -259,6 +299,133 @@ const descriptionPage =
           );
         }
 
+        /*
+         * Des affiches choisies une à une (18/11) — la page d'un stand : la
+         * grille dans l'ordre choisi, en une liste ou par collection, et des
+         * filtres au-dessus (recherche par nom ou lieu, lieu, collection).
+         * Les filtres travaillent dans la page, sans la recharger : la
+         * tablette a toutes ses affiches sous la main.
+         */
+        if (bloc.type === "produits" && bloc.source === "affiches") {
+          const produits = (Array.isArray(bloc.produits) ? bloc.produits : []) as AfficheChoisie[];
+          if (!produits.length) return null;
+          const parId = new Map(produits.map((p) => [Number(p.id), p]));
+          const groupes = (Array.isArray(bloc.groupes) ? bloc.groupes : []) as {
+            collection: string;
+            titre: string | null;
+            produits: number[];
+          }[];
+          const rayons = (Array.isArray(bloc.rayons) ? bloc.rayons : []) as {
+            slug: string;
+            nom: string;
+          }[];
+          const lieux = lieuxDe(produits);
+          const titresDeSection = groupes.some((g) => !!g.titre);
+          const intertitreAuDessus =
+            titresDeSection ||
+            page!.blocks
+              .slice(0, rang)
+              .some(
+                (b) =>
+                  b.type === "titre" ||
+                  (b.type === "texte" && /<h2[\s>]/i.test(String(b.html ?? ""))),
+              );
+          const vignette = (p: AfficheChoisie) => (
+            <VignetteAffiche
+              affiche={enVignette(p)}
+              langue={langue}
+              sizes={sizesGrilleColonne(grille)}
+              titre={intertitreAuDessus ? "h3" : "h2"}
+              donnees={donneesDuFiltre(p)}
+            />
+          );
+          const classeGrille =
+            "ml-grille-produits -mx-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8";
+          const unSeul = new Intl.PluralRules(langue).select(produits.length) === "one";
+          return (
+            <div
+              class="mt-8"
+              data-affiches-page
+              data-compte-un={tr("catalogue.compte_un")}
+              data-compte={tr("catalogue.compte_simple")}
+            >
+              {produits.length > 1 && (
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-ink/10 py-3">
+                  <input
+                    type="search"
+                    data-filtre-texte
+                    autocomplete="off"
+                    placeholder={tr("page.filtre.chercher")}
+                    aria-label={tr("page.filtre.chercher")}
+                    class="min-w-0 flex-1 basis-72 border border-ink/20 bg-paper px-3 py-2 text-sm"
+                  />
+                  {lieux.length > 1 && (
+                    <label class="flex items-center gap-2 text-sm text-ink-soft">
+                      {tr("catalogue.ville")}
+                      <select
+                        data-filtre-lieu
+                        class="min-w-0 max-w-[min(14rem,60vw)] border border-ink/20 bg-paper px-3 py-2 text-sm text-ink"
+                      >
+                        <option value="">{tr("catalogue.toutes_villes")}</option>
+                        {lieux.map((l) => (
+                          <option value={l.nom}>
+                            {l.nom} ({l.nombre})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {rayons.length > 1 && (
+                    <label class="flex items-center gap-2 text-sm text-ink-soft">
+                      {tr("page.filtre.rayon")}
+                      <select
+                        data-filtre-rayon
+                        class="min-w-0 max-w-[min(14rem,60vw)] border border-ink/20 bg-paper px-3 py-2 text-sm text-ink"
+                      >
+                        <option value="">{tr("page.filtre.tous_rayons")}</option>
+                        {rayons.map((r) => (
+                          <option value={r.slug}>{r.nom}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    data-filtre-effacer
+                    hidden
+                    class="border border-ink/20 px-3 py-2 text-sm transition-colors hover:border-ink"
+                  >
+                    {tr("page.filtre.effacer")}
+                  </button>
+                  <p data-filtre-compte class="ml-auto text-sm text-ink-soft" aria-live="polite">
+                    {produits.length} {unSeul ? tr("catalogue.compte_un") : tr("catalogue.compte_simple")}
+                  </p>
+                </div>
+              )}
+              {groupes.length ? (
+                groupes.map((g) => (
+                  <section data-section class="mt-8">
+                    {g.titre && <h2 class="text-2xl font-medium">{g.titre}</h2>}
+                    <ul class={`${classeGrille} mt-6`} style={styleGrille(grille)}>
+                      {g.produits
+                        .map((id) => parId.get(Number(id)))
+                        .filter((p): p is AfficheChoisie => !!p)
+                        .map(vignette)}
+                    </ul>
+                  </section>
+                ))
+              ) : (
+                <ul class={`${classeGrille} mt-6`} style={styleGrille(grille)}>
+                  {produits.map(vignette)}
+                </ul>
+              )}
+              <p data-filtre-vide hidden class="mt-6 text-ink-soft">
+                {tr("recherche.aucun")}
+              </p>
+            </div>
+          );
+        }
+
         if (bloc.type === "produits") {
           const produits = Array.isArray(bloc.produits) ? bloc.produits : [];
           if (!produits.length) return null;
@@ -298,6 +465,74 @@ const descriptionPage =
       })
     }
   </article>
+
+  <script is:inline>
+    // Les filtres d'une page d'affiches choisies (18/11) : la recherche par
+    // nom ou lieu (accents et capitales mis de côté, chaque mot doit s'y
+    // trouver), le lieu, la collection. Les vignettes écartées se cachent ;
+    // une section vidée aussi. Sans JavaScript, toutes restent visibles.
+    (function () {
+      function aplatir(s) {
+        return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+      }
+      var langue = document.documentElement.lang || "fr";
+      var regles;
+      try {
+        regles = new Intl.PluralRules(langue);
+      } catch (e) {
+        regles = new Intl.PluralRules("fr");
+      }
+      document.querySelectorAll("[data-affiches-page]").forEach(function (bloc) {
+        var texte = bloc.querySelector("[data-filtre-texte]");
+        if (!texte) return;
+        var lieu = bloc.querySelector("[data-filtre-lieu]");
+        var rayon = bloc.querySelector("[data-filtre-rayon]");
+        var effacer = bloc.querySelector("[data-filtre-effacer]");
+        var compte = bloc.querySelector("[data-filtre-compte]");
+        var vide = bloc.querySelector("[data-filtre-vide]");
+        var vignettes = Array.prototype.slice.call(bloc.querySelectorAll("li[data-nom]"));
+        var sections = Array.prototype.slice.call(bloc.querySelectorAll("[data-section]"));
+        var un = bloc.getAttribute("data-compte-un") || "";
+        var plusieurs = bloc.getAttribute("data-compte") || "";
+        function appliquer() {
+          var mots = aplatir(texte.value).split(/\s+/).filter(Boolean);
+          var l = lieu ? lieu.value : "";
+          var r = rayon ? rayon.value : "";
+          var n = 0;
+          vignettes.forEach(function (li) {
+            var cle = li.getAttribute("data-nom") || "";
+            var ok =
+              mots.every(function (m) {
+                return cle.indexOf(m) !== -1;
+              }) &&
+              (!l || li.getAttribute("data-lieu") === l) &&
+              (!r || (" " + (li.getAttribute("data-rayons") || "") + " ").indexOf(" " + r + " ") !== -1);
+            li.hidden = !ok;
+            if (ok) n++;
+          });
+          sections.forEach(function (s) {
+            s.hidden = !s.querySelector("li[data-nom]:not([hidden])");
+          });
+          if (compte) compte.textContent = n + " " + (regles.select(n) === "one" ? un : plusieurs);
+          if (vide) vide.hidden = n > 0;
+          if (effacer) effacer.hidden = !(mots.length || l || r);
+        }
+        texte.addEventListener("input", appliquer);
+        if (lieu) lieu.addEventListener("change", appliquer);
+        if (rayon) rayon.addEventListener("change", appliquer);
+        if (effacer)
+          effacer.addEventListener("click", function () {
+            texte.value = "";
+            if (lieu) lieu.value = "";
+            if (rayon) rayon.value = "";
+            appliquer();
+            texte.focus();
+          });
+        // Un retour arrière peut rendre la page avec les champs déjà remplis.
+        appliquer();
+      });
+    })();
+  </script>
 </Base>
 
 <style is:global>

@@ -701,6 +701,20 @@
       "when": 1795014686307,
       "tag": "0099_fiches_japonais_chinois",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1795016195056,
+      "tag": "0100_page_de_la_tablette",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1795016195057,
+      "tag": "0101_page_mulhouse",
+      "breakpoints": true
     }
   ]
 }

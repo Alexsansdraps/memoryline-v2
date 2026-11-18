@@ -309,6 +309,11 @@ export interface PageCms {
   };
   collections: { id: number; slug: string; name: string }[];
   categories: { id: number; name: string }[];
+  /**
+   * Les stands dont la tablette affiche cette page (18/11). Lecture seule :
+   * la page d'un stand se choisit dans Ventes stand. Absent d'une API d'avant.
+   */
+  stands?: { id: number; nom: string; archive: boolean }[];
 }
 
 /** Une entrée du menu du site, avec ses sous-liens. */
@@ -481,6 +486,18 @@ export interface StandBo {
    * ventes gardent son nom.
    */
   archivedAt?: string | null;
+  /**
+   * La page que sa tablette affiche, et elle seule (18/11) : choisie ici,
+   * dans Ventes stand. Null : la tablette montre tout le catalogue.
+   */
+  pageId?: number | null;
+  page?: {
+    id: number;
+    title: string;
+    slug: string;
+    status: string;
+    archivee: boolean;
+  } | null;
   /** Commandes prises sur ce stand, paniers en cours exclus. */
   commandes: number;
   /** Ce qu'elles totalisent, en centimes. */
@@ -2205,6 +2222,8 @@ export function adminApi(request?: Request) {
         dateFin?: string;
         horaires?: unknown;
         pilotage?: "calendrier";
+        /** La page de la tablette (18/11) ; null = aucune, tout le catalogue. */
+        pageId?: number | null;
       },
     ) =>
       req<{ ok: true; stand: StandBo }>(

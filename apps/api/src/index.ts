@@ -87,6 +87,7 @@ import { mountProduitsMasse } from "./produits-masse.js";
 import { mountVentesProduit } from "./ventes-produit.js";
 import { mountFicheProduit } from "./fiche-produit.js";
 import { mountCms } from "./cms.js";
+import { villeDuNom } from "./ville-du-nom.js";
 import { mountCollections, ordreDesCollections } from "./collections.js";
 import { mountImportProduits } from "./import-produits.js";
 import { mountCartesCadeaux } from "./cartes-cadeaux.js";
@@ -759,28 +760,9 @@ function ordreDeTri(tri: Tri, collection: string, genre: string): SQL[] {
  * envelopper dans un objet aurait cassé les trois pour une pagination qu'eux
  * n'utilisent pas.
  */
-/**
- * La ville d'une affiche, lue dans son nom.
- *
- * La convention de la boutique : le nom commence par la ville en CAPITALES,
- * puis vient le sujet en minuscules — « AMIENS Cathédrale ciel bleu ».
- * Un mot appartient donc à la ville tant qu'il est entièrement en capitales,
- * ce qui attrape aussi « BAIE DE SOMME », « CÔTE D'OPALE » et
- * « SAINT-VALERY-SUR-SOMME » sans rien coder de particulier.
- *
- * Vérifié sur le catalogue : 176 affiches, 101 villes, aucune exception.
- * Une affiche qui ne suivrait pas la convention n'a simplement pas de ville,
- * et n'apparaît sous aucun filtre — jamais sous une mauvaise.
- */
-export function villeDuNom(nom: string): string {
-  const pris: string[] = [];
-  for (const brut of String(nom ?? "").split(/\s+/)) {
-    const mot = brut.replace(/[–—-]+$/, "");
-    if (!/^[A-ZÀ-ÖØ-Þ0-9'’-]{2,}$/u.test(mot)) break;
-    pris.push(mot);
-  }
-  return pris.join(" ");
-}
+// La ville d'une affiche, lue dans son nom : la règle vit dans
+// ville-du-nom.ts, partagée avec les pages d'affiches choisies (cms.ts).
+export { villeDuNom };
 
 /**
  * Les villes du catalogue, avec le nombre d'affiches de chacune.

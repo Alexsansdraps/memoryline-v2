@@ -2,6 +2,7 @@
 import { createSignal, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { lien, t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import {
+  avecStand,
   ErreurSalon,
   getCartId,
   nouveauCartId,
@@ -525,7 +526,7 @@ export function ConfirmationStand(props: {
           ← {tr("stand.revenir")}
         </button>
         <a
-          href={`${lien(langue, "/affiches")}?stand=1`}
+          href={avecStand(lien(langue, "/affiches"))}
           class={`${PRINCIPAL} px-10`}
           onClick={() => {
             // Le panier a déjà été remis à neuf à l'enregistrement. On le refait

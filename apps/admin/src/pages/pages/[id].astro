@@ -19,10 +19,15 @@
  * Ce qui part au serveur reste un bloc de texte unique, pour ne toucher ni au
  * schéma de la base ni au rendu public : `[{ type: "texte", html }]`.
  */
-import { url } from "../../lib/url.ts";
+import { apiUrl, url } from "../../lib/url.ts";
 import Admin from "../../layouts/Admin.astro";
 import EditeurTexte from "../../components/EditeurTexte.astro";
-import { adminApi, type BlocPage, type PageCms } from "../../lib/api.ts";
+import {
+  adminApi,
+  type BlocPage,
+  type ListeProduitsAdmin,
+  type PageCms,
+} from "../../lib/api.ts";
 
 const api = adminApi(Astro.request);
 const idPage = Number(Astro.params.id);
@@ -57,6 +62,8 @@ const LANGUES_TRADUISIBLES = [
   { code: "de", nom: "Allemand" },
   { code: "it", nom: "Italien" },
   { code: "es", nom: "Espagnol" },
+  { code: "ja", nom: "Japonais" },
+  { code: "zh", nom: "Chinois" },
 ] as const;
 type CodeLangue = (typeof LANGUES_TRADUISIBLES)[number]["code"];
 
@@ -178,6 +185,96 @@ function blocDesAffiches(collections: string[], limite: number): BlocPage[] {
   return [{ type: "produits", source: "collection", reference: refs[0], references: refs, limite: n } as BlocPage];
 }
 
+/*
+ * LES AFFICHES CHOISIES UNE À UNE (18/11, Alexandra : « on doit pouvoir voir
+ * toutes les affiches et les sélectionner avec pas mal de filtres
+ * (sélectionner toute la collection X ou juste une affiche) », « trier les
+ * affiches comme on veut, par affiche ou par collection »). C'est la page
+ * d'un stand : sa tablette n'affiche qu'elle (Ventes stand). Le tableau,
+ * ses filtres et l'ordre vivent dans le navigateur (script plus bas) ; le
+ * choix part dans un seul champ caché, en JSON, et devient un bloc
+ * « produits » de source « affiches » (cms.ts).
+ */
+interface ChoixAffiches {
+  /** « liste » : un seul ordre ; « collections » : des sections par collection. */
+  mode: "liste" | "collections";
+  /** Les numéros des affiches, dans l'ordre de la page. */
+  ordre: number[];
+  /** Mode « collections » : les sections, dans l'ordre, avec leurs affiches. */
+  sections: { collection: string; affiches: number[] }[];
+  /** Mode « collections » : le nom de chaque collection au-dessus de sa section. */
+  titres: boolean;
+}
+
+const CHOIX_VIDE: ChoixAffiches = { mode: "liste", ordre: [], sections: [], titres: true };
+
+/** Des numéros d'affiches lisibles, sans doublon. */
+function numeros(v: unknown): number[] {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+}
+
+/** Le choix enregistré sur la page (son bloc « affiches »), ou rien de choisi. */
+function choixDeLaPage(blocs: BlocPage[] | null | undefined): ChoixAffiches {
+  const b = (blocs ?? []).find((x) => x.type === "produits" && x.source === "affiches");
+  if (!b) return CHOIX_VIDE;
+  const sections = (Array.isArray(b.sections) ? b.sections : [])
+    .map((s) => ({
+      collection: String((s as Record<string, unknown>)?.collection ?? ""),
+      affiches: numeros((s as Record<string, unknown>)?.affiches),
+    }))
+    .filter((s) => s.affiches.length);
+  return {
+    mode: sections.length ? "collections" : "liste",
+    ordre: numeros(Array.isArray(b.references) && b.references.length ? b.references : [b.reference]),
+    sections,
+    titres: b.titresSections !== false,
+  };
+}
+
+/** Le choix envoyé par le formulaire (champ caché `affichesChoisies`). */
+function choixEnvoye(brut: string): ChoixAffiches {
+  try {
+    const v = JSON.parse(brut || "{}") as Record<string, unknown>;
+    const sections = (Array.isArray(v.sections) ? v.sections : [])
+      .map((s) => ({
+        collection: String((s as Record<string, unknown>)?.collection ?? "").slice(0, 120),
+        affiches: numeros((s as Record<string, unknown>)?.affiches),
+      }))
+      .filter((s) => s.affiches.length);
+    const mode = v.mode === "collections" && sections.length ? "collections" : "liste";
+    return {
+      mode,
+      ordre: mode === "collections" ? sections.flatMap((s) => s.affiches) : numeros(v.ordre),
+      sections: mode === "collections" ? sections : [],
+      titres: v.titres !== false,
+    };
+  } catch {
+    throw new Error("Le choix des affiches n'a pas pu être lu. Rechargez la page et réessayez.");
+  }
+}
+
+/** Le bloc à enregistrer pour les affiches choisies, ou rien s'il n'y en a pas. */
+function blocDesAffichesChoisies(choix: ChoixAffiches): BlocPage[] {
+  if (!choix.ordre.length) return [];
+  const references = choix.ordre.map(String);
+  const bloc: Record<string, unknown> = {
+    type: "produits",
+    source: "affiches",
+    reference: references[0],
+    references,
+    limite: references.length,
+  };
+  if (choix.mode === "collections" && choix.sections.length) {
+    bloc.sections = choix.sections.map((s) => ({
+      collection: s.collection,
+      affiches: s.affiches.map(String),
+    }));
+    bloc.titresSections = choix.titres;
+  }
+  return [bloc as BlocPage];
+}
+
 let flash: string | null = null;
 let flashErreur = false;
 
@@ -192,6 +289,7 @@ let saisie: {
   seoTitre: string;
   seoDescription: string;
   affiches?: { collections: string[]; limite: number };
+  choix?: ChoixAffiches;
   corps: string;
 } | null = null;
 
@@ -234,18 +332,26 @@ async function enregistrerTraduction(
 
   const actuel = await api.page(idPage);
   const blocsFrancais = actuel.page.blocks ?? [];
-  const francaisARanger =
-    blocsFrancais.length > 1 ||
-    (blocsFrancais.length === 1 && blocsFrancais[0]!.type !== "texte");
+  /*
+   * Les grilles d'affiches (« produits ») ne se replient pas en texte : elles
+   * restent, APRÈS le texte, comme l'éditeur français les enregistre (18/11).
+   * Elles partaient auparavant au premier enregistrement d'une traduction —
+   * une page de stand y aurait perdu toutes ses affiches.
+   */
+  const grillesFrancaises = blocsFrancais.filter((b) => b.type === "produits");
+  const texteFrancais = blocsFrancais.filter((b) => b.type !== "produits");
+  const texteRange =
+    texteFrancais.length > 1 || (texteFrancais.length === 1 && texteFrancais[0]!.type !== "texte")
+      ? blocsDepuisCorps(corpsDepuisBlocs(texteFrancais))
+      : texteFrancais;
   /** Le français tel qu'il sera en base après cet envoi : le patron de la traduction. */
-  const francaisRange = francaisARanger
-    ? blocsDepuisCorps(corpsDepuisBlocs(blocsFrancais))
-    : blocsFrancais;
+  const francaisRange = [...texteRange, ...grillesFrancaises];
+  const francaisARanger = JSON.stringify(francaisRange) !== JSON.stringify(blocsFrancais);
 
   // Un texte traduit se cale sur le texte français, bloc pour bloc : face à
   // une page française vide, il n'aurait rien en face de quoi s'afficher, et
   // le serveur le refuserait en parlant de blocs. On le dit dans ses mots.
-  if (corpsTraduit && !francaisRange.length)
+  if (corpsTraduit && !texteRange.length)
     throw new Error(
       "Le texte français de cette page est vide : écrivez-le et enregistrez-le " +
         "d'abord, la traduction s'affiche à sa place. Le nom traduit, lui, peut " +
@@ -274,7 +380,12 @@ async function enregistrerTraduction(
     seoTitle: seoTitreTraduit,
     seoDescription: seoDescriptionTraduite,
   };
-  if (corpsTraduit) traduction.blocks = blocsDepuisCorps(corpsTraduit);
+  // Bloc pour bloc face au français : le texte traduit en face du texte, et
+  // les grilles recopiées telles quelles (le serveur les reprend du français).
+  if (corpsTraduit)
+    traduction.blocks = francaisRange.map((b) =>
+      b.type === "produits" ? b : ({ type: "texte", html: corpsTraduit } as BlocPage),
+    );
 
   await api.enregistrerPage(idPage, {
     ...(francaisARanger ? { blocks: francaisRange } : {}),
@@ -408,8 +519,14 @@ if (Astro.request.method === "POST") {
       collections: f.getAll("affiches").map((v) => String(v)),
       limite: Number(f.get("affichesLimite") ?? AFFICHES_PAR_DEFAUT),
     };
+    // Le choix des affiches une à une (18/11) : absent d'un formulaire
+    // d'avant, il garde ce que la page avait.
+    let choixSaisi: ChoixAffiches | undefined;
 
     try {
+      choixSaisi = f.has("affichesChoisies")
+        ? choixEnvoye(String(f.get("affichesChoisies") ?? ""))
+        : choixDeLaPage((await api.page(idPage)).page.blocks);
       if (!Number.isFinite(idPage) || idPage <= 0)
         throw new Error("Cette page n'a pas pu être retrouvée.");
       if (!titre) throw new Error("Donnez un nom à la page.");
@@ -436,6 +553,7 @@ if (Astro.request.method === "POST") {
         seoDescription: seoDescription || null,
         blocks: [
           ...blocsDepuisCorps(corpsSaisi),
+          ...blocDesAffichesChoisies(choixSaisi),
           ...blocDesAffiches(affichesSaisies.collections, affichesSaisies.limite),
         ],
       });
@@ -459,6 +577,7 @@ if (Astro.request.method === "POST") {
         seoDescription,
         corps: corpsSaisi,
         affiches: affichesSaisies,
+        choix: choixSaisi,
       };
     }
   }
@@ -484,14 +603,56 @@ const seoDescription = saisie?.seoDescription ?? page?.seoDescription ?? "";
 /** Le texte de la page, replié s'il était encore en morceaux. */
 const corps = saisie?.corps ?? corpsDepuisBlocs(page?.blocks);
 
-/** Une ancienne grille de produits ne se replie pas : il faut le dire. */
-const grilles = (page?.blocks ?? []).filter((b) => b.type === "produits");
+/**
+ * Une ancienne grille de produits ne se replie pas : il faut le dire. Les
+ * affiches choisies une à une, elles, ont leur écran plus bas (18/11).
+ */
+const grilles = (page?.blocks ?? []).filter(
+  (b) => b.type === "produits" && b.source !== "affiches",
+);
 const grillePerdue =
   !saisie &&
   contientUneGrille(page?.blocks) &&
   (grilles.length > 1 || grilles.some((b) => b.source !== "collection"));
 /** La grille d'affiches de l'écran : la saisie refusée, sinon celle enregistrée. */
 const affiches = saisie?.affiches ?? grilleDeLaPage(page?.blocks);
+/** Les affiches choisies une à une : la saisie refusée, sinon celles enregistrées. */
+const choix = saisie?.choix ?? choixDeLaPage(page?.blocks);
+
+/**
+ * Toutes les affiches, pour le tableau du choix (18/11) : celles en vente se
+ * cochent ; les autres servent à nommer une affiche déjà choisie et retirée
+ * de la vente depuis. Les collections de chaque affiche par leur adresse
+ * (celles qu'une page peut citer : ouvertes, non archivées).
+ */
+let catalogue: ListeProduitsAdmin | null = null;
+try {
+  catalogue = await api.produitsAdmin({ limit: 1000 });
+} catch {
+  catalogue = null;
+}
+const slugDeCollection = new Map((donnees?.collections ?? []).map((c) => [c.id, c.slug]));
+/** Une vignette légère : 200 px de large, servie par l'API. */
+const vignette = (u: string | null) =>
+  !u ? "" : /^https?:\/\//i.test(u) ? u : `${apiUrl(u)}?l=200`;
+const donneesChoix = {
+  max: AFFICHES_MAX,
+  choix,
+  collections: (donnees?.collections ?? []).map((c) => ({ slug: c.slug, nom: c.name })),
+  produits: (catalogue?.produits ?? []).map((p) => ({
+    id: p.id,
+    nom: p.name,
+    slug: p.slug,
+    genre: p.kind,
+    statut: p.status,
+    image: vignette(p.imageUrl),
+    collections: p.collections
+      .map((c) => slugDeCollection.get(c.id))
+      .filter((s): s is string => !!s),
+  })),
+};
+/** Les stands dont la tablette affiche cette page (lecture seule, 18/11). */
+const tablettes = (donnees?.stands ?? []).filter((s) => !s.archive);
 
 /**
  * Les collections que montrent les rangées « Affiches » de la page.
@@ -689,6 +850,29 @@ const boutonDiscret =
           </label>
         </div>
 
+        {/* La tablette qui l'affiche (18/11) : en lecture seule, la page d'un
+            stand se choisit dans Ventes stand. */}
+        <p class="mt-3 text-sm">
+          {tablettes.length ? (
+            <>
+              Affichée sur la tablette de :{" "}
+              <strong>{tablettes.map((s) => s.nom).join(", ")}</strong>.{" "}
+              <a href={url("/ventes-salon")} class="text-bo-accent hover:underline">
+                Ventes stand
+              </a>
+            </>
+          ) : (
+            <span class="text-bo-muted">
+              Aucune tablette n'affiche cette page. La page d'un stand se
+              choisit dans{" "}
+              <a href={url("/ventes-salon")} class="text-bo-accent hover:underline">
+                Ventes stand
+              </a>
+              .
+            </span>
+          )}
+        </p>
+
         <div class="mt-4">
           <span class="text-sm font-medium">Adresse de la page</span>
           <span class="mt-1 flex flex-wrap items-center gap-1">
@@ -714,9 +898,10 @@ const boutonDiscret =
           {page?.status === "active" && page.slug && (
             <a
               href={`${ORIGINE_PUBLIQUE}/pages/${encodeURIComponent(page.slug)}${
-                // Une page réservée au stand ne s'ouvre qu'en mode stand. Sans
-                // le code du stand, ce mode ne vaut que pour cette page.
-                page.affichage === "stand" ? "?stand=1" : ""
+                // Une page réservée au stand ne s'ouvre qu'en mode stand.
+                // « apercu » ne désigne aucun stand (18/11) : « ?stand=1 »
+                // ouvrirait la tablette du stand n° 1, qui ramène à SA page.
+                page.affichage === "stand" ? "?stand=apercu" : ""
               }`}
               target="_blank"
               rel="noopener"
@@ -777,11 +962,692 @@ const boutonDiscret =
       </section>
 
       {/* =============================================================== */}
-      {/* Les affiches de la page (cf. blocDesAffiches)                   */}
+      {/* Les affiches choisies une à une (cf. ChoixAffiches, 18/11)      */}
       {/* =============================================================== */}
       <section id="affiches" class="rounded-lg border border-bo-border bg-bo-surface p-5">
-        <h3 class="mb-1 font-semibold">Affiches de la page</h3>
-        <p class="mb-4 max-w-3xl text-sm text-bo-muted">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 class="font-semibold">Affiches de la page</h3>
+          <p class="text-sm font-medium" data-choix-compte></p>
+        </div>
+        <p class="mb-4 mt-1 max-w-3xl text-sm text-bo-muted">
+          Cochez les affiches dans le tableau, puis rangez-les ci-dessous. La
+          page les montre dans cet ordre, avec une recherche et des filtres.
+        </p>
+        <input
+          type="hidden"
+          name="affichesChoisies"
+          data-choix-champ
+          value={JSON.stringify(choix)}
+        />
+        <div id="affiches-choix" data-donnees={JSON.stringify(donneesChoix)}>
+          <div class="space-y-3 rounded border border-bo-border p-3">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+              <span class="font-medium">Ordre</span>
+              <label class="flex items-center gap-1">
+                <input type="radio" name="_choixMode" value="liste" data-choix-mode />
+                Une seule liste
+              </label>
+              <label class="flex items-center gap-1">
+                <input type="radio" name="_choixMode" value="collections" data-choix-mode />
+                Groupées par collection
+              </label>
+              <label class="flex items-center gap-1" data-choix-titres-label>
+                <input type="checkbox" data-choix-titres />
+                Nom de chaque collection au-dessus de ses affiches
+              </label>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+              <span class="text-bo-muted">Trier :</span>
+              <button type="button" class={boutonDiscret} data-choix-tri="nom">Nom A→Z</button>
+              <button type="button" class={boutonDiscret} data-choix-tri="recent">Nouveautés d'abord</button>
+              <button type="button" class={boutonDiscret} data-choix-tri="collection">Par collection</button>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+              <span class="text-bo-muted">Collection</span>
+              <select
+                data-choix-collection-place
+                aria-label="Collection à placer"
+                class="rounded border border-bo-border bg-bo-surface px-2 py-1 text-sm"
+              >
+                {(donnees?.collections ?? []).map((c) => (
+                  <option value={c.slug}>{c.name}</option>
+                ))}
+              </select>
+              <button type="button" class={boutonDiscret} data-choix-placer="tete">En tête</button>
+              <button type="button" class={boutonDiscret} data-choix-placer="fin">À la fin</button>
+            </div>
+            <ol data-choix-liste class="max-h-[30rem] space-y-1 overflow-y-auto"></ol>
+            <p data-choix-vide class="text-sm text-bo-muted">
+              Aucune affiche pour l'instant : cochez-en dans le tableau ci-dessous.
+            </p>
+          </div>
+
+          <h4 class="mt-5 text-sm font-semibold">Choisir les affiches</h4>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <input
+              type="search"
+              data-filtre-texte
+              placeholder="Nom ou ville"
+              aria-label="Rechercher une affiche par son nom ou sa ville"
+              class="w-56 rounded border border-bo-border bg-bo-surface px-2 py-1"
+            />
+            <select
+              data-filtre-collection
+              aria-label="Collection"
+              class="rounded border border-bo-border bg-bo-surface px-2 py-1"
+            >
+              <option value="">Toutes les collections</option>
+              {(donnees?.collections ?? []).map((c) => (
+                <option value={c.slug}>{c.name}</option>
+              ))}
+            </select>
+            <select
+              data-filtre-genre
+              aria-label="Genre"
+              class="rounded border border-bo-border bg-bo-surface px-2 py-1"
+            >
+              <option value="">Tous les genres</option>
+              <option value="personnalisable">Personnalisables</option>
+              <option value="prete_a_imprimer">Prêtes à imprimer</option>
+            </select>
+            <select
+              data-filtre-dans
+              aria-label="Dans la page"
+              class="rounded border border-bo-border bg-bo-surface px-2 py-1"
+            >
+              <option value="">Dans la page ou non</option>
+              <option value="oui">Déjà dans la page</option>
+              <option value="non">Pas encore</option>
+            </select>
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <button type="button" class={boutonDiscret} data-choix-cocher="oui">
+              Cocher tout ce qui est affiché
+            </button>
+            <button type="button" class={boutonDiscret} data-choix-cocher="non">
+              Décocher tout ce qui est affiché
+            </button>
+            <span class="text-bo-muted" data-filtre-compte></span>
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span class="text-bo-muted">Toute une collection :</span>
+            <select
+              data-choix-collection-lot
+              aria-label="Collection à ajouter ou retirer"
+              class="rounded border border-bo-border bg-bo-surface px-2 py-1"
+            >
+              {(donnees?.collections ?? []).map((c) => (
+                <option value={c.slug}>{c.name}</option>
+              ))}
+            </select>
+            <button type="button" class={boutonDiscret} data-choix-lot="ajouter">
+              Ajouter ses affiches
+            </button>
+            <button type="button" class={boutonDiscret} data-choix-lot="retirer">
+              Retirer ses affiches
+            </button>
+          </div>
+          <p data-choix-message class="mt-2 text-sm text-amber-800" role="status"></p>
+          {!catalogue && (
+            <p class="mt-2 text-sm text-red-700">
+              La liste des affiches n'a pas pu être chargée. Rechargez la page.
+            </p>
+          )}
+          <div class="mt-2 max-h-[34rem] overflow-y-auto rounded border border-bo-border">
+            <table class="w-full text-sm">
+              <thead class="sticky top-0 z-10 bg-bo-bg text-left text-xs text-bo-muted">
+                <tr>
+                  <th class="w-8 px-2 py-1.5"><span class="sr-only">Dans la page</span></th>
+                  <th class="px-2 py-1.5">Affiche</th>
+                  <th class="px-2 py-1.5">Collections</th>
+                  <th class="px-2 py-1.5">Genre</th>
+                  <th class="px-2 py-1.5">Dans la page</th>
+                </tr>
+              </thead>
+              <tbody data-choix-table></tbody>
+            </table>
+          </div>
+        </div>
+        <script is:inline>
+          (function () {
+            var racine = document.getElementById("affiches-choix");
+            var champ = document.querySelector("[data-choix-champ]");
+            if (!racine || !champ) return;
+            var D;
+            try {
+              D = JSON.parse(racine.getAttribute("data-donnees") || "{}");
+            } catch (e) {
+              return;
+            }
+            var MAX = D.max || 200;
+            var produits = new Map();
+            (D.produits || []).forEach(function (p) {
+              produits.set(p.id, p);
+            });
+            var collections = D.collections || [];
+            var rangCollection = new Map();
+            var nomCollection = new Map();
+            collections.forEach(function (c, i) {
+              rangCollection.set(c.slug, i);
+              nomCollection.set(c.slug, c.nom);
+            });
+            var choix = D.choix || {};
+            var etat = {
+              mode: choix.mode === "collections" ? "collections" : "liste",
+              ordre: (choix.ordre || []).slice(),
+              sections: (choix.sections || []).map(function (s) {
+                return { collection: s.collection || "", affiches: (s.affiches || []).slice() };
+              }),
+              titres: choix.titres !== false,
+            };
+            // La collection par laquelle une affiche est entrée : c'est sa
+            // section dans le rangement par collection.
+            var origine = new Map();
+            etat.sections.forEach(function (s) {
+              s.affiches.forEach(function (id) {
+                origine.set(id, s.collection);
+              });
+            });
+
+            var listeEl = racine.querySelector("[data-choix-liste]");
+            var videEl = racine.querySelector("[data-choix-vide]");
+            var compteEl = document.querySelector("[data-choix-compte]");
+            var messageEl = racine.querySelector("[data-choix-message]");
+            var titresEl = racine.querySelector("[data-choix-titres]");
+            var titresLabel = racine.querySelector("[data-choix-titres-label]");
+            var tbody = racine.querySelector("[data-choix-table]");
+            var texte = racine.querySelector("[data-filtre-texte]");
+            var fCollection = racine.querySelector("[data-filtre-collection]");
+            var fGenre = racine.querySelector("[data-filtre-genre]");
+            var fDans = racine.querySelector("[data-filtre-dans]");
+            var compteFiltre = racine.querySelector("[data-filtre-compte]");
+
+            function aplatir(s) {
+              return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+            }
+            function nomDe(id) {
+              var p = produits.get(id);
+              return p ? p.nom : "Affiche n° " + id + " (introuvable)";
+            }
+            function choisies() {
+              if (etat.mode !== "collections") return etat.ordre;
+              var toutes = [];
+              etat.sections.forEach(function (s) {
+                toutes = toutes.concat(s.affiches);
+              });
+              return toutes;
+            }
+            function collectionDe(id) {
+              if (origine.has(id)) return origine.get(id);
+              var p = produits.get(id);
+              var meilleure = "";
+              ((p && p.collections) || []).forEach(function (c) {
+                if (!rangCollection.has(c)) return;
+                if (!meilleure || rangCollection.get(c) < rangCollection.get(meilleure)) meilleure = c;
+              });
+              return meilleure;
+            }
+            function dans(id, c) {
+              var p = produits.get(id);
+              return !!p && (p.collections || []).indexOf(c) !== -1;
+            }
+            function dire(t) {
+              if (messageEl) messageEl.textContent = t || "";
+            }
+            function sectionDe(c) {
+              for (var i = 0; i < etat.sections.length; i++)
+                if (etat.sections[i].collection === c) return etat.sections[i];
+              var s = { collection: c, affiches: [] };
+              etat.sections.push(s);
+              return s;
+            }
+            function ajouter(ids, via) {
+              var deja = new Set(choisies());
+              var n = deja.size;
+              var refusees = 0;
+              ids.forEach(function (id) {
+                if (deja.has(id)) return;
+                if (n >= MAX) {
+                  refusees++;
+                  return;
+                }
+                if (via) origine.set(id, via);
+                if (etat.mode === "collections") sectionDe(collectionDe(id)).affiches.push(id);
+                else etat.ordre.push(id);
+                deja.add(id);
+                n++;
+              });
+              dire(
+                refusees
+                  ? "Une page montre au plus " + MAX + " affiches : " + refusees + " n'ont pas été ajoutées."
+                  : "",
+              );
+            }
+            function retirer(ids) {
+              var partir = new Set(ids);
+              etat.ordre = etat.ordre.filter(function (id) {
+                return !partir.has(id);
+              });
+              etat.sections.forEach(function (s) {
+                s.affiches = s.affiches.filter(function (id) {
+                  return !partir.has(id);
+                });
+              });
+              etat.sections = etat.sections.filter(function (s) {
+                return s.affiches.length;
+              });
+              dire("");
+            }
+            function deplacer(liste, de, vers) {
+              if (de === vers || de < 0 || vers < 0 || de >= liste.length || vers >= liste.length) return;
+              var x = liste.splice(de, 1)[0];
+              liste.splice(vers, 0, x);
+            }
+            function trier(liste, cle) {
+              var rangs = liste.map(function (id, i) {
+                return { id: id, i: i };
+              });
+              rangs.sort(function (a, b) {
+                if (cle === "nom") return nomDe(a.id).localeCompare(nomDe(b.id), "fr") || a.i - b.i;
+                if (cle === "recent") return b.id - a.id;
+                var ra = rangCollection.has(collectionDe(a.id)) ? rangCollection.get(collectionDe(a.id)) : 1e9;
+                var rb = rangCollection.has(collectionDe(b.id)) ? rangCollection.get(collectionDe(b.id)) : 1e9;
+                return ra - rb || a.i - b.i;
+              });
+              return rangs.map(function (x) {
+                return x.id;
+              });
+            }
+
+            function bouton(action, signe, titre) {
+              var b = document.createElement("button");
+              b.type = "button";
+              b.dataset.action = action;
+              b.textContent = signe;
+              b.title = titre;
+              b.setAttribute("aria-label", titre);
+              b.className = "rounded border border-bo-border px-1.5 text-xs hover:bg-bo-bg";
+              return b;
+            }
+            function ligneAffiche(id, section, index) {
+              var p = produits.get(id);
+              var li = document.createElement("li");
+              li.className =
+                "flex items-center gap-2 rounded border border-bo-border bg-bo-surface px-2 py-1" +
+                (section >= 0 ? " ml-6" : "");
+              li.draggable = true;
+              li.dataset.genre = "affiche";
+              li.dataset.section = String(section);
+              li.dataset.index = String(index);
+              var poignee = document.createElement("span");
+              poignee.textContent = "⠿";
+              poignee.className = "cursor-grab select-none text-bo-muted";
+              poignee.setAttribute("aria-hidden", "true");
+              li.appendChild(poignee);
+              var rang = document.createElement("span");
+              rang.className = "w-8 text-right text-xs text-bo-muted";
+              rang.textContent = String(index + 1);
+              li.appendChild(rang);
+              if (p && p.image) {
+                var img = document.createElement("img");
+                img.src = p.image;
+                img.alt = "";
+                img.loading = "lazy";
+                img.className = "h-10 w-8 rounded border border-bo-border object-cover";
+                li.appendChild(img);
+              }
+              var nom = document.createElement("span");
+              nom.className = "min-w-0 flex-1 truncate";
+              nom.textContent = nomDe(id) + (p && p.statut !== "active" ? " (hors vente : invisible)" : "");
+              li.appendChild(nom);
+              li.appendChild(bouton("monter", "↑", "Monter"));
+              li.appendChild(bouton("descendre", "↓", "Descendre"));
+              li.appendChild(bouton("tete", "⤒", "En tête"));
+              li.appendChild(bouton("fin", "⤓", "À la fin"));
+              li.appendChild(bouton("retirer", "✕", "Retirer de la page"));
+              return li;
+            }
+            function ligneSection(s, index) {
+              var li = document.createElement("li");
+              li.className = "mt-2 flex items-center gap-2 rounded bg-bo-bg px-2 py-1 font-medium";
+              li.draggable = true;
+              li.dataset.genre = "section";
+              li.dataset.index = String(index);
+              var poignee = document.createElement("span");
+              poignee.textContent = "⠿";
+              poignee.className = "cursor-grab select-none text-bo-muted";
+              poignee.setAttribute("aria-hidden", "true");
+              li.appendChild(poignee);
+              var nom = document.createElement("span");
+              nom.className = "flex-1";
+              nom.textContent =
+                (s.collection ? nomCollection.get(s.collection) || s.collection : "Autres affiches") +
+                " (" + s.affiches.length + ")";
+              li.appendChild(nom);
+              li.appendChild(bouton("section-monter", "↑", "Monter la collection"));
+              li.appendChild(bouton("section-descendre", "↓", "Descendre la collection"));
+              li.appendChild(bouton("section-tete", "⤒", "Collection en tête"));
+              li.appendChild(bouton("section-fin", "⤓", "Collection à la fin"));
+              return li;
+            }
+
+            var lignesTable = [];
+            (D.produits || [])
+              .filter(function (p) {
+                return p.statut === "active";
+              })
+              .forEach(function (p) {
+                var tr = document.createElement("tr");
+                tr.className = "border-t border-bo-border";
+                tr.dataset.id = String(p.id);
+                tr.dataset.cle = aplatir(p.nom + " " + p.slug);
+                tr.dataset.collections = " " + (p.collections || []).join(" ") + " ";
+                tr.dataset.genre = p.genre;
+                var td0 = document.createElement("td");
+                td0.className = "px-2 py-1";
+                var coche = document.createElement("input");
+                coche.type = "checkbox";
+                coche.id = "choix-affiche-" + p.id;
+                td0.appendChild(coche);
+                tr.appendChild(td0);
+                var td1 = document.createElement("td");
+                td1.className = "px-2 py-1";
+                var etiquette = document.createElement("label");
+                etiquette.htmlFor = coche.id;
+                etiquette.className = "flex cursor-pointer items-center gap-2";
+                if (p.image) {
+                  var img = document.createElement("img");
+                  img.src = p.image;
+                  img.alt = "";
+                  img.loading = "lazy";
+                  img.className = "h-10 w-8 rounded border border-bo-border object-cover";
+                  etiquette.appendChild(img);
+                }
+                var nom = document.createElement("span");
+                nom.textContent = p.nom;
+                etiquette.appendChild(nom);
+                td1.appendChild(etiquette);
+                tr.appendChild(td1);
+                var td2 = document.createElement("td");
+                td2.className = "px-2 py-1 text-xs text-bo-muted";
+                td2.textContent = (p.collections || [])
+                  .map(function (c) {
+                    return nomCollection.get(c) || c;
+                  })
+                  .join(", ");
+                tr.appendChild(td2);
+                var td3 = document.createElement("td");
+                td3.className = "px-2 py-1 text-xs text-bo-muted";
+                td3.textContent = p.genre === "prete_a_imprimer" ? "Prête à imprimer" : "Personnalisable";
+                tr.appendChild(td3);
+                var td4 = document.createElement("td");
+                td4.className = "px-2 py-1 text-xs";
+                td4.dataset.dans = "";
+                tr.appendChild(td4);
+                tbody.appendChild(tr);
+                lignesTable.push(tr);
+              });
+
+            function filtrer() {
+              var mots = aplatir(texte.value).split(/\s+/).filter(Boolean);
+              var c = fCollection.value;
+              var g = fGenre.value;
+              var d = fDans.value;
+              var retenues = new Set(choisies());
+              var n = 0;
+              lignesTable.forEach(function (tr) {
+                var id = Number(tr.dataset.id);
+                var ok =
+                  mots.every(function (m) {
+                    return tr.dataset.cle.indexOf(m) !== -1;
+                  }) &&
+                  (!c || tr.dataset.collections.indexOf(" " + c + " ") !== -1) &&
+                  (!g || tr.dataset.genre === g) &&
+                  (!d || (d === "oui") === retenues.has(id));
+                tr.hidden = !ok;
+                if (ok) n++;
+              });
+              compteFiltre.textContent = n + (n > 1 ? " affiches affichées" : " affiche affichée");
+            }
+
+            function dessiner() {
+              listeEl.innerHTML = "";
+              if (etat.mode === "collections")
+                etat.sections.forEach(function (s, si) {
+                  listeEl.appendChild(ligneSection(s, si));
+                  s.affiches.forEach(function (id, i) {
+                    listeEl.appendChild(ligneAffiche(id, si, i));
+                  });
+                });
+              else
+                etat.ordre.forEach(function (id, i) {
+                  listeEl.appendChild(ligneAffiche(id, -1, i));
+                });
+              var toutes = choisies();
+              var retenues = new Set(toutes);
+              videEl.hidden = toutes.length > 0;
+              if (compteEl)
+                compteEl.textContent =
+                  toutes.length + (toutes.length > 1 ? " affiches dans la page" : " affiche dans la page");
+              lignesTable.forEach(function (tr) {
+                var oui = retenues.has(Number(tr.dataset.id));
+                tr.querySelector("input").checked = oui;
+                tr.querySelector("[data-dans]").textContent = oui ? "Oui" : "";
+              });
+              racine.querySelectorAll("[data-choix-mode]").forEach(function (r) {
+                r.checked = r.value === etat.mode;
+              });
+              titresEl.checked = etat.titres;
+              titresLabel.hidden = etat.mode !== "collections";
+              champ.value = JSON.stringify({
+                mode: etat.mode,
+                ordre: toutes,
+                sections: etat.mode === "collections" ? etat.sections : [],
+                titres: etat.titres,
+              });
+              filtrer();
+            }
+
+            // La liste rangée : flèches, en tête, à la fin, retirer.
+            listeEl.addEventListener("click", function (e) {
+              var b = e.target.closest ? e.target.closest("[data-action]") : null;
+              if (!b) return;
+              var li = b.closest("li");
+              var action = b.dataset.action;
+              var i = Number(li.dataset.index);
+              if (li.dataset.genre === "section") {
+                var n = etat.sections.length;
+                if (action === "section-monter") deplacer(etat.sections, i, i - 1);
+                else if (action === "section-descendre") deplacer(etat.sections, i, i + 1);
+                else if (action === "section-tete") deplacer(etat.sections, i, 0);
+                else if (action === "section-fin") deplacer(etat.sections, i, n - 1);
+              } else {
+                var si = Number(li.dataset.section);
+                var liste = si >= 0 ? etat.sections[si].affiches : etat.ordre;
+                var id = liste[i];
+                if (action === "monter") deplacer(liste, i, i - 1);
+                else if (action === "descendre") deplacer(liste, i, i + 1);
+                else if (action === "tete") deplacer(liste, i, 0);
+                else if (action === "fin") deplacer(liste, i, liste.length - 1);
+                else if (action === "retirer") retirer([id]);
+              }
+              dessiner();
+            });
+            // Glisser-déposer : une affiche dans sa liste (ou sa section), une
+            // collection parmi les collections.
+            var tenu = null;
+            listeEl.addEventListener("dragstart", function (e) {
+              var li = e.target.closest ? e.target.closest("li[draggable]") : null;
+              if (!li) return;
+              tenu = { genre: li.dataset.genre, section: li.dataset.section, index: Number(li.dataset.index) };
+              e.dataTransfer.effectAllowed = "move";
+              try {
+                e.dataTransfer.setData("text/plain", "");
+              } catch (err) {}
+            });
+            listeEl.addEventListener("dragover", function (e) {
+              var li = e.target.closest ? e.target.closest("li[draggable]") : null;
+              if (!tenu || !li || li.dataset.genre !== tenu.genre) return;
+              if (tenu.genre === "affiche" && li.dataset.section !== tenu.section) return;
+              e.preventDefault();
+            });
+            listeEl.addEventListener("drop", function (e) {
+              var li = e.target.closest ? e.target.closest("li[draggable]") : null;
+              if (!tenu || !li || li.dataset.genre !== tenu.genre) return;
+              e.preventDefault();
+              var vers = Number(li.dataset.index);
+              if (tenu.genre === "section") deplacer(etat.sections, tenu.index, vers);
+              else if (li.dataset.section === tenu.section) {
+                var si = Number(tenu.section);
+                deplacer(si >= 0 ? etat.sections[si].affiches : etat.ordre, tenu.index, vers);
+              }
+              tenu = null;
+              dessiner();
+            });
+            listeEl.addEventListener("dragend", function () {
+              tenu = null;
+            });
+
+            // Le mode : une liste, ou des sections par collection.
+            racine.querySelectorAll("[data-choix-mode]").forEach(function (r) {
+              r.addEventListener("change", function () {
+                if (!r.checked || r.value === etat.mode) return;
+                if (r.value === "collections") {
+                  var ordre = etat.ordre;
+                  etat.sections = [];
+                  etat.mode = "collections";
+                  ordre.forEach(function (id) {
+                    sectionDe(collectionDe(id)).affiches.push(id);
+                  });
+                  etat.ordre = [];
+                } else {
+                  etat.ordre = choisies().slice();
+                  etat.sections = [];
+                  etat.mode = "liste";
+                }
+                dessiner();
+              });
+            });
+            titresEl.addEventListener("change", function () {
+              etat.titres = titresEl.checked;
+              dessiner();
+            });
+            // Les tris rapides : un ordre qu'on retouche ensuite à la main.
+            racine.querySelectorAll("[data-choix-tri]").forEach(function (b) {
+              b.addEventListener("click", function () {
+                var cle = b.dataset.choixTri;
+                if (etat.mode === "collections") {
+                  if (cle === "collection")
+                    etat.sections.sort(function (a, c) {
+                      var ra = rangCollection.has(a.collection) ? rangCollection.get(a.collection) : 1e9;
+                      var rc = rangCollection.has(c.collection) ? rangCollection.get(c.collection) : 1e9;
+                      return ra - rc;
+                    });
+                  else
+                    etat.sections.forEach(function (s) {
+                      s.affiches = trier(s.affiches, cle);
+                    });
+                } else etat.ordre = trier(etat.ordre, cle);
+                dessiner();
+              });
+            });
+            // Toute une collection en tête, ou à la fin.
+            racine.querySelectorAll("[data-choix-placer]").forEach(function (b) {
+              b.addEventListener("click", function () {
+                var c = racine.querySelector("[data-choix-collection-place]").value;
+                var tete = b.dataset.choixPlacer === "tete";
+                if (etat.mode === "collections") {
+                  var i = etat.sections.findIndex(function (s) {
+                    return s.collection === c;
+                  });
+                  if (i < 0) {
+                    dire("Cette collection n'a pas de section dans la page.");
+                    return;
+                  }
+                  deplacer(etat.sections, i, tete ? 0 : etat.sections.length - 1);
+                } else {
+                  var siDans = etat.ordre.filter(function (id) {
+                    return dans(id, c);
+                  });
+                  if (!siDans.length) {
+                    dire("Aucune affiche de la page n'est dans cette collection.");
+                    return;
+                  }
+                  var autres = etat.ordre.filter(function (id) {
+                    return !dans(id, c);
+                  });
+                  etat.ordre = tete ? siDans.concat(autres) : autres.concat(siDans);
+                }
+                dire("");
+                dessiner();
+              });
+            });
+            // Le tableau : une case par affiche.
+            tbody.addEventListener("change", function (e) {
+              var coche = e.target;
+              if (!coche || coche.type !== "checkbox") return;
+              var id = Number(coche.closest("tr").dataset.id);
+              if (coche.checked) ajouter([id], fCollection.value || "");
+              else retirer([id]);
+              dessiner();
+            });
+            function visibles() {
+              return lignesTable
+                .filter(function (tr) {
+                  return !tr.hidden;
+                })
+                .map(function (tr) {
+                  return Number(tr.dataset.id);
+                });
+            }
+            racine.querySelectorAll("[data-choix-cocher]").forEach(function (b) {
+              b.addEventListener("click", function () {
+                if (b.dataset.choixCocher === "oui") ajouter(visibles(), fCollection.value || "");
+                else retirer(visibles());
+                dessiner();
+              });
+            });
+            // Toute une collection d'un coup : ajouter ses affiches en vente,
+            // ou retirer de la page celles qui en font partie.
+            racine.querySelectorAll("[data-choix-lot]").forEach(function (b) {
+              b.addEventListener("click", function () {
+                var c = racine.querySelector("[data-choix-collection-lot]").value;
+                var ids = lignesTable
+                  .map(function (tr) {
+                    return Number(tr.dataset.id);
+                  })
+                  .filter(function (id) {
+                    return dans(id, c);
+                  });
+                if (b.dataset.choixLot === "ajouter") ajouter(ids, c);
+                else retirer(ids);
+                dessiner();
+              });
+            });
+            [texte, fCollection, fGenre, fDans].forEach(function (el) {
+              el.addEventListener(el === texte ? "input" : "change", filtrer);
+            });
+            // Entrée dans la recherche ne doit pas enregistrer la page.
+            texte.addEventListener("keydown", function (e) {
+              if (e.key === "Enter") e.preventDefault();
+            });
+            dessiner();
+          })();
+        </script>
+      </section>
+
+      {/* =============================================================== */}
+      {/* Les affiches de la page (cf. blocDesAffiches)                   */}
+      {/* =============================================================== */}
+      <details
+        id="affiches-collections"
+        class="rounded-lg border border-bo-border bg-bo-surface p-5"
+        open={affiches.collections.length > 0}
+      >
+        <summary class="cursor-pointer font-semibold">
+          Autre façon : une grille qui suit des collections entières
+        </summary>
+        <p class="mb-4 mt-2 max-w-3xl text-sm text-bo-muted">
           Une grille d'affiches sous le texte, prises dans les collections
           choisies ci-dessous, <strong>dans cet ordre</strong> : d'abord celles
           de la 1re collection, puis celles de la 2e, et ainsi de suite, sans
@@ -880,7 +1746,7 @@ const boutonDiscret =
           Une collection vide n'affiche rien : remplissez-la depuis Produits
           (filtrez, cochez, puis « Ajouter » à la collection).
         </p>
-      </section>
+      </details>
 
       {/* =============================================================== */}
       {/* Référencement                                                   */}

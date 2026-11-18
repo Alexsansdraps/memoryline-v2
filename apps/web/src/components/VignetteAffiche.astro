@@ -88,6 +88,12 @@ interface Props {
    * de résultats reprend à l'identique.
    */
   sizes?: string;
+  /**
+   * Des attributs `data-*` posés sur la vignette (18/11) : ce que les filtres
+   * d'une page d'affiches choisies lisent (nom, lieu, rayons), sans rien
+   * changer à ce que la vignette dessine.
+   */
+  donnees?: Record<string, string>;
 }
 
 /**
@@ -110,7 +116,14 @@ const {
   sansApparition = false,
   sizes = GRILLE_RAYON,
   titre: Titre = "h3",
+  donnees = {},
 } = Astro.props;
+/** Les seules clés acceptées : « data-… », pour ne jamais poser autre chose. */
+const attributsDonnees = Object.fromEntries(
+  Object.entries(donnees)
+    .filter(([cle]) => /^[a-z][a-z0-9-]*$/.test(cle))
+    .map(([cle, valeur]) => [`data-${cle}`, valeur]),
+);
 const tr = t(langue);
 const locale = LOCALE_COMPLETE[langue];
 
@@ -201,7 +214,10 @@ const imageJeu = assetSrcset(affiche.image, [400, 600, 900, 1400]);
     l'écran, et l'effet retardait l'affichage de la page de 1 à 2,5 s sur
     téléphone, au-delà du seuil de Google (AUDIT-SEO.md, VIT-1). Les
     suivantes gardent l'effet en entrant dans l'écran. */}
-<li class:list={["group", !(prioritaire || premiere || sansApparition) && "ml-apparition"]}>
+<li
+  class:list={["group", !(prioritaire || premiere || sansApparition) && "ml-apparition"]}
+  {...attributsDonnees}
+>
   <a href={lien(langue, `/affiches/${affiche.slug}`)} class="block">
     <div
       class:list={[

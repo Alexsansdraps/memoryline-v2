@@ -106,6 +106,13 @@ export function mountSalonRoutes(app: Hono): void {
       // Le nom du stand ne se dit qu'à qui a le code : l'écran le cache
       // justement tant que le code n'est pas bon.
       evenement: autorise ? stand!.nom : null,
+      /**
+       * Le numéro du stand de ce code, ouvert ou fermé, s'il n'est pas
+       * archivé (18/11) : la tablette le compare à celui de son adresse
+       * (`?stand=`) et s'y range, pour n'afficher que la page de SON stand
+       * (lib/stand-etat.ts). Un numéro n'ouvre aucun droit.
+       */
+      standId: stand && !stand.archivedAt ? stand.id : null,
       /** Vrai si la requête porte le code d'un stand ouvert. */
       autorise,
       /**
@@ -467,6 +474,23 @@ export function mountSalonRoutes(app: Hono): void {
       ]),
     );
 
+    // La page de chaque tablette (18/11, `stand.page_id`) : son nom, son
+    // état et son adresse, pour que l'écran dise ce que la tablette montre.
+    const idsPages = [...new Set(stands.map((s) => s.pageId).filter((v): v is number => v != null))];
+    const pages = idsPages.length
+      ? await db
+          .select({
+            id: schema.pages.id,
+            title: schema.pages.title,
+            slug: schema.pages.slug,
+            status: schema.pages.status,
+            archivedAt: schema.pages.archivedAt,
+          })
+          .from(schema.pages)
+          .where(inArray(schema.pages.id, idsPages))
+      : [];
+    const pageDe = new Map(pages.map((p) => [p.id, p]));
+
     // Les ventes d'avant les stands multiples, si la migration n'a rien eu à
     // rattacher : les taire ferait un trou dans les chiffres. Celui de la
     // propriétaire seulement : elles ne sont à aucun stand, donc à aucun
@@ -496,6 +520,13 @@ export function mountSalonRoutes(app: Hono): void {
           // Les archivés viennent AVEC, marqués : l'écran les range dans sa
           // section « Stands archivés » sans redemander la liste.
           archivedAt: s.archivedAt,
+          pageId: s.pageId ?? null,
+          page: (() => {
+            const p = s.pageId != null ? pageDe.get(s.pageId) : undefined;
+            return p
+              ? { id: p.id, title: p.title, slug: p.slug, status: p.status, archivee: p.archivedAt != null }
+              : null;
+          })(),
           ...(parStand.get(s.id) ?? { commandes: 0, cents: 0 }),
         }))
         // Les stands ouverts d'abord : ce sont eux qu'on regarde.
@@ -635,6 +666,24 @@ export function mountSalonRoutes(app: Hono): void {
       // au stand ».
       const emplacement = String(b.emplacement ?? "").trim().slice(0, 300);
       champs.emplacement = emplacement || null;
+    }
+    if ("pageId" in b) {
+      // La page de la tablette (18/11) : une seule par stand, qui remplace
+      // celle d'avant. Vide = aucune, la tablette montre tout le catalogue.
+      const brut = b.pageId === null || b.pageId === "" ? null : Number(b.pageId);
+      if (brut !== null) {
+        if (!Number.isInteger(brut) || brut <= 0)
+          return c.json({ error: "Choisissez une page dans la liste." }, 400);
+        const [page] = await db
+          .select({ id: schema.pages.id, archivedAt: schema.pages.archivedAt })
+          .from(schema.pages)
+          .where(eq(schema.pages.id, brut));
+        if (!page)
+          return c.json({ error: "Cette page n'existe plus. Rechargez l'écran." }, 400);
+        if (page.archivedAt)
+          return c.json({ error: "Cette page est archivée : restaurez-la d'abord dans Pages du site." }, 400);
+      }
+      champs.pageId = brut;
     }
     if ("ouvert" in b) {
       if (typeof b.ouvert !== "boolean")

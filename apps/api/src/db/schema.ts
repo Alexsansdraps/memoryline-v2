@@ -1299,6 +1299,18 @@ export const stands = pgTable(
      * stand ne le reprenne et n'hérite des ventes d'un autre.
      */
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * La page que la tablette du stand affiche, et elle seule (18/11,
+     * Alexandra : « il faut qu'un stand ait une page attribuée et une
+     * seule »). En mode stand, l'accueil y mène et toute adresse hors d'elle
+     * y ramène ; restent la fiche de ses affiches, le panier et la
+     * validation de la vente (packages/types, tablette-stand.ts). Null : la
+     * tablette montre tout le catalogue, comme avant. Choisie dans BO ›
+     * Ventes stand ; une page supprimée libère le stand (« set null »).
+     */
+    pageId: integer("page_id").references((): AnyPgColumn => pages.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => [uniqueIndex("stand_code_uniq").on(t.code)],
 );
@@ -2437,7 +2449,14 @@ export type BlocPage =
   | { type: "image"; url: string; alt: string; legende?: string }
   | {
       type: "produits";
-      source: "collection" | "categorie";
+      /**
+       * « affiches » (18/11) : des affiches choisies UNE À UNE dans l'éditeur
+       * de la page, dans l'ordre voulu — `references` porte alors leurs
+       * numéros. C'est la page d'un stand (« une page qu'on aura créée qui
+       * contiendra les affiches que l'on veut »). Une affiche retirée de la
+       * vente ne s'y montre plus ; une nouveauté n'y entre que si on l'y met.
+       */
+      source: "collection" | "categorie" | "affiches";
       /**
        * La première des références, recopiée telle qu'elle s'écrivait avant que
        * le bloc puisse en porter plusieurs. Elle reste renseignée pour que les
@@ -2448,9 +2467,19 @@ export type BlocPage =
       /**
        * Les collections à réunir dans la rangée, dans l'ordre voulu. Absente sur
        * les pages composées avant, où `reference` fait foi à elle seule.
+       * « affiches » : les numéros des affiches, dans l'ordre de la page.
        */
       references?: string[];
       limite: number;
+      /**
+       * « affiches » rangées PAR COLLECTION : une section par collection
+       * (son adresse), dans l'ordre voulu, chacune avec ses affiches dans
+       * l'ordre voulu. `references` en est la mise bout à bout. Absent : une
+       * seule liste.
+       */
+      sections?: { collection: string; affiches: string[] }[];
+      /** Avec des sections : le nom de chaque collection au-dessus de la sienne. */
+      titresSections?: boolean;
     }
   | { type: "bouton"; texte: string; href: string };
 
