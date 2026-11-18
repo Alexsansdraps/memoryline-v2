@@ -1209,14 +1209,22 @@ export default function CheckoutIsland(props: {
     if (!avecAffiches()) {
       // Des cartes cadeaux seules : rien à livrer, rien à choisir.
     } else if (!o) liste.push(tr("commande.manque.mode"));
-    else if (!livraisonValide())
-      liste.push(
-        tr(
-          demandeUnPointRelais(o.mode.kind)
-            ? "commande.manque.relais"
-            : "commande.manque.adresse",
-        ),
-      );
+    else if (!livraisonValide()) {
+      // Un retrait (18/11) : pas d'adresse à demander. Le lieu manquant se
+      // dit plus bas (lieuManquant) ; un stand choisi, c'est sa case « je
+      // viendrai la chercher au plus tard le… » qui manque. Le message
+      // parlait de l'adresse de livraison, que ce mode ne demande pas.
+      if (o.mode.kind === "pickup") {
+        if (!lieuManquant()) liste.push(tr("commande.manque.case_stand"));
+      } else
+        liste.push(
+          tr(
+            demandeUnPointRelais(o.mode.kind)
+              ? "commande.manque.relais"
+              : "commande.manque.adresse",
+          ),
+        );
+    }
     if (lieuManquant()) liste.push(tr("commande.manque.lieu"));
     if (!destinatairesValides()) liste.push(tr("caisse.err.carte_email"));
     // À 0 €, il n'y a pas de moyen de paiement à choisir.

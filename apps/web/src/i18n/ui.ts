@@ -682,6 +682,7 @@ export const ui = {
     "commande.manque.adresse": "l'adresse de livraison (rue, code postal et ville)",
     "commande.manque.relais": "un point relais",
     "commande.manque.lieu": "le lieu où retirer votre commande",
+    "commande.manque.case_stand": "la case « je viendrai chercher ma commande au stand »",
     /* Le lieu de retrait choisi a été éteint ou archivé pendant la caisse. */
     "commande.err.lieu_retrait_requis":
       "Choisissez le lieu où retirer votre commande. S'il vient de disparaître de la liste, choisissez-en un autre, ou un autre mode de livraison.",
@@ -1457,6 +1458,7 @@ export const ui = {
     "commande.manque.adresse": "your delivery address (street, postcode and town)",
     "commande.manque.relais": "a pickup point",
     "commande.manque.lieu": "the place where you will collect your order",
+    "commande.manque.case_stand": "the box “I will collect my order at the stand”",
     "commande.err.lieu_retrait_requis":
       "Please choose where to collect your order. If it has just disappeared from the list, choose another one, or another delivery method.",
     "retrait.titre": "Collection point",
@@ -2232,6 +2234,7 @@ export const ui = {
     "commande.manque.adresse": "Ihre Lieferadresse (Straße, Postleitzahl und Ort)",
     "commande.manque.relais": "ein Paketshop",
     "commande.manque.lieu": "der Ort, an dem Sie Ihre Bestellung abholen",
+    "commande.manque.case_stand": "das Kästchen „Ich hole meine Bestellung am Stand ab“",
     "commande.err.lieu_retrait_requis":
       "Bitte wählen Sie, wo Sie Ihre Bestellung abholen möchten. Ist der Ort gerade aus der Liste verschwunden, wählen Sie einen anderen oder eine andere Versandart.",
     "retrait.titre": "Abholort",
@@ -3000,6 +3003,7 @@ export const ui = {
     "commande.manque.adresse": "l'indirizzo di consegna (via, CAP e città)",
     "commande.manque.relais": "un punto di ritiro",
     "commande.manque.lieu": "il luogo dove ritirerai l'ordine",
+    "commande.manque.case_stand": "la casella «ritirerò il mio ordine allo stand»",
     "commande.err.lieu_retrait_requis":
       "Scegli dove ritirare il tuo ordine. Se il luogo è appena sparito dall'elenco, scegline un altro, oppure un altro metodo di consegna.",
     "retrait.titre": "Luogo di ritiro",
@@ -3769,6 +3773,7 @@ export const ui = {
     "commande.manque.adresse": "la dirección de entrega (calle, código postal y ciudad)",
     "commande.manque.relais": "un punto de recogida",
     "commande.manque.lieu": "el lugar donde recogerás tu pedido",
+    "commande.manque.case_stand": "la casilla «recogeré mi pedido en el puesto»",
     "commande.err.lieu_retrait_requis":
       "Elige dónde recoger tu pedido. Si el lugar acaba de desaparecer de la lista, elige otro, o bien otro método de envío.",
     "retrait.titre": "Lugar de recogida",
