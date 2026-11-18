@@ -48,6 +48,10 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - **Chargements** : il reste une passe « 4G lente » sur tout le site. L'écran d'accueil peut coûter quelques points de performance à PageSpeed (indice de vitesse), sans toucher au SEO.
 - **PageSpeed** : à relancer après le changement d'image de l'accueil. Alexandra remplace elle-même cette image : ne pas y toucher. Au 17/11 : SEO, accessibilité et bonnes pratiques à 100 ; performance à 78, avec du CSS bloquant et 4 animations non composées.
 - **Import Shopify** : dès qu'Alexandra dépose les deux CSV (procédure plus bas).
+- **« Continuer avec Google » (après le marché)** : Margaux crée l'identifiant client Google (marche à suivre : https://claude.ai/artifact/Nvgds4ofJy18vtSGZhVLZ8). Les adresses lui sont déjà données, il faut les respecter :
+  - origine `https://memoryline.fr` ;
+  - URI de redirection `https://memoryline.fr/api/compte/google/retour`.
+  L'ID client arrive par message ; le code secret, Alexandra le pose elle-même sur le serveur. À faire côté code : la route de retour, le rattachement au compte qui a le même e-mail, le bouton sur la connexion, l'inscription et la caisse, et une ligne dans la page Confidentialité.
 - **Petits défauts de la recette du 16-17/11**, non corrigés :
   - sur 360 px avec un cadre choisi, la barre du bas déborde (les cadres sont éteints sur le site) ;
   - la bulle « Plus bas » couvre deux vignettes de personnages sur petit téléphone, jusqu'au premier défilement ;
