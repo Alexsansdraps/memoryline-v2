@@ -49,6 +49,10 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - **18/11, vers 12 h 45, suppressions au BO** :
   - **Commandes et ventes du stand, onglet « Archivées »** : « Supprimer définitivement » par sélection. Les règles sont celles de la fiche (`motifCommandeAGarder`) : ce qui a été payé, facturé, remboursé, encaissé, expédié ou réglé en carte cadeau reste archivé, et le message dit pourquoi.
   - **Clients** : « Supprimer définitivement » par sélection (`POST /admin/customers/supprimer`). Une fiche qui a une commande payée ou facturée est gardée et nommée. Les autres partent avec leurs adresses, sessions et jetons ; leurs paniers et commandes jamais payées restent, détachés d'elles.
+- **18/11, après-midi** :
+  - **Les clients au masculin** : plus de « clientes » ni de « la cliente » dans le BO, les messages de l'API qu'il affiche, le motif d'annulation (« Demande du client ») et l'export (`clients.csv`).
+  - **Catalogue traduit en anglais, allemand, italien et espagnol** (migration 0094, faite à partir du site en ligne le 18/11) : les 8 catégories de personnages, les 70 personnages, les 3 cadres et les 257 fiches actives (nom court, description, et titre et description Google quand la fiche en a). Les titres des affiches prêtes à imprimer restent en français : c'est le texte imprimé sur l'affiche. Rien n'est écrasé : ce que Margaux avait déjà traduit reste. Une ligne dont le nom ou la description française a changé avant la mise en ligne est laissée telle quelle. Margaux relit dans le BO ; les fiches créées après le 18/11 se traduisent à la main.
+  - Fautes repérées dans le français, à corriger par Margaux : « Segrada familia » (écrit « Sagrada Família » dans les traductions), « Montage neige » (pour « Montagne »), « Aslace », « Epagnol ».
 
 ## 2. Dans le code (Claude)
 
