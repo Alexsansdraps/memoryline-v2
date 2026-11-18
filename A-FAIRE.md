@@ -58,6 +58,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 **Serveur**
 - `rm ~/.env` : un fichier parasite dans `/home/debian`, avec une ligne MAIL_FROM. Ce n'est pas celui de `~/memoryline`.
+- **Vieilles copies du `.env`** dans `~/memoryline`, avec d'anciens secrets : `.env.avant-20260929-135415`, `.env.avant-20260929-142119`, `.env.avant-bascule`, `.env.avant-jeu-essai`, `.env.avant-prod`. Alexandra les efface (Claude ne touche pas aux `.env`), puis `.env.avant-domaine` à J+7.
 - **Sauvegardes** : les copier hors du serveur au moins une fois par semaine (la dernière ligne de `sauvegarder.sh` donne la commande). `restaurer.sh` n'existe pas. Ne jamais restaurer une sauvegarde d'avant le vidage du 17/11 à 08 h 38.
 - **Le VPS n'est pas dans le compte OVH du domaine.** Noter ici son identifiant client OVH quand on l'a.
 
@@ -131,7 +132,9 @@ ssh -n -i ~/.ssh/memoryline_deploiement debian@51.255.34.187 "tar -xzf ~/memoryl
 **Serveur**
 - Il n'a que 3,8 Go de mémoire. **Ne jamais lancer de préparation en masse pendant une mise en ligne** : le 17/11 au soir, le VPS est resté une heure sans répondre.
 - Après trop de connexions SSH ratées, OpenSSH bloque l'adresse pendant environ 10 minutes : ne pas insister, réessayer une fois plus tard.
-- Cache Docker : le crontab de debian lance `apps/api/scripts/vider-cache-docker.sh` chaque nuit à 1 h (heure de Paris). Il garde 3 Go. Journal : `sauvegardes/journal-cache.txt`.
+- Cache Docker : le crontab de debian lance `apps/api/scripts/vider-cache-docker.sh` chaque nuit à 1 h (heure de Paris). Il garde 3 Go. Journal : `sauvegardes/journal-cache.txt` (18/11 à 1 h : 2 Go libérés).
+- Sauvegarde : chaque nuit à 3 h 30 (`sauvegarder.sh`) ; 14 jours pour la base, 7 pour les fichiers (copies liées, environ 3 Go en tout).
+- Place sur le disque au 18/11 : 15 Go pris sur 40. Les visuels (`data/assets`) font 3,4 Go. Leur cache se vide tout seul de ce qui n'a pas servi depuis 60 jours ; le 18/11, 530 Mo de fonds devenus inutiles le 16/11 ont été effacés à la main. La mise en ligne efface aussi les fichiers retirés du dépôt, et les journaux des conteneurs sont limités à 3 × 10 Mo chacun.
 - Journal de l'API : `docker compose -f docker-compose.prod.yml logs api`, dans `~/memoryline`.
 - Page de maintenance à la main : `touch ~/memoryline/maintenance/ACTIVE`, puis `rm`.
 - Lister les variables du `.env` sans les secrets : `grep -oE '^[A-Za-z_]+=' ~/memoryline/.env`.

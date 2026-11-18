@@ -57,6 +57,29 @@ echo "2/5 · Nouveau code…"
 tar -xzf "$ARCHIVE" -C "$HOME/memoryline"
 sed -i 's/\r$//' apps/api/scripts/*.sh
 
+# L'archive ajoute et remplace, elle n'efface jamais : un fichier retiré du
+# dépôt restait sur le serveur, et partait encore dans le site construit.
+# Le 18/11, une vieille page products/[...slug].astro, retirée du dépôt le
+# 7/10, était toujours là. On efface donc ce que l'archive ne contient plus,
+# mais seulement dans le code (apps, packages, docs) et parmi les .md de la
+# racine. data/, sauvegardes/, maintenance/ et les .env ne sont jamais
+# touchés, ni les polices « Another Shabby », qui voyagent hors de git.
+# Garde-fou : une archive illisible ou presque vide ne fait rien effacer.
+DANS_ARCHIVE="$(mktemp)"
+tar -tzf "$ARCHIVE" | sed 's#^\./##' | grep -v '/$' | LC_ALL=C sort -u > "$DANS_ARCHIVE"
+if [ "$(wc -l < "$DANS_ARCHIVE")" -gt 300 ]; then
+  {
+    find apps packages docs -type f \
+      -not -path '*/node_modules/*' -not -path '*/dist/*' -not -path '*/.astro/*' \
+      -not -name 'AnotherShabby-*' 2>/dev/null || true
+    find . -maxdepth 1 -type f -name '*.md' | sed 's#^\./##'
+  } | LC_ALL=C sort | LC_ALL=C comm -23 - "$DANS_ARCHIVE" | while IFS= read -r f; do
+    rm -f -- "$f" && echo "   retiré (plus dans le dépôt) : $f"
+  done
+  find apps packages docs -type d -empty -not -path '*/node_modules/*' -delete 2>/dev/null || true
+fi
+rm -f "$DANS_ARCHIVE"
+
 echo "3/5 · Construction (quelques minutes)…"
 $COMPOSE build
 

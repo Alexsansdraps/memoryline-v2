@@ -24,12 +24,24 @@
 # machine à 4 Go c'est lent la première fois — dix à quinze minutes — et
 # instantané ensuite tant que les dépendances ne bougent pas.
 
+# Les journaux des conteneurs. Sans limite, Docker garde tout ce qu'un
+# conteneur a écrit depuis son démarrage, et la base comme le proxy vivent
+# des mois sans être recréés. Trois fichiers de 10 Mo au plus par conteneur :
+# le plus ancien tombe de lui-même (18/11).
+x-journaux: &journaux
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   # La base. Elle n'expose AUCUN port vers l'extérieur : seuls les conteneurs
   # du même réseau Docker peuvent l'atteindre, et l'API est le seul à essayer.
   # Publier 5432 sur Internet reviendrait à laisser la porte du stock ouverte
   # sur la rue au motif qu'elle a une serrure.
   db:
+    <<: *journaux
     image: postgres:18-alpine
     restart: unless-stopped
     # Le fichier .env est lu ICI aussi, et c'est volontaire : la copie depuis
@@ -75,6 +87,7 @@ services:
       - "5432"
 
   api:
+    <<: *journaux
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -107,6 +120,7 @@ services:
       - "3000"
 
   web:
+    <<: *journaux
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -139,6 +153,7 @@ services:
       - "4321"
 
   admin:
+    <<: *journaux
     build:
       context: .
       dockerfile: apps/admin/Dockerfile
@@ -175,6 +190,7 @@ services:
   # En production réelle (Resend), retirer MAIL_TEST_URL du .env suffit : ce
   # service tourne alors à vide.
   mailpit:
+    <<: *journaux
     image: axllent/mailpit:latest
     restart: unless-stopped
     environment:
@@ -183,6 +199,7 @@ services:
       - "127.0.0.1:8025:8025"
 
   proxy:
+    <<: *journaux
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
