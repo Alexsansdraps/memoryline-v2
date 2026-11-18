@@ -320,7 +320,7 @@ try {
  * son repli : sans les collections ou les pages, la liste est plus courte,
  * et l'adresse se tape encore à la main comme avant.
  */
-const [listeCollections, collectionsServies, listePages] = await Promise.all([
+const [listeCollections, collectionsServies, listePages, listeAffiches] = await Promise.all([
   api
     .collections()
     .then((r) => r.collections)
@@ -330,6 +330,11 @@ const [listeCollections, collectionsServies, listePages] = await Promise.all([
     .pages()
     .then((r) => r.pages)
     .catch(() => [] as ResumePage[]),
+  // Les affiches en vente, pour un lien direct vers une fiche (18/11).
+  api
+    .produitsAdmin({ statut: "active", limit: 1000 })
+    .then((r) => r.produits)
+    .catch(() => [] as { name: string; slug: string }[]),
 ]);
 /**
  * La page de recherche du site. Le pied de page y mène depuis toujours, mais
@@ -343,15 +348,37 @@ const RECHERCHE: Destination = {
   enLigne: true,
   remarque: "la recherche dans les affiches",
 };
+/**
+ * Les fiches des affiches en vente, pour un lien DIRECT vers l'une d'elles
+ * (18/11, Alexandra : « un module pour mettre un lien direct vers qqch dans
+ * le menu ou le footer »). Leur nom sans « – Affiche… », comme sur le site.
+ */
+const desAffiches: Destination[] = listeAffiches
+  .map((p) => ({
+    groupe: "affiche" as const,
+    nom: p.name.replace(/\s*[-–]\s*Affiche.*$/i, "").trim() || p.name,
+    href: `/affiches/${p.slug}`,
+    enLigne: true,
+  }))
+  .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
 const cibles: Destination[] = [
   ...destinations(listeCollections, collectionsServies, listePages),
   RECHERCHE,
+  ...desAffiches,
 ];
 const GROUPES_DE_CIBLES = [
   { groupe: "boutique", titre: "Pages de la boutique" },
   { groupe: "collection", titre: "Collections" },
   { groupe: "page", titre: "Vos pages" },
+  { groupe: "affiche", titre: "Une affiche (sa fiche)" },
 ] as const;
+/**
+ * Un lien vers un autre site (Instagram, un partenaire…) ou une adresse
+ * électronique : la seule adresse qui se tape, puisqu'aucune liste ne la
+ * connaît. Les pages du site, elles, se choisissent toujours (13/11).
+ */
+const estExterne = (href: string | undefined): boolean =>
+  !!href && /^(https?:\/\/|mailto:)/i.test(href.trim());
 /** Ce que le script de la page reçoit : de quoi remplir une ligne et la commenter. */
 const ciblesJson = JSON.stringify(
   cibles.map((d) => ({
@@ -584,16 +611,22 @@ const boutonOutil =
     <ul class="space-y-1 text-bo-muted">
       <li>
         <strong class="text-bo-ink">Choisissez la page dans la liste</strong>
-        « Page » de la ligne : l'accueil, les rayons d'affiches,
-        chaque collection, chaque page de
-        <a class="underline" href={url("/pages")}>Pages du site</a>. L'adresse
-        se remplit seule, le nom aussi s'il est vide.
+        « Page » de la ligne : l'accueil, les rayons d'affiches, la carte
+        cadeau, chaque collection, chaque page de
+        <a class="underline" href={url("/pages")}>Pages du site</a>, et même
+        <strong class="text-bo-ink">une affiche précise</strong> (« Une
+        affiche (sa fiche) »), pour un lien direct vers sa fiche. L'adresse se
+        remplit seule, le nom aussi s'il est vide.
       </li>
       <li>
-        L'adresse ne se tape pas : elle se remplit toute seule et se lit à
-        côté. Une page écrite dans Pages du site a pour adresse
-        <code class="rounded bg-bo-bg px-1">/pages/son-nom</code>. Sous chaque
-        ligne, une phrase dit où elle mène.
+        L'adresse d'une page du site ne se tape pas : elle se remplit toute
+        seule et se lit à côté. Une page écrite dans Pages du site a pour
+        adresse <code class="rounded bg-bo-bg px-1">/pages/son-nom</code>.
+        Seule exception : <strong class="text-bo-ink">un autre site</strong>
+        (Instagram, un partenaire…) ou une adresse e-mail. Choisissez « Lien
+        vers un autre site… » en bas de la liste, puis collez son adresse
+        (<code class="rounded bg-bo-bg px-1">https://…</code>) dans le champ
+        Adresse. Sous chaque ligne, une phrase dit où elle mène.
       </li>
       <li>
         Pour <strong class="text-bo-ink">renommer</strong> une entrée, changez
@@ -691,10 +724,10 @@ const boutonOutil =
                 data-valeur="href"
                 value={entree.href}
                 placeholder={auPied ? "aucune : titre seul" : "choisissez une page →"}
-                readonly
-                tabindex="-1"
+                readonly={!estExterne(entree.href)}
+                tabindex={estExterne(entree.href) ? undefined : "-1"}
                 title="L'adresse se règle en choisissant la page à côté"
-                class={`${champ} cursor-default opacity-70`}
+                class={estExterne(entree.href) ? champ : `${champ} cursor-default opacity-70`}
               />
             </label>
             <label class="block min-w-[12rem] flex-1">
@@ -715,6 +748,11 @@ const boutonOutil =
                     )}
                   </optgroup>
                 ))}
+                <optgroup label="Ailleurs">
+                  <option value="externe" selected={estExterne(entree.href)}>
+                    Lien vers un autre site…
+                  </option>
+                </optgroup>
               </select>
             </label>
             <label class="flex items-center gap-2 pb-2.5 text-sm">
@@ -802,10 +840,10 @@ const boutonOutil =
                       data-valeur="href"
                       value={enfant.href}
                       placeholder="choisissez une page →"
-                      readonly
-                      tabindex="-1"
+                      readonly={!estExterne(enfant.href)}
+                      tabindex={estExterne(enfant.href) ? undefined : "-1"}
                       title="L'adresse se règle en choisissant la page à côté"
-                      class={`${champ} cursor-default opacity-70`}
+                      class={estExterne(enfant.href) ? champ : `${champ} cursor-default opacity-70`}
                     />
                   </label>
                   <label class="block min-w-[11rem] flex-1">
@@ -824,6 +862,11 @@ const boutonOutil =
                           )}
                         </optgroup>
                       ))}
+                      <optgroup label="Ailleurs">
+                        <option value="externe" selected={estExterne(enfant.href)}>
+                          Lien vers un autre site…
+                        </option>
+                      </optgroup>
                     </select>
                   </label>
                   <label class="flex items-center gap-2 pb-2.5 text-sm">
@@ -1249,9 +1292,13 @@ const boutonOutil =
             auPied && ligne.hasAttribute("data-entree")
               ? "→ titre seul : ce sont les liens de la colonne qui mènent quelque part."
               : "";
-        else if (/^https?:\/\//i.test(href)) texte = "→ un autre site";
-        else if (/^mailto:/i.test(href)) texte = "→ un courriel";
-        else {
+        else if (/^https?:\/\/\S+$/i.test(href)) texte = "→ un autre site";
+        else if (/^mailto:\S+$/i.test(href)) texte = "→ un courriel";
+        else if (!href.startsWith("/")) {
+          texte =
+            "⚠ L'adresse d'un autre site commence par https:// (ou mailto: pour un courriel). Copiez-la depuis la barre d'adresse du navigateur.";
+          alerte = true;
+        } else {
           const cible = parCle.get(cleDAdresse(href));
           if (!cible) {
             texte =
@@ -1273,6 +1320,22 @@ const boutonOutil =
           .forEach(commenter);
       }
 
+      /**
+       * L'adresse ne se tape que pour un autre site (18/11) : elle s'ouvre au
+       * choix « Lien vers un autre site… » et se referme pour une page du
+       * site, qui se choisit toujours dans la liste (13/11).
+       */
+      function ouvrirAdresse(champ: HTMLInputElement, ouvert: boolean): void {
+        champ.readOnly = !ouvert;
+        champ.tabIndex = ouvert ? 0 : -1;
+        champ.classList.toggle("cursor-default", !ouvert);
+        champ.classList.toggle("opacity-70", !ouvert);
+        champ.title = ouvert
+          ? "L'adresse de l'autre site, copiée depuis la barre d'adresse : https://…"
+          : "L'adresse se règle en choisissant la page à côté";
+        if (ouvert) champ.placeholder = "https://…";
+      }
+
       arbre.addEventListener("change", (e) => {
         const liste = (e.target as HTMLElement).closest<HTMLSelectElement>("select[data-choisir]");
         if (!liste) return;
@@ -1281,6 +1344,18 @@ const boutonOutil =
         const ligne = ligneDe(liste);
         if (!ligne) return;
         const adresse = dansLaLigne<HTMLInputElement>(ligne, '[data-valeur="href"]');
+        if (liste.value === "externe") {
+          if (adresse) {
+            // On part d'un champ vide : l'adresse d'une page du site n'est
+            // pas celle d'un autre site.
+            if (!/^(https?:\/\/|mailto:)/i.test(adresse.value.trim())) adresse.value = "";
+            ouvrirAdresse(adresse, true);
+            adresse.focus();
+          }
+          commenter(ligne);
+          return;
+        }
+        if (adresse) ouvrirAdresse(adresse, false);
         // Le premier choix (« — Choisir — », « — Aucune (titre seul) — »)
         // vide l'adresse : un titre de colonne du pied de page s'en passe, et
         // ailleurs l'enregistrement demandera où mène le lien. Il valait

@@ -19,7 +19,16 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
     - l'image « Gift Card » d'Alexandra sur la page (déclinée dans `apps/web/public/carte-cadeau/`, partage compris) ;
     - une vignette « CARTE CADEAU, dès 5 € » en dernière place de la première page de chaque rayon, sauf au stand et avec un lieu choisi (`VignetteCarteCadeau.astro`) ;
     - un lien « Carte cadeau » dans le pied de page (migration 0090).
-  - Les images d'origine (`Memory Line Gift Card.png`, `Memory Line Carte Cadeau.png`) sont à la racine du dépôt, hors git. Pour mettre la carte dans le menu du haut : BO › Menu du site.
+  - Les images d'origine (`Memory Line Gift Card.png`, `Memory Line Carte Cadeau.png`) sont à la racine du dépôt, hors git.
+- **18/11, vers 10 h 45** :
+  - « Carte cadeau » en dernière entrée du menu du haut (migration 0091) ;
+  - BO › Menu du site, **liens directs**. La liste « Page » propose aussi :
+    - la carte cadeau et « Mon compte » ;
+    - chaque affiche en vente (« Une affiche (sa fiche) ») ;
+    - « Lien vers un autre site… », qui ouvre le champ Adresse (`https://…` ou `mailto:`).
+    Les pages du site, elles, se choisissent toujours.
+  - Avec 4 entrées, l'en-tête tient en 1024 px pour une visiteuse ; pour une administratrice connectée, le bouton « Back-office » le fait déborder à cette largeur.
+  - En local, le BO s'essaie sur `http://localhost:4322/bo` : par le proxy du port 8080, ses scripts de développement (`/src/…`) partent vers le site et répondent 500.
 
 ## 2. Dans le code (Claude)
 

@@ -16,8 +16,11 @@
 import type { CollectionBo, CollectionEnLigne, MenuCms, ResumePage } from "./api.ts";
 
 export interface Destination {
-  /** Ce qui classe la destination dans les listes. */
-  groupe: "boutique" | "collection" | "page";
+  /**
+   * Ce qui classe la destination dans les listes. « affiche » : la fiche d'une
+   * affiche, proposée au seul écran Menu du site (18/11, lien direct).
+   */
+  groupe: "boutique" | "collection" | "page" | "affiche";
   /** Le nom de la page, tel que la boutique le dit. */
   nom: string;
   /** L'adresse à poser dans le menu, sans préfixe de langue. */
@@ -80,6 +83,25 @@ export const PAGES_DE_LA_BOUTIQUE: Destination[] = [
     href: "/contact",
     enLigne: true,
     remarque: "le formulaire de contact",
+  },
+  {
+    // La carte cadeau n'est pas une fiche du catalogue : sa page à elle
+    // (18/11, « un lien vers le produit carte cadeau » dans le menu).
+    groupe: "boutique",
+    nom: "Carte cadeau",
+    href: "/carte-cadeau",
+    traductions: { en: "Gift card", de: "Geschenkgutschein", it: "Carta regalo", es: "Tarjeta regalo" },
+    enLigne: true,
+    remarque: "la carte cadeau, au montant libre",
+    reglage: { libelle: "Code promo / Carte cadeau", href: "/cartes-cadeaux" },
+  },
+  {
+    groupe: "boutique",
+    nom: "Mon compte",
+    href: "/compte",
+    traductions: { en: "My account", de: "Mein Konto", it: "Il mio account", es: "Mi cuenta" },
+    enLigne: true,
+    remarque: "la connexion, puis les commandes de la cliente",
   },
 ];
 
