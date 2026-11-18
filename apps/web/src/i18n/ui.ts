@@ -604,6 +604,9 @@ export const ui = {
     "compte.err.jeton":
       "Ce lien de réinitialisation n'est plus valable. Demandez-en un nouveau.",
     "compte.err.champs": "Merci de remplir les champs obligatoires.",
+    "compte.err.google": "La connexion avec Google n'a pas abouti. Réessayez, ou connectez-vous avec votre e-mail.",
+    "compte.google": "Continuer avec Google",
+    "compte.ou": "ou",
     "compte.err.generique": "Une erreur est survenue. Réessayez.",
     // Textes sortis du code en dur (octobre 2026).
     "cfg.precedent": "Précédent",
@@ -1385,6 +1388,9 @@ export const ui = {
     "compte.err.jeton":
       "This reset link is no longer valid. Please request a new one.",
     "compte.err.champs": "Please fill in the required fields.",
+    "compte.err.google": "Signing in with Google didn't work. Try again, or log in with your email.",
+    "compte.google": "Continue with Google",
+    "compte.ou": "or",
     "compte.err.generique": "Something went wrong. Please try again.",
     // Textes sortis du code en dur (octobre 2026).
     "cfg.precedent": "Previous",
@@ -2160,6 +2166,9 @@ export const ui = {
     "compte.err.jeton":
       "Dieser Link ist nicht mehr gültig. Bitte fordern Sie einen neuen an.",
     "compte.err.champs": "Bitte füllen Sie die Pflichtfelder aus.",
+    "compte.err.google": "Die Anmeldung mit Google hat nicht geklappt. Versuchen Sie es erneut oder melden Sie sich mit Ihrer E-Mail-Adresse an.",
+    "compte.google": "Weiter mit Google",
+    "compte.ou": "oder",
     "compte.err.generique":
       "Es ist ein Fehler aufgetreten. Bitte versuchen Sie es erneut.",
     // Textes sortis du code en dur (octobre 2026).
@@ -2935,6 +2944,9 @@ export const ui = {
     "compte.err.mdp_actuel": "La password attuale non è corretta.",
     "compte.err.jeton": "Questo link non è più valido. Richiedine uno nuovo.",
     "compte.err.champs": "Compila i campi obbligatori.",
+    "compte.err.google": "L'accesso con Google non è riuscito. Riprova, oppure accedi con la tua e-mail.",
+    "compte.google": "Continua con Google",
+    "compte.ou": "oppure",
     "compte.err.generique": "Si è verificato un errore. Riprova.",
     // Textes sortis du code en dur (octobre 2026).
     "cfg.precedent": "Precedente",
@@ -3707,6 +3719,9 @@ export const ui = {
     "compte.err.mdp_actuel": "La contraseña actual no es correcta.",
     "compte.err.jeton": "Este enlace ya no es válido. Pide uno nuevo.",
     "compte.err.champs": "Rellena los campos obligatorios.",
+    "compte.err.google": "El inicio de sesión con Google no ha funcionado. Inténtalo de nuevo o inicia sesión con tu correo.",
+    "compte.google": "Continuar con Google",
+    "compte.ou": "o",
     "compte.err.generique": "Se ha producido un error. Inténtalo de nuevo.",
     // Textes sortis du code en dur (octobre 2026).
     "cfg.precedent": "Anterior",
