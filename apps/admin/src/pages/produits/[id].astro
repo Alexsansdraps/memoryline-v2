@@ -77,6 +77,8 @@ const LANGUES_TRADUISIBLES = [
   { code: "de", nom: "Allemand" },
   { code: "it", nom: "Italien" },
   { code: "es", nom: "Espagnol" },
+  { code: "ja", nom: "Japonais" },
+  { code: "zh", nom: "Chinois" },
 ] as const;
 
 /**
@@ -328,7 +330,7 @@ if (Astro.request.method === "POST") {
       const nom = LANGUES_TRADUISIBLES.find((l) => l.code === lang)?.nom ?? lang;
       flash = `Traduction ${nom.toLowerCase()} proposée : relisez-la, corrigez si besoin, puis cliquez « Enregistrer ${nom.toLowerCase()} ». Rien n'est enregistré pour l'instant.`;
     } else if (action === "traduction-auto-tout") {
-      // Les quatre langues d'un coup, mais SEULEMENT ce qui manque : une
+      // Toutes les langues d'un coup (6 depuis le 18/11 : japonais et chinois), mais SEULEMENT ce qui manque : une
       // traduction déjà rédigée n'est jamais remplacée par la machine.
       const source = await api.productTranslations(id!);
       let n = 0;
@@ -1594,7 +1596,7 @@ try {
           <form method="POST" class="mb-4 flex flex-wrap items-center gap-2">
             <input type="hidden" name="_action" value="traduction-auto-tout" />
             <button class="rounded border border-bo-border px-3 py-1.5 text-sm hover:border-bo-accent hover:text-bo-accent">
-              ✨ Proposer les traductions manquantes (4 langues)
+              ✨ Proposer les traductions manquantes ({LANGUES_TRADUISIBLES.length} langues)
             </button>
             <span class="text-xs text-bo-muted">
               Ne remplit que ce qui n'est pas encore traduit. Rien n'est
