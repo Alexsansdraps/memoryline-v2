@@ -1775,7 +1775,9 @@ export default function CheckoutIsland(props: {
               retrouver ses adresses (carnet, facturation). Le retour ramène
               à cette page, panier intact. */}
           <div class="space-y-8">
-            {/* Juste le lien, sans phrase (18/11, Alexandra). */}
+            {/* « Me connecter ou continuer en tant qu'invité », mot pour mot
+                (18/11, Alexandra) : seul « Me connecter » est un lien,
+                continuer en invitée, c'est remplir le formulaire ci-dessous. */}
             <Show when={!props.compte}>
               <p class="text-sm">
                 <a
@@ -1783,7 +1785,8 @@ export default function CheckoutIsland(props: {
                   class="font-medium underline underline-offset-2 hover:text-terracotta"
                 >
                   {tr("caisse.connexion.se_connecter")}
-                </a>
+                </a>{" "}
+                {tr("caisse.connexion.ou_invite")}
               </p>
             </Show>
             {/* Coordonnées */}

@@ -41,7 +41,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
     - une nouvelle adresse a la case « Garder cette adresse dans mon compte », cochée d'avance ; avec un carnet vide, elle y entre d'office et devient l'adresse de facturation.
   - **Serveur** : il relit lui-même l'adresse par défaut et la fige sur la commande (`billing_*`). La facture la met dans « Facturé à » ; les commandes d'avant gardent la livraison. Le BO la montre dans le bloc Client de la fiche commande.
 - **18/11, commande SANS COMPTE (en invitée)** :
-  - la caisse montre le formulaire à toutes, avec un bandeau « Pas besoin de compte pour commander… Me connecter » ;
+  - la caisse montre le formulaire à toutes ; en haut, « Me connecter ou continuer en tant qu'invité » (mot pour mot, demandé par Alexandra ; seul « Me connecter » est un lien) ;
   - le serveur rattache la commande à la fiche qui porte l'e-mail, ou en crée une : jamais une fiche par achat ;
   - une invitée n'a pas de carnet : sa facturation est l'adresse saisie ;
   - une commande à 0 € se valide avec la preuve du panier (`cartId`) ;
