@@ -687,6 +687,13 @@
       "when": 1795013548889,
       "tag": "0097_menu_tout_voir_en_double",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1795013818719,
+      "tag": "0098_pages_legales_bloc_pour_bloc",
+      "breakpoints": true
     }
   ]
 }
