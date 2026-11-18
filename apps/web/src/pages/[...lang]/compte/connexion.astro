@@ -9,7 +9,6 @@ import {
   type Langue,
 } from "../../../i18n/utils.ts";
 import { connexion, moi, rediriger, retourSur } from "../../../lib/compte.ts";
-import BoutonGoogle from "../../../components/BoutonGoogle.astro";
 
 /** Formulaire posté sur lui-même : rendu à la demande, jamais mis en cache. */
 export const prerender = false;
@@ -44,8 +43,6 @@ if (Astro.request.method === "POST") {
   // Déjà connecté : la page de connexion n'a plus rien à proposer.
   const session = await moi(Astro);
   if (session.ok) return rediriger(Astro, apresConnexion(), 302);
-  // Retour d'un essai de connexion avec Google qui n'a pas abouti (18/11).
-  if (Astro.url.searchParams.get("erreur") === "google") erreur = "compte.err.google";
 }
 
 const champ =
@@ -67,8 +64,6 @@ const champ =
       </p>
     )
   }
-
-  <BoutonGoogle langue={langue} retour={apresConnexion()} />
 
   <form method="post" class="mt-6 space-y-4">
     {retour && <input type="hidden" name="retour" value={retour} />}

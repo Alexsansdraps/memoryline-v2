@@ -17,7 +17,6 @@ import {
   retourSur,
 } from "../../../lib/compte.ts";
 import { compteFictif } from "../../../islands/jeu-essai.ts";
-import BoutonGoogle from "../../../components/BoutonGoogle.astro";
 
 export const prerender = false;
 
@@ -120,8 +119,6 @@ const champ =
       </p>
     )
   }
-
-  <BoutonGoogle langue={langue} retour={apresInscription()} />
 
   <form method="post" class="mt-6 space-y-4">
     {retour && <input type="hidden" name="retour" value={retour} />}

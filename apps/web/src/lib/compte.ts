@@ -326,15 +326,6 @@ export function decouperNom(complet: string | null | undefined): {
 
 export const moi = (astro: ContexteAstro) => appelClient(astro, "/compte/moi");
 
-/**
- * « Continuer avec Google » est-il branché (18/11) ? Oui seulement quand
- * l'identifiant client est posé sur le serveur ; sans réponse de l'API : non.
- */
-export async function googleActif(astro: ContexteAstro): Promise<boolean> {
-  const r = await appel<{ actif?: boolean }>(astro, "/compte/google/etat");
-  return r.ok && r.donnees?.actif === true;
-}
-
 export const connexion = (
   astro: ContexteAstro,
   corps: { email: string; password: string },

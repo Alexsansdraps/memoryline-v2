@@ -59,13 +59,6 @@ import {
 import { langueDuVisiteur, livraisonDansLaLangue, nomTraduit } from "./traductions.js";
 import { lieuDeRetrait } from "./lieux-retrait.js";
 import { carnetDe, normaliserParDefaut } from "./adresses-client.js";
-import {
-  adresseDeGoogle,
-  cheminDeRetour,
-  configGoogle,
-  nouvelEssaiGoogle,
-  profilDepuisLeCode,
-} from "./google-oauth.js";
 import { mountImportClients } from "./import-clients.js";
 import { prenomPourCourrier } from "./prenom.js";
 
@@ -1011,100 +1004,6 @@ export function mountCompteRoutes(app: Hono): void {
     await purgerSessionsExpirees();
     poserCookie(c, await creerSessionClient(compte.id));
     return c.json({ customer: publique(compte) });
-  });
-
-  /* ===== Connexion avec Google (google-oauth.ts) ======================== */
-
-  /** Le cookie d'un essai de connexion avec Google : dix minutes, sur ses routes. */
-  const COOKIE_GOOGLE = "ml_google";
-  const CHEMIN_COOKIE_GOOGLE = "/api/compte/google";
-
-  /** Le bouton s'affiche-t-il ? Non tant que l'identifiant client n'est pas posé. */
-  app.get("/compte/google/etat", (c) => c.json({ actif: configGoogle() !== null }));
-
-  /** Départ vers Google : `?retour=/commande` dit où revenir ensuite. */
-  app.get("/compte/google", (c) => {
-    const retour = cheminDeRetour(c.req.query("retour"));
-    const cfg = configGoogle();
-    if (!cfg) return c.redirect(`/compte/connexion?retour=${encodeURIComponent(retour)}`);
-    const essai = nouvelEssaiGoogle();
-    setCookie(
-      c,
-      COOKIE_GOOGLE,
-      Buffer.from(JSON.stringify({ e: essai.etat, v: essai.verificateur, r: retour })).toString("base64url"),
-      {
-        httpOnly: true,
-        sameSite: "Lax",
-        secure: requeteHttps(c),
-        path: CHEMIN_COOKIE_GOOGLE,
-        maxAge: 600,
-      },
-    );
-    return c.redirect(adresseDeGoogle(cfg, essai.etat, essai.defi));
-  });
-
-  /**
-   * Retour de Google. La fiche est retrouvée par l'e-mail que Google a
-   * VÉRIFIÉ — celle qui a un mot de passe d'abord, sinon la plus ancienne
-   * (achats en invitée, reprises de Shopify) — ou créée. Puis la session,
-   * comme après une connexion par mot de passe.
-   */
-  app.get("/compte/google/retour", async (c) => {
-    const cfg = configGoogle();
-    const brut = getCookie(c, COOKIE_GOOGLE);
-    deleteCookie(c, COOKIE_GOOGLE, { path: CHEMIN_COOKIE_GOOGLE });
-    let essai: { e?: unknown; v?: unknown; r?: unknown } | null = null;
-    try {
-      essai = brut ? JSON.parse(Buffer.from(brut, "base64url").toString("utf8")) : null;
-    } catch {
-      essai = null;
-    }
-    const retour = cheminDeRetour(typeof essai?.r === "string" ? essai.r : null);
-    const echec = () =>
-      c.redirect(`/compte/connexion?erreur=google&retour=${encodeURIComponent(retour)}`);
-    const code = c.req.query("code");
-    const etat = c.req.query("state");
-    if (!cfg || !essai || typeof essai.e !== "string" || typeof essai.v !== "string") return echec();
-    if (!code || !etat || etat !== essai.e) return echec();
-    try {
-      const profil = await profilDepuisLeCode(cfg, code, essai.v);
-      const [existante] = await db
-        .select()
-        .from(schema.customers)
-        .where(memeEmail(profil.email))
-        .orderBy(raw`${schema.customers.passwordHash} is null`, schema.customers.id)
-        .limit(1);
-      let compte = existante;
-      if (!compte) {
-        [compte] = await db
-          .insert(schema.customers)
-          .values({
-            email: profil.email,
-            name: profil.nomComplet ?? ([profil.prenom, profil.nom].filter(Boolean).join(" ") || null),
-            firstName: profil.prenom,
-            lastName: profil.nom,
-            lastLoginAt: new Date(),
-          })
-          .returning();
-      } else {
-        await db
-          .update(schema.customers)
-          .set({
-            lastLoginAt: new Date(),
-            // Un nom manquant (fiche d'invitée) : celui que Google connaît.
-            ...(!compte.name && profil.nomComplet ? { name: profil.nomComplet } : {}),
-            ...(!compte.firstName && profil.prenom ? { firstName: profil.prenom } : {}),
-            ...(!compte.lastName && profil.nom ? { lastName: profil.nom } : {}),
-          })
-          .where(eq(schema.customers.id, compte.id));
-      }
-      await purgerSessionsExpirees();
-      poserCookie(c, await creerSessionClient(compte!.id));
-      return c.redirect(retour);
-    } catch (e) {
-      console.warn("[google] connexion refusée :", String(e));
-      return echec();
-    }
   });
 
   app.post("/compte/deconnexion", async (c) => {
