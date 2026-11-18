@@ -43,6 +43,7 @@ import { fileURLToPath } from "node:url";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import {
+  CARTE_MONTANT_MAX_CENTS,
   FUSEAU_BOUTIQUE,
   codeCarteMasque,
   instantDeParis,
@@ -1366,7 +1367,11 @@ export function mountCartesCadeaux(app: Hono): void {
           throw new SaisieRefusee(
             `Il ne reste que ${montantEnToutesLettres(avant)} sur cette carte : vous ne pouvez pas en retirer davantage.`,
           );
-        if (apres > MONTANT_MAX_CENTS)
+        // Le SOLDE peut dépasser ce qu'on saisit d'un coup au BO : une carte
+        // achetée en ligne n'a plus de plafond annoncé depuis le 18/11
+        // (garde-fou à CARTE_MONTANT_MAX_CENTS). Seul ce qu'on tape ici reste
+        // borné par MONTANT_MAX_CENTS, contre les zéros de trop.
+        if (apres > Math.max(MONTANT_MAX_CENTS, CARTE_MONTANT_MAX_CENTS))
           throw new SaisieRefusee(
             "Le solde de la carte deviendrait trop élevé. Vérifiez la saisie.",
           );

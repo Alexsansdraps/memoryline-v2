@@ -6,7 +6,7 @@ import { ajouterAuPanier, getCartId, versLePanier } from "../lib/api-navigateur.
 /**
  * Le choix du montant d'une carte cadeau, et son ajout au panier (17/11).
  *
- * Un montant LIBRE, de 10 à 300 €, en euros ronds : quatre montants proposés
+ * Un montant LIBRE, 5 € au moins, en euros ronds : quatre montants proposés
  * d'un clic, ou un autre tapé au clavier. Le serveur revérifie les bornes à
  * l'ajout et au paiement, et le montant devient le prix de la ligne ; rien de
  * ce qui est choisi ici ne peut fixer un prix à sa place.
@@ -16,19 +16,25 @@ import { ajouterAuPanier, getCartId, versLePanier } from "../lib/api-navigateur.
  */
 export const LIBELLES_CARTE = [
   "carte.page.montant",
-  "carte.page.montant_aide",
   "carte.page.autre",
   "carte.page.ajouter",
   "carte.page.ajout",
   "carte.page.montant_invalide",
+  "carte.page.montant_trop",
   "carte.page.erreur",
   "carte.page.stand",
 ] as const satisfies readonly CleUi[];
 
 /** Les montants proposés d'un clic. */
 const MONTANTS = [20, 30, 50, 100];
-const MIN = 10;
-const MAX = 300;
+/**
+ * 5 € au moins ; pas de plafond annoncé (18/11). MIN et MAX sont ceux du
+ * serveur (CARTE_MONTANT_MIN_CENTS et CARTE_MONTANT_MAX_CENTS de
+ * @memoryline/types, écrits ici pour garder l'îlot léger) ; MAX n'est que le
+ * garde-fou contre des zéros de trop.
+ */
+const MIN = 5;
+const MAX = 10_000;
 
 export default function CarteCadeauIsland(props: {
   langue: string;
@@ -51,7 +57,7 @@ export default function CarteCadeauIsland(props: {
   const montant = (): number | null => {
     const tape = autre().trim();
     if (!tape) return euros();
-    if (!/^\d{1,3}$/.test(tape)) return null;
+    if (!/^\d{1,6}$/.test(tape)) return null;
     const n = Number(tape);
     return n >= MIN && n <= MAX ? n : null;
   };
@@ -135,7 +141,15 @@ export default function CarteCadeauIsland(props: {
               />
               <span aria-hidden="true">€</span>
             </span>
-            <span class="mt-1 block text-xs text-ink-soft">{l["carte.page.montant_aide"]}</span>
+            {/* Plus de phrase sur les bornes (18/11) : un mot seulement quand
+                le montant tapé ne va pas, au lieu d'un bouton grisé muet. */}
+            <Show when={autre().trim() !== "" && montant() === null}>
+              <span class="mt-1 block text-xs text-terracotta-deep" role="status">
+                {/^\d+$/.test(autre().trim()) && Number(autre().trim()) > MAX
+                  ? l["carte.page.montant_trop"]
+                  : l["carte.page.montant_invalide"]}
+              </span>
+            </Show>
           </label>
         </fieldset>
 

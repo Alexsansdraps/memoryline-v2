@@ -2,8 +2,9 @@
 /**
  * La carte cadeau, vendue sur le site (17/11).
  *
- * Pas une fiche du catalogue : le montant est LIBRE (10 à 300 €, en euros
- * ronds), il n'y a ni format, ni prix à régler, ni stock, et la carte ne se
+ * Pas une fiche du catalogue : le montant est LIBRE (5 € au moins, en euros
+ * ronds, sans plafond annoncé depuis le 18/11), il n'y a ni format, ni prix
+ * à régler, ni stock, et la carte ne se
  * range parmi aucune affiche. Une ligne de la table des produits aurait
  * traîné partout la logique des affiches — formats, cadres, poids, fichiers
  * d'impression, listes, référencement — avec autant d'exceptions à écrire.
@@ -45,6 +46,8 @@ const auStand = Astro.locals.stand;
   title={titreDePage(tr("carte.page.titre"))}
   description={tr("carte.page.description")}
   path={lien(langue, "/carte-cadeau")}
+  image="/carte-cadeau/partage.jpg"
+  imageInfos={{ largeur: 1200, hauteur: 630, alt: `${tr("carte.titre")} Memory Line` }}
 >
   <section class="mx-auto max-w-[1200px] px-4 sm:px-6 pt-12 pb-16">
     <nav class="text-sm text-ink-soft">
@@ -52,18 +55,18 @@ const auStand = Astro.locals.stand;
       <a href={lien(langue, "/affiches")} class="hover:text-terracotta">{tr("nav.affiches")}</a>
     </nav>
     <div class="mt-6 grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      {/* La carte elle-même, dessinée : un cadeau se montre. */}
-      <div
-        class="flex aspect-[1.6/1] w-full flex-col items-center justify-center gap-3 rounded-2xl border border-ink/15 bg-paper-deep p-8 text-center shadow-sm"
-        aria-hidden="true"
-      >
-        <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" class="text-terracotta">
-          <rect x="3" y="8" width="18" height="13" rx="1" />
-          <path d="M3 12h18M12 8v13M12 8c-1.5-3-5-4-5-1.5S10 8 12 8zm0 0c1.5-3 5-4 5-1.5S14 8 12 8z" />
-        </svg>
-        <span class="text-xs uppercase tracking-[0.3em] text-ink-soft">Memory Line</span>
-        <span class="font-serif text-3xl">{tr("carte.page.titre")}</span>
-      </div>
+      {/* La carte elle-même : l'image faite par Alexandra (18/11), déclinée
+          en WebP léger dans public/carte-cadeau/ (480, 800 et 1200 px). */}
+      <img
+        src="/carte-cadeau/carte-cadeau-800.webp"
+        srcset="/carte-cadeau/carte-cadeau-480.webp 480w, /carte-cadeau/carte-cadeau-800.webp 800w, /carte-cadeau/carte-cadeau-1200.webp 1200w"
+        sizes="(min-width: 1024px) 560px, calc(100vw - 32px)"
+        width="1200"
+        height="1200"
+        alt={`${tr("carte.titre")} Memory Line`}
+        fetchpriority="high"
+        class="ml-image-attente mx-auto w-full max-w-[560px] rounded-2xl border border-ink/10 shadow-sm"
+      />
 
       <div>
         <h1 class="text-3xl sm:text-4xl">{tr("carte.page.titre")}</h1>

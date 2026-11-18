@@ -624,6 +624,20 @@
       "when": 1794925997879,
       "tag": "0088_etapes_de_traitement",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1794927197879,
+      "tag": "0089_retrait_code_tout_gratuit",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1794928397879,
+      "tag": "0090_carte_cadeau_pied_de_page",
+      "breakpoints": true
     }
   ]
 }

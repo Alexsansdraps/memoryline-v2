@@ -206,11 +206,17 @@ test("les codes de carte : douze ou seize signes, tirets et casse libres", () =>
   assert.equal(codeCarteMasque("ACEF-HJKL-R234-K7R2"), "••••-••••-••••-K7R2");
 });
 
-test("le montant d'une carte vendue : de 10 à 300 €, en euros ronds", () => {
+test("le montant d'une carte vendue : 5 € au moins, en euros ronds, sans plafond annoncé", () => {
+  assert.equal(montantCarteValide(500), true);
+  assert.equal(montantCarteValide(400), false);
   assert.equal(montantCarteValide(1000), true);
   assert.equal(montantCarteValide(30000), true);
   assert.equal(montantCarteValide(5000), true);
-  for (const faux of [999, 30100, 0, -5000, 2550, 1000.5, Number.NaN, "5000", null])
+  // Plus de plafond à 300 € (18/11) ; 10 000 € reste le garde-fou.
+  assert.equal(montantCarteValide(30100), true);
+  assert.equal(montantCarteValide(250000), true);
+  assert.equal(montantCarteValide(1_000_000), true);
+  for (const faux of [999, 1_000_100, 0, -5000, 2550, 1000.5, Number.NaN, "5000", null])
     assert.equal(montantCarteValide(faux), false, String(faux));
 });
 

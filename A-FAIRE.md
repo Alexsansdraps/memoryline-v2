@@ -10,7 +10,16 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - 18/11 : tous les écrans clients contrôlés en ligne sur tablette (768 × 1024 et 1024 × 768, 16 pages) : rien ne déborde, aucune image cassée.
 - **Mise en ligne seulement sur le feu vert d'Alexandra** (18/11 : « je veux pas perturber Margaux »).
 - En ligne le 18/11 au matin : écran d'accueil (logo et barre, au premier affichage de la visite, de 0,5 à 2,5 s) ; barre de chargement quand on change de page ; reflet d'attente sur les images ; polices des affiches en `font-display: block`, celles de départ chargées avec le module ; nettoyage de la mise en ligne et journaux Docker limités.
-- **18/11, commité, PAS ENCORE EN LIGNE : Inter servie par le site** (« ML Inter », `apps/web/public/fonts/Inter-*.woff2`, préchargée, `font-display: block`). Avant, le site nommait Inter sans la fournir : dans le Chrome d'Alexandra, Inter arrivait 0,6 s après le reste et le texte passait de Segoe UI à Inter en se remettant en page (vidéo du 18/11 ; Firefox n'avait pas le défaut). Le module de personnalisation suit aussi la police du site.
+- **18/11, vers 9 h : Inter servie par le site** (« ML Inter », `apps/web/public/fonts/Inter-*.woff2`, préchargée, `font-display: block`). Avant, le site nommait Inter sans la fournir : dans le Chrome d'Alexandra, Inter arrivait 0,6 s après le reste et le texte passait de Segoe UI à Inter en se remettant en page (vidéo du 18/11 ; Firefox n'avait pas le défaut). Le module de personnalisation suit aussi la police du site.
+- **18/11, vers 10 h 15** :
+  - l'écran d'accueil attend la police du site (6 s au plus) au lieu des images : jamais de Segoe UI, même en 4G lente ;
+  - le code de test « tout gratuit » V7X9-KQ4M-Z8WP-3N6R est SUPPRIMÉ (migration 0089) ;
+  - **carte cadeau** :
+    - montant libre de 5 € au moins, sans plafond annoncé (garde-fou invisible à 10 000 €), et plus de phrase « de 10 à 300 € » ;
+    - l'image « Gift Card » d'Alexandra sur la page (déclinée dans `apps/web/public/carte-cadeau/`, partage compris) ;
+    - une vignette « CARTE CADEAU, dès 5 € » en dernière place de la première page de chaque rayon, sauf au stand et avec un lieu choisi (`VignetteCarteCadeau.astro`) ;
+    - un lien « Carte cadeau » dans le pied de page (migration 0090).
+  - Les images d'origine (`Memory Line Gift Card.png`, `Memory Line Carte Cadeau.png`) sont à la racine du dépôt, hors git. Pour mettre la carte dans le menu du haut : BO › Menu du site.
 
 ## 2. Dans le code (Claude)
 

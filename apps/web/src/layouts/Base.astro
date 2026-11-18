@@ -492,9 +492,9 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         autre script, d'où leur place ici :
         - l'écran d'accueil (#ml-accueil, en tête du <body>) : le logo et une
           barre qui file, au PREMIER affichage de la visite seulement (mémoire
-          de l'onglet). Il part quand la page est chargée, polices comprises,
-          jamais avant une demi-seconde (sinon il clignote), jamais après
-          2,5 s (la 4G du stand). Il est caché tant que ce script ne l'a pas
+          de l'onglet). Il part quand la police du site est là, jamais avant
+          une demi-seconde (sinon il clignote), jamais après 6 s (une 4G à bout
+          de souffle). Il est caché tant que ce script ne l'a pas
           demandé (.ml-avec-accueil) : sans JavaScript, il n'existe pas. (Un
           <noscript> ne convient pas : Astro en sort les <style>.) ;
         - la barre de navigation (#ml-navigation) : un lien suivi ou un
@@ -533,11 +533,23 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
               }, 450);
             }, Math.max(0, 500 - (Date.now() - debut)));
           };
-          window.addEventListener("load", function () {
-            if (document.fonts && document.fonts.ready) document.fonts.ready.then(lever, lever);
+          // Il attend la police du site (« ML Inter », global.css), pas les
+          // images, qui ont leur reflet d'attente : le texte ne se montre
+          // jamais dans une autre police, même en 4G lente, où elle partage
+          // le débit avec les premières images (2 à 5 s, mesuré le 18/11).
+          var pret = function () {
+            var p = null;
+            try {
+              p = document.fonts && document.fonts.load('1em "ML Inter"');
+            } catch (e) {}
+            if (p && p.then) p.then(lever, lever);
             else lever();
-          });
-          setTimeout(lever, 2500);
+          };
+          // Lancé juste après l'écran, en tête du <body> : la feuille de
+          // style y est lue, la police y est déclarée. (Attendre la fin de
+          // la lecture de la page ferait aussi attendre tous les scripts.)
+          window.mlAccueilPret = pret;
+          setTimeout(lever, 6000);
         }
 
         function arrivee(e) {
@@ -711,6 +723,9 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       />
       <span class="ml-accueil-barre"><span></span></span>
     </div>
+    <script is:inline>
+      if (window.mlAccueilPret) window.mlAccueilPret();
+    </script>
     <div id="ml-navigation" aria-hidden="true"></div>
     {/* Pas de bandeau au stand : il annonce une offre chiffrée — « 3 achetées,
         1 offerte » — et la vendeuse a ses propres tarifs de salon. Une remise

@@ -2,6 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import BandeauxVisuels from "../../components/BandeauxVisuels.astro";
 import VignetteAffiche from "../../components/VignetteAffiche.astro";
+import VignetteCarteCadeau from "../../components/VignetteCarteCadeau.astro";
 import { api, assetUrl, bandeauxVisuels, type Collection, type Product } from "../../lib/api.ts";
 import { RAYONS_FUSIONNES } from "../../lib/anciennes-adresses.ts";
 import { htmlSur } from "../../lib/html-sur.ts";
@@ -264,6 +265,13 @@ if (error) {
 }
 
 const pages = Math.max(Math.ceil(total / PAR_PAGE), 1);
+/**
+ * La carte cadeau en dernière vignette (18/11) : sur la première page d'un
+ * rayon qui montre des affiches, hors stand (la carte ne s'y vend pas) et
+ * hors filtre de lieu (on y cherche un endroit, pas un cadeau).
+ */
+const montrerCarteCadeau =
+  !Astro.locals.stand && pageDemandee === 1 && !villeEffective && products.length > 0;
 /**
  * Une page au-delà de la dernière n'est pas une erreur de serveur mais une
  * adresse périmée — un lien vers la page 4 d'un rayon qui n'en a plus que
@@ -692,6 +700,9 @@ const libelleTri: Record<string, string> = {
           />
         ))
       }
+      {/* La carte cadeau, en dernière vignette de la première page (18/11) :
+          pas au stand, qui ne la vend pas, ni quand un lieu est choisi. */}
+      {montrerCarteCadeau && <VignetteCarteCadeau langue={langue} sizes={sizesGrille(grille)} />}
     </ul>
 
     {/* La pagination : de VRAIS liens, pour qu'on puisse les ouvrir dans un

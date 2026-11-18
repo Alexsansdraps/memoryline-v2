@@ -19,9 +19,14 @@
  */
 export const ALPHABET_CARTE = "ACEFHJKLRUWXY23456789";
 
-/** Le montant d'une carte vendue sur le site : de 10 à 300 €, en euros ronds. */
-export const CARTE_MONTANT_MIN_CENTS = 1_000;
-export const CARTE_MONTANT_MAX_CENTS = 30_000;
+/**
+ * Le montant d'une carte vendue sur le site : 5 € au moins (18/11, Alexandra :
+ * « le montant mini c'est 5 »), en euros ronds. Pas de plafond annoncé
+ * (« on met pas de max ») ; les 10 000 € ne sont qu'un garde-fou contre des
+ * zéros de trop, que personne ne voit sans les avoir tapés.
+ */
+export const CARTE_MONTANT_MIN_CENTS = 500;
+export const CARTE_MONTANT_MAX_CENTS = 1_000_000;
 
 /**
  * Le montant demandé est-il celui d'une carte qu'on peut vendre ?
