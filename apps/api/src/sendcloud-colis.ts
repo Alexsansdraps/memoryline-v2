@@ -47,6 +47,9 @@ import { CODES_SENDCLOUD, PREFIXE_SENDCLOUD } from "./sendcloud-points.js";
 import { TRANSPORTEURS } from "./livraison-regles.js";
 import { commandeVisible } from "./vendeurs.js";
 import { lieuDeRetrait } from "./lieux-retrait.js";
+// Les pays sans douane : la même liste que la caisse, qui y réserve les
+// points relais (packages/types, livraison.ts).
+import { TERRITOIRE_DOUANIER_UE } from "@memoryline/types";
 // Import croisé avec paiements-reglages.ts (qui lit colisConfigure ici) : l'un
 // et l'autre ne s'en servent qu'à l'intérieur d'une fonction.
 import { etiquettesReelles } from "./paiements-reglages.js";
@@ -729,17 +732,6 @@ async function marquerEchec(b: Bordereau, erreur: string): Promise<Bordereau> {
   return maj!;
 }
 
-/**
- * Les pays où un colis parti de France ne passe pas la douane : l'Union
- * européenne, plus Monaco (en union douanière avec la France). L'Outre-mer a
- * ses propres codes pays (GP, MQ, RE…) et n'y figure donc pas : un colis pour
- * la Guadeloupe passe la douane, SendCloud le confirme.
- */
-const TERRITOIRE_DOUANIER_UE: ReadonlySet<string> = new Set([
-  "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR",
-  "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI",
-  "SK", "MC",
-]);
 
 /**
  * Le contenu du colis, pour la déclaration en douane : une ligne par article

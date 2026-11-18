@@ -35,7 +35,7 @@ export const NATURES_LIVRAISON = [
     code: "relay",
     nom: "Point relais",
     demande: "point",
-    aide: "Le client choisit un point de retrait dans la liste du transporteur.",
+    aide: "Le client choisit un point de retrait dans la liste du transporteur. Jamais proposé hors de l'Union européenne (Suisse, Royaume-Uni…) : aucun réseau de points relais n'y livre.",
   },
   {
     code: "pickup",
@@ -168,6 +168,24 @@ export interface LieuRetraitPublic {
 export function normaliserPays(pays: unknown): string {
   const p = String(pays ?? "").trim().toUpperCase();
   return /^[A-Z]{2}$/.test(p) ? p : "";
+}
+
+/**
+ * Les pays où un colis parti de France ne passe pas la douane : l'Union
+ * européenne, plus Monaco (en union douanière avec la France). L'Outre-mer a
+ * ses propres codes pays (GP, MQ, RE…) et n'y figure donc pas : un colis pour
+ * la Guadeloupe passe la douane, SendCloud le confirme.
+ */
+export const TERRITOIRE_DOUANIER_UE: ReadonlySet<string> = new Set([
+  "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR",
+  "HU", "IE", "IT", "LT", "LU", "LV", "MT", "NL", "PL", "PT", "RO", "SE", "SI",
+  "SK", "MC",
+]);
+
+/** Un colis pour ce pays passe-t-il la douane ? Un pays inconnu : non. */
+export function passeLaDouane(pays: unknown): boolean {
+  const code = normaliserPays(pays);
+  return code !== "" && !TERRITOIRE_DOUANIER_UE.has(code);
 }
 
 /**
@@ -329,6 +347,12 @@ export function optionsLivraison(
   if (!zone) return [];
   return catalogue.modes
     .filter((m) => m.active !== false)
+    // Les réseaux de points relais (Mondial Relay, Colissimo) ne couvrent que
+    // l'Union européenne. La Suisse est dans la zone « Europe » : la caisse
+    // lui proposait les deux modes, la recherche n'y trouvait aucun point
+    // (Bâle, 18/11) et le client restait bloqué. Hors UE, seuls l'envoi à
+    // domicile et le retrait sur place restent proposés.
+    .filter((m) => !(demandeUnPointRelais(m.kind) && passeLaDouane(pays)))
     .map((mode) => {
       // Aucune tranche ne couvre le poids = le mode ne SAIT PAS transporter ce
       // colis. On le retire au lieu de retomber sur un tarif au hasard : mieux

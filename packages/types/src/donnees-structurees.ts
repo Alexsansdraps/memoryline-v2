@@ -17,6 +17,7 @@
 import {
   normaliserPays,
   optionsLivraison,
+  passeLaDouane,
   type CatalogueLivraison,
 } from "./livraison.js";
 
@@ -79,29 +80,35 @@ export function livraisonsStructurees(
   const details: Record<string, unknown>[] = [];
   const zones = [...catalogue.zones].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   for (const zone of zones) {
-    const pays = [...new Set((zone.countries ?? []).map(normaliserPays).filter(Boolean))];
-    if (!pays.length) continue;
-    const options = optionsLivraison(catalogue, pays[0]!, prixCents, poidsGrammes).filter(
-      (o) => o.mode.kind !== "pickup",
-    );
-    if (!options.length) continue;
-    // À frais égaux, le premier dans l'ordre de la caisse : c'est celui que
-    // la cliente voit en tête.
-    const moinsCher = options.reduce((a, b) => (b.fraisCents < a.fraisCents ? b : a));
-    details.push({
-      "@type": "OfferShippingDetails",
-      shippingRate: {
-        "@type": "MonetaryAmount",
-        value: (moinsCher.fraisCents / 100).toFixed(2),
-        currency: "EUR",
-      },
-      shippingDestination: pays.map((c) => ({ "@type": "DefinedRegion", addressCountry: c })),
-      deliveryTime: {
-        "@type": "ShippingDeliveryTime",
-        handlingTime: jours(DELAI_PREPARATION),
-        transitTime: jours(delaiDuMode(moinsCher.mode.description) ?? ACHEMINEMENT_PAR_DEFAUT),
-      },
-    });
+    const tous = [...new Set((zone.countries ?? []).map(normaliserPays).filter(Boolean))];
+    // Hors de l'Union européenne, pas de point relais (optionsLivraison) : la
+    // Suisse, dans la zone « Europe », n'a pas le même mode le moins cher que
+    // la Belgique. Un bloc par groupe de pays qui ont les mêmes modes.
+    const groupes = [tous.filter((c) => !passeLaDouane(c)), tous.filter(passeLaDouane)];
+    for (const pays of groupes) {
+      if (!pays.length) continue;
+      const options = optionsLivraison(catalogue, pays[0]!, prixCents, poidsGrammes).filter(
+        (o) => o.mode.kind !== "pickup",
+      );
+      if (!options.length) continue;
+      // À frais égaux, le premier dans l'ordre de la caisse : c'est celui que
+      // le client voit en tête.
+      const moinsCher = options.reduce((a, b) => (b.fraisCents < a.fraisCents ? b : a));
+      details.push({
+        "@type": "OfferShippingDetails",
+        shippingRate: {
+          "@type": "MonetaryAmount",
+          value: (moinsCher.fraisCents / 100).toFixed(2),
+          currency: "EUR",
+        },
+        shippingDestination: pays.map((c) => ({ "@type": "DefinedRegion", addressCountry: c })),
+        deliveryTime: {
+          "@type": "ShippingDeliveryTime",
+          handlingTime: jours(DELAI_PREPARATION),
+          transitTime: jours(delaiDuMode(moinsCher.mode.description) ?? ACHEMINEMENT_PAR_DEFAUT),
+        },
+      });
+    }
   }
   return details;
 }
