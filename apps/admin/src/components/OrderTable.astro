@@ -103,6 +103,28 @@ if (Astro.request.method === "POST" && estProprietaire) {
           quoi === "archiver"
             ? `${r.count} commande(s) archivée(s)${liste} Rien n'est effacé : elles attendent dans l'onglet « Archivées ».`
             : `${r.count} commande(s) restaurée(s)${liste}`;
+      } else if (quoi === "supprimer") {
+        // La suppression DÉFINITIVE, par sélection, dans l'onglet
+        // « Archivées » (18/11). Une à une, par la route de la fiche : mêmes
+        // règles (suppression.ts, motifCommandeAGarder). Ce qui a été payé,
+        // facturé, remboursé, expédié ou réglé en carte cadeau reste
+        // archivé, et le message dit pourquoi.
+        let supprimees = 0;
+        const raisons: string[] = [];
+        for (const id of ids) {
+          try {
+            await api.supprimerCommande(id);
+            supprimees++;
+          } catch (e) {
+            raisons.push(String(e).replace(/^Error:\s*/, ""));
+          }
+        }
+        const uniques = raisons.filter((v, i, t) => t.indexOf(v) === i);
+        flash =
+          `${supprimees} commande(s) supprimée(s) définitivement, avec leurs lignes et leur journal.` +
+          (raisons.length
+            ? ` ${raisons.length} gardée(s), toujours archivée(s) : ${uniques.join(" ")}`
+            : "");
       }
     }
   } catch (e) {
@@ -517,13 +539,24 @@ const filtreActif =
         Exporter la sélection
       </button>
       {!estProprietaire ? null : vueArchivees ? (
-        <button
-          type="button"
-          data-bulk="restaurer"
-          class="ml-auto rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
-        >
-          Restaurer
-        </button>
+        <>
+          <button
+            type="button"
+            data-bulk="restaurer"
+            class="ml-auto rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+          >
+            Restaurer
+          </button>
+          {/* Le ménage pour de bon, depuis la liste (18/11). */}
+          <button
+            type="button"
+            data-bulk="supprimer"
+            data-confirme="Supprimer DÉFINITIVEMENT les commandes cochées ? C'est sans retour : elles partent avec leurs lignes et leur journal. Seuls les paniers et les commandes jamais encaissées partent : une commande payée, facturée, remboursée ou expédiée reste archivée (elle doit être gardée), et le message vous le dira."
+            class="rounded border border-red-300 bg-bo-surface px-3 py-1.5 text-red-700 hover:bg-red-50"
+          >
+            Supprimer définitivement
+          </button>
+        </>
       ) : (
         <button
           type="button"

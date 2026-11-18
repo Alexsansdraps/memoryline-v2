@@ -1530,6 +1530,70 @@ export function mountCompteRoutes(app: Hono): void {
     return c.json({ ok: true });
   });
 
+  /* ===== Back-office — suppression de fiches clientes ================== */
+
+  /**
+   * Supprime DÉFINITIVEMENT des fiches clientes cochées dans BO › Clients
+   * (18/11, Alexandra : « on peut supprimer des clients ici par sélection »).
+   *
+   * Une fiche qui a une commande À GARDER (payée, facturée, remboursée,
+   * encaissée, expédiée ou réglée en carte cadeau : les mêmes règles que
+   * motifCommandeAGarder) reste, avec ses commandes : une vente et ses pièces
+   * se gardent dix ans. Les autres partent avec leur carnet d'adresses, leurs
+   * sessions et leurs jetons (cascades de la base) ; leurs paniers et leurs
+   * commandes jamais payées restent, détachés d'elles (la base met leur lien
+   * à vide), et se suppriment, archivés, depuis les listes de commandes.
+   * Réservé à la propriétaire, comme tout ce qui écrit sous /admin.
+   */
+  app.post("/admin/customers/supprimer", async (c) => {
+    const b = (await c.req.json().catch(() => ({}))) as { ids?: unknown };
+    const ids = (Array.isArray(b.ids) ? b.ids : [])
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0)
+      .slice(0, 500);
+    const o = schema.orders;
+    let supprimees = 0;
+    const gardees: { id: number; nom: string; commandes: string[] }[] = [];
+    for (const id of ids) {
+      const [fiche] = await db
+        .select({ id: schema.customers.id, name: schema.customers.name, email: schema.customers.email })
+        .from(schema.customers)
+        .where(eq(schema.customers.id, id));
+      if (!fiche) continue;
+      const aGarder = await db
+        .select({ number: o.number })
+        .from(o)
+        .where(
+          and(
+            eq(o.customerId, id),
+            or(
+              isNotNull(o.invoiceNumber),
+              inArray(o.status, ["paid", "authorized"]),
+              raw`coalesce(${o.giftCardCents}, 0) > 0`,
+              raw`exists (select 1 from ${schema.refunds} r where r.order_id = ${o.id})`,
+              raw`exists (select 1 from ${schema.orderTransactions} t where t.order_id = ${o.id})`,
+              raw`exists (select 1 from ${schema.payments} p where p.order_id = ${o.id} and coalesce(p.status, '') <> 'pending')`,
+              raw`exists (select 1 from ${schema.fulfillments} f where f.order_id = ${o.id})`,
+              raw`exists (select 1 from ${schema.bordereaux} b where b.order_id = ${o.id})`,
+              raw`exists (select 1 from ${schema.giftCardTransactions} g where g.order_id = ${o.id})`,
+            ),
+          ),
+        )
+        .limit(4);
+      if (aGarder.length) {
+        gardees.push({
+          id,
+          nom: fiche.name || fiche.email || `fiche n° ${id}`,
+          commandes: aGarder.map((x) => x.number),
+        });
+        continue;
+      }
+      await db.delete(schema.customers).where(eq(schema.customers.id, id));
+      supprimees++;
+    }
+    return c.json({ supprimees, gardees });
+  });
+
   /* ===== Back-office — clients ========================================= */
 
   /**

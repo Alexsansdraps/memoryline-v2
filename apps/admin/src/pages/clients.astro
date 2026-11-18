@@ -80,16 +80,30 @@ if (Astro.request.method === "POST") {
     const mot = String(f.get("etiquette") ?? "").trim();
     const retirer = f.get("_action") === "retirer";
     if (!ids.length) throw new Error("Cochez au moins une cliente dans la liste.");
-    if (!mot) throw new Error("Écrivez l'étiquette à ajouter ou à retirer.");
-    const r = await api.etiqueterClients(ids, retirer ? { retirer: mot } : { ajouter: mot });
-    const n = r.modifiees;
-    flash = retirer
-      ? n === 0
-        ? `Aucune des ${r.cochees} fiches cochées ne portait l'étiquette « ${mot} ».`
-        : `Étiquette « ${mot} » retirée de ${n} fiche${n > 1 ? "s" : ""}.`
-      : n === 0
-        ? `Les ${r.cochees} fiches cochées portaient déjà l'étiquette « ${mot} ».`
-        : `Étiquette « ${mot} » ajoutée à ${n} fiche${n > 1 ? "s" : ""}.`;
+    if (f.get("_action") === "supprimer") {
+      // La suppression définitive, par sélection (18/11) : l'API garde les
+      // fiches qui ont une vente (payée, facturée…), et les nomme ici.
+      const r = await api.supprimerClients(ids);
+      const n = r.supprimees;
+      flash =
+        `${n} fiche${n > 1 ? "s" : ""} supprimée${n > 1 ? "s" : ""} définitivement, avec leurs adresses.` +
+        (r.gardees.length
+          ? ` ${r.gardees.length} gardée${r.gardees.length > 1 ? "s" : ""}, parce qu'elles ont des commandes payées ou facturées, à garder dix ans : ` +
+            r.gardees.map((g) => `${g.nom} (${g.commandes.join(", ")})`).join(" ; ") +
+            "."
+          : "");
+    } else {
+      if (!mot) throw new Error("Écrivez l'étiquette à ajouter ou à retirer.");
+      const r = await api.etiqueterClients(ids, retirer ? { retirer: mot } : { ajouter: mot });
+      const n = r.modifiees;
+      flash = retirer
+        ? n === 0
+          ? `Aucune des ${r.cochees} fiches cochées ne portait l'étiquette « ${mot} ».`
+          : `Étiquette « ${mot} » retirée de ${n} fiche${n > 1 ? "s" : ""}.`
+        : n === 0
+          ? `Les ${r.cochees} fiches cochées portaient déjà l'étiquette « ${mot} ».`
+          : `Étiquette « ${mot} » ajoutée à ${n} fiche${n > 1 ? "s" : ""}.`;
+    }
   } catch (e) {
     flash = String(e).replace(/^Error:\s*/, "");
     flashErreur = true;
@@ -301,6 +315,17 @@ const bouton =
           class={bouton}
         >
           Retirer l'étiquette
+        </button>
+        {/* Le ménage pour de bon (18/11), à confirmer : sans retour. */}
+        <button
+          type="submit"
+          name="_action"
+          value="supprimer"
+          data-selection
+          data-confirme="Supprimer DÉFINITIVEMENT les fiches cochées ? C'est sans retour : elles partent avec leurs adresses, et ces clientes devront recréer un compte. Une fiche qui a une commande payée ou facturée est gardée (une vente se garde dix ans), et le message vous le dira."
+          class="ml-auto rounded border border-red-300 bg-bo-surface px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40"
+        >
+          Supprimer définitivement
         </button>
       </div>
 
@@ -546,6 +571,11 @@ const bouton =
 
       // Retirer une étiquette de plusieurs fiches d'un coup se confirme : le
       // geste est rapide, et ne se défait qu'une fiche à la fois.
+      // La suppression définitive se confirme toujours (18/11) : sans retour.
+      form.addEventListener("submit", function (e) {
+        var b = e.submitter;
+        if (b && b.dataset.confirme && !confirm(b.dataset.confirme)) e.preventDefault();
+      });
       form.addEventListener("submit", function (e) {
         var b = e.submitter;
         if (!b || b.value !== "retirer") return;

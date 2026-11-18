@@ -39,9 +39,9 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
     - la livraison se fait à cette adresse (premier choix, marqué), à une autre du carnet ou à une nouvelle ;
     - une nouvelle adresse a la case « Garder cette adresse dans mon compte », cochée d'avance ; avec un carnet vide, elle y entre d'office et devient l'adresse de facturation.
   - **Serveur** : il relit lui-même l'adresse par défaut et la fige sur la commande (`billing_*`). La facture la met dans « Facturé à » ; les commandes d'avant gardent la livraison. Le BO la montre dans le bloc Client de la fiche commande.
-- **À FAIRE ensuite (demandes du 18/11)** :
-  - BO › Ventes stand › Archivées : suppression définitive ;
-  - BO › Clients : suppression par sélection.
+- **18/11, vers 12 h 45, suppressions au BO** :
+  - **Commandes et ventes du stand, onglet « Archivées »** : « Supprimer définitivement » par sélection. Les règles sont celles de la fiche (`motifCommandeAGarder`) : ce qui a été payé, facturé, remboursé, encaissé, expédié ou réglé en carte cadeau reste archivé, et le message dit pourquoi.
+  - **Clients** : « Supprimer définitivement » par sélection (`POST /admin/customers/supprimer`). Une fiche qui a une commande payée ou facturée est gardée et nommée. Les autres partent avec leurs adresses, sessions et jetons ; leurs paniers et commandes jamais payées restent, détachés d'elles.
 
 ## 2. Dans le code (Claude)
 

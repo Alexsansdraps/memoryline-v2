@@ -2963,6 +2963,17 @@ export function adminApi(request?: Request) {
         { ids, ...corps },
         cookie,
       ),
+    /**
+     * Supprime DÉFINITIVEMENT des fiches clientes (18/11). Celles qui ont une
+     * commande à garder (payée, facturée…) restent : `gardees` les nomme.
+     */
+    supprimerClients: (ids: number[]) =>
+      req<{ supprimees: number; gardees: { id: number; nom: string; commandes: string[] }[] }>(
+        "POST",
+        "/admin/customers/supprimer",
+        { ids },
+        cookie,
+      ),
     /** Lit un fichier de clientes ; ne l'écrit qu'avec `appliquer`. */
     importerClients: (csv: string, appliquer: boolean) =>
       req<ResultatImportClients>(
