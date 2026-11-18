@@ -2803,7 +2803,7 @@ export default function CheckoutIsland(props: {
                                 <img
                                   src={image()}
                                   alt=""
-                                  class="w-full rounded object-cover"
+                                  class="ml-image-attente w-full rounded object-cover"
                                   style={{ "aspect-ratio": "1 / 1.4142" }}
                                 />
                               )}
@@ -2828,7 +2828,7 @@ export default function CheckoutIsland(props: {
                                   urlApercu(it.config!.aiPublicId!),
                               )}
                               alt=""
-                              class="absolute inset-0 h-full w-full object-contain"
+                              class="ml-image-attente absolute inset-0 h-full w-full object-contain"
                               onError={(e) => {
                                 e.currentTarget.hidden = true;
                               }}

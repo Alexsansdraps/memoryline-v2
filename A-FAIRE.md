@@ -8,6 +8,12 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - **La boutique encaisse pour de vrai depuis le 16/11 à 22 h 29.** Stripe live (compte « Vestiairesauvage »), PayPal live, vrais courriels par Resend (`commandes@memoryline.fr`), bordereaux SendCloud facturés. **Aucune commande d'essai sur le VPS : c'est de l'argent réel.**
 - **Marché de Noël de Mulhouse : du vendredi 20/11 au 27/12** (11:00–12:30 / 13:00–20:00). Tout ce qui touche au stand doit être prêt le 19 au soir.
 - 18/11 : tous les écrans clients contrôlés en ligne sur tablette (768 × 1024 et 1024 × 768, 16 pages) : rien ne déborde, aucune image cassée.
+- **18/11 : commité, PAS ENCORE EN LIGNE. Alexandra donne le feu vert** (« je veux pas perturber Margaux ») :
+  - écran d'accueil (logo et barre, au premier affichage de la visite, de 0,5 à 2,5 s) ;
+  - barre de chargement en haut de l'écran quand on change de page ;
+  - reflet d'attente sur les images des bandeaux, de l'accueil, des pages, du compte et de la caisse ;
+  - polices des affiches en `font-display: block`, et les deux polices de départ chargées avec le module ;
+  - nettoyage de la mise en ligne (fichiers retirés du dépôt) et journaux Docker limités.
 
 ## 2. Avant le marché (19/11 au soir)
 
@@ -19,7 +25,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 3. Dans le code (Claude)
 
-- **Chargements** (demandé le 18/11) : écran d'accueil, places réservées pendant le chargement des images, îlots sans état de chargement. Passe « 4G lente » sur tout le site.
+- **Chargements** (18/11) : faits, en attente de mise en ligne (voir § 1). Reste une passe « 4G lente » sur tout le site. L'écran d'accueil peut coûter quelques points de performance à PageSpeed (indice de vitesse), sans toucher au SEO.
 - **Essai Stripe en mode TEST, en local seulement** : une carte cadeau de 10 € sur une commande de 15 € + port. L'intention Stripe doit s'ouvrir pour le total moins 10 € (montant dans la table `payment`).
 - **PageSpeed** : à relancer après le changement d'image de l'accueil. Alexandra remplace elle-même cette image : ne pas y toucher. Au 17/11 : SEO, accessibilité et bonnes pratiques à 100 ; performance à 78, avec du CSS bloquant et 4 animations non composées.
 - **Import Shopify** : dès qu'Alexandra dépose les deux CSV (procédure au § 5).

@@ -481,6 +481,120 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       // sert. `passive` : il ne ralentit pas le défilement.
       document.addEventListener("touchstart", function () {}, { passive: true });
     </script>
+    {/* Les chargements (18/11 : « le site manque de loadings placeholders,
+        splash screen y'a pas non plus »). Trois choses, sans attendre aucun
+        autre script, d'où leur place ici :
+        - l'écran d'accueil (#ml-accueil, en tête du <body>) : le logo et une
+          barre qui file, au PREMIER affichage de la visite seulement (mémoire
+          de l'onglet). Il part quand la page est chargée, polices comprises,
+          jamais avant une demi-seconde (sinon il clignote), jamais après
+          2,5 s (la 4G du stand). Il est caché tant que ce script ne l'a pas
+          demandé (.ml-avec-accueil) : sans JavaScript, il n'existe pas. (Un
+          <noscript> ne convient pas : Astro en sort les <style>.) ;
+        - la barre de navigation (#ml-navigation) : un lien suivi ou un
+          formulaire envoyé la fait avancer en haut de l'écran jusqu'à ce que
+          la page suivante s'affiche. Avant, rien ne bougeait pendant 1 à 2 s
+          en 4G, et on recliquait ;
+        - le reflet des images en attente (global.css, ml-squelette et
+          ml-image-attente) s'arrête dès que l'image arrive, ou échoue, sur
+          toute la page, îlots compris : « load » ne remonte pas, mais se
+          capte. */}
+    <script is:inline>
+      (function () {
+        var html = document.documentElement;
+        var deja = true;
+        try {
+          deja = sessionStorage.getItem("ml_accueil") === "1";
+          sessionStorage.setItem("ml_accueil", "1");
+        } catch (e) {}
+        if (!deja) {
+          html.classList.add("ml-avec-accueil");
+          var debut = Date.now();
+          var fini = false;
+          var lever = function () {
+            if (fini) return;
+            fini = true;
+            setTimeout(function () {
+              var ecran = document.getElementById("ml-accueil");
+              if (!ecran) {
+                html.classList.remove("ml-avec-accueil");
+                return;
+              }
+              ecran.classList.add("ml-accueil-part");
+              setTimeout(function () {
+                html.classList.remove("ml-avec-accueil");
+                if (ecran.parentNode) ecran.parentNode.removeChild(ecran);
+              }, 450);
+            }, Math.max(0, 500 - (Date.now() - debut)));
+          };
+          window.addEventListener("load", function () {
+            if (document.fonts && document.fonts.ready) document.fonts.ready.then(lever, lever);
+            else lever();
+          });
+          setTimeout(lever, 2500);
+        }
+
+        function arrivee(e) {
+          var t = e.target;
+          if (!t || t.tagName !== "IMG") return;
+          t.classList.add("est-charge");
+          var cadre = t.parentElement && t.parentElement.closest(".ml-squelette");
+          if (cadre) cadre.classList.add("est-charge");
+        }
+        document.addEventListener("load", arrivee, true);
+        document.addEventListener("error", arrivee, true);
+
+        var barre = null;
+        var garde = 0;
+        function enRoute() {
+          barre = barre || document.getElementById("ml-navigation");
+          if (!barre) return;
+          barre.classList.remove("ml-en-route");
+          void barre.offsetWidth;
+          barre.classList.add("ml-en-route");
+          clearTimeout(garde);
+          // Un lien qui télécharge un fichier ne quitte pas la page.
+          garde = setTimeout(arrivePage, 12000);
+        }
+        function arrivePage() {
+          if (barre) barre.classList.remove("ml-en-route");
+        }
+        document.addEventListener("click", function (e) {
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          var a = e.target && e.target.closest ? e.target.closest("a[href]") : null;
+          if (!a || a.hasAttribute("download")) return;
+          var cible = a.getAttribute("target");
+          if (cible && cible !== "_self") return;
+          var u;
+          try {
+            u = new URL(a.href, window.location.href);
+          } catch (x) {
+            return;
+          }
+          if (u.origin !== window.location.origin || u.pathname.indexOf("/api/") === 0) return;
+          // Un endroit de la même page (« #… ») : on ne la quitte pas.
+          var brut = a.getAttribute("href") || "";
+          if (
+            brut.charAt(0) === "#" ||
+            (u.pathname === window.location.pathname &&
+              u.search === window.location.search &&
+              brut.indexOf("#") !== -1)
+          )
+            return;
+          setTimeout(function () {
+            if (!e.defaultPrevented) enRoute();
+          }, 0);
+        });
+        document.addEventListener("submit", function (e) {
+          setTimeout(function () {
+            if (!e.defaultPrevented) enRoute();
+          }, 0);
+        });
+        // Retour arrière : la page revient telle qu'on l'a quittée, barre
+        // comprise. On la range.
+        window.addEventListener("pageshow", arrivePage);
+      })();
+    </script>
     {/* Le code du stand, arrivé par l'adresse que donne le back-office
         (« /?stand=1&code=… »). Il est rangé dans la tablette — c'est là que
         la dernière étape le relit (CommandeStand.tsx) — puis retiré aussitôt
@@ -580,6 +694,18 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
     />
   </head>
   <body class="min-h-screen flex flex-col bg-paper text-ink">
+    {/* L'écran d'accueil et la barre de navigation : voir le script du <head>. */}
+    <div id="ml-accueil" aria-hidden="true">
+      <img
+        src={logoEnTete.src}
+        alt=""
+        width={logoEnTete.width}
+        height={logoEnTete.height}
+        class="ml-accueil-logo"
+      />
+      <span class="ml-accueil-barre"><span></span></span>
+    </div>
+    <div id="ml-navigation" aria-hidden="true"></div>
     {/* Pas de bandeau au stand : il annonce une offre chiffrée — « 3 achetées,
         1 offerte » — et la vendeuse a ses propres tarifs de salon. Une remise
         affichée qui ne s'applique pas ici la contredirait devant le client. */}

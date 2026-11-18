@@ -263,8 +263,24 @@ export default function ProductConfigurator(
     if (open()) closeModal();
   }
 
-  /** Demande le module de composition à l'avance (une seule fois : import() se souvient). */
-  const prechargerConfigurateur = () => void chargerConfigurateur().catch(() => {});
+  /**
+   * Demande le module de composition à l'avance (une seule fois : import() se
+   * souvient), et avec lui les polices de départ de l'affiche (18/11) : la
+   * ligne 1 en DM Serif Display, les lignes 2 et 3 en « another shabby »
+   * (POLICE_TITRE_DEFAUT et POLICE_SOUSTITRE_DEFAUT de @memoryline/types,
+   * écrites ici pour ne pas charger toute la liste des polices sur la fiche).
+   * À l'ouverture, le texte s'affiche aussitôt dans sa police, sans la roue
+   * qui l'attendait. Le navigateur ne les télécharge qu'une fois.
+   */
+  const prechargerConfigurateur = () => {
+    void chargerConfigurateur().catch(() => {});
+    try {
+      for (const famille of ["DM Serif Display", "another shabby"])
+        void document.fonts?.load(`1em '${famille}'`).catch(() => {});
+    } catch {
+      // Navigateur sans document.fonts : la police viendra à l'ouverture.
+    }
+  };
 
   /**
    * Une page resservie par le bouton « précédent » (cache du navigateur)

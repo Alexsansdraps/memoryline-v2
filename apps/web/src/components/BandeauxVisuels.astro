@@ -79,7 +79,7 @@ function adresse(href: string): string {
               height={b.imageHauteur ?? undefined}
               loading={premier ? "eager" : "lazy"}
               fetchpriority={premier ? "high" : "auto"}
-              class="w-full rounded-lg object-cover"
+              class="ml-image-attente w-full rounded-lg object-cover"
             />
             <div>
               {titre && <h2 class="text-3xl leading-tight">{titre}</h2>}
@@ -141,6 +141,7 @@ function adresse(href: string): string {
               loading={premier ? "eager" : "lazy"}
               fetchpriority={premier ? "high" : "auto"}
               decoding={premier ? "auto" : "async"}
+              class="ml-image-attente"
             />
           </picture>
           {avecTexte && (

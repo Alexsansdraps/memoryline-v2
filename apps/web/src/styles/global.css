@@ -129,11 +129,19 @@ h4 {
  * l'API pour le rendu PDF (apps/api/fonts/) : l'aperçu à l'écran et l'affiche
  * imprimée utilisent le même dessin de lettres, sans dépendre d'un service
  * externe. Toutes sous licence OFL.
+ *
+ * `font-display: block` (18/11, « on voit encore le changement de police ») :
+ * tant que la police n'est pas arrivée, le texte attend, invisible, au lieu
+ * de s'afficher dans une police de secours puis de changer sous les yeux.
+ * C'est le cas du choix des polices du module et de l'affiche à partir d'une
+ * photo ; l'aperçu de l'affiche, lui, montre une roue à la place
+ * (PosterPreview.tsx). Les deux polices de départ arrivent avec le module,
+ * au repos sur la fiche (ProductConfigurator.tsx).
  * ------------------------------------------------------------------------ */
 @font-face {
   font-family: "DM Serif Display";
   src: url("/fonts/DMSerifDisplay-Regular.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 /* L'autre serif des lignes 1 et 3. Même nom de famille que le fichier
    installé sur le serveur d'impression (« Abril Fatface ») : c'est par ce nom
@@ -141,12 +149,12 @@ h4 {
 @font-face {
   font-family: "Abril Fatface";
   src: url("/fonts/AbrilFatface-Regular.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 @font-face {
   font-family: "League Spartan";
   src: url("/fonts/LeagueSpartan-Regular.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 /* Le nom de famille est écrit EXACTEMENT comme la police se nomme
    elle-même — « another shabby », en minuscules. C'est ce nom-là que
@@ -155,37 +163,37 @@ h4 {
 @font-face {
   font-family: "another shabby";
   src: url("/fonts/AnotherShabby-Regular.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 @font-face {
   font-family: "Caveat";
   src: url("/fonts/Caveat-Regular.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 @font-face {
   font-family: "Dancing Script";
   src: url("/fonts/DancingScript.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 @font-face {
   font-family: "Great Vibes";
   src: url("/fonts/GreatVibes-Regular.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 @font-face {
   font-family: "Parisienne";
   src: url("/fonts/Parisienne-Regular.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 @font-face {
   font-family: "Sacramento";
   src: url("/fonts/Sacramento-Regular.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 @font-face {
   font-family: "Pinyon Script";
   src: url("/fonts/PinyonScript-Regular.ttf") format("truetype");
-  font-display: swap;
+  font-display: block;
 }
 
 /* --------------------------------------------------------------------------
@@ -1594,15 +1602,137 @@ body:has(.ml-stand-fin) > footer {
   border-top-color: var(--color-terracotta);
   animation: ml-tourne 0.8s linear infinite;
 }
-/* L'image est arrivée : le reflet s'arrête (posé par son « onload »). */
+/* L'image est arrivée : le reflet s'arrête (posé par son « onload », et pour
+   toute la page par le script du <head> de Base.astro). */
 .ml-squelette.est-charge {
   animation: none;
   background-image: none;
 }
+/* Une image sans case à elle (bandeaux, pages, compte, caisse) : le même
+   reflet, sur son propre fond, tant qu'elle n'est pas arrivée (18/11). Une
+   fois là, ou en erreur, le fond s'en va : une image transparente ne garde
+   pas de gris derrière elle. Sans JavaScript (pas de .ml-js), pas de reflet,
+   puisque rien ne viendrait l'arrêter. */
+.ml-js img.ml-image-attente:not(.est-charge) {
+  background-color: var(--color-paper-deep);
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0) 35%,
+    rgba(255, 255, 255, 0.75) 50%,
+    rgba(255, 255, 255, 0) 65%
+  );
+  background-size: 250% 100%;
+  background-repeat: no-repeat;
+  animation: ml-reflet 1.3s ease-in-out infinite;
+}
+
+/* L'écran d'accueil (18/11) : le logo et une barre qui file, au premier
+   affichage de la visite. Caché par défaut : seul le script du <head> de
+   Base.astro le montre (.ml-avec-accueil sur <html>), puis le lève. Déjà vu
+   dans cet onglet, ou sans JavaScript, il n'est jamais dessiné. Les
+   animations ne touchent qu'à transform et opacity : la carte graphique
+   s'en charge, la page continue de se construire dessous. */
+#ml-accueil {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  background: var(--color-paper);
+  transition:
+    opacity 0.4s ease,
+    visibility 0.4s;
+}
+.ml-avec-accueil #ml-accueil {
+  display: flex;
+}
+#ml-accueil.ml-accueil-part {
+  opacity: 0;
+  visibility: hidden;
+}
+.ml-accueil-logo {
+  width: auto;
+  height: 84px;
+}
+.ml-accueil-barre {
+  position: relative;
+  width: 132px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(18, 18, 18, 0.08);
+}
+.ml-accueil-barre > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  border-radius: 3px;
+  background: var(--color-terracotta);
+  animation: ml-file 1.1s ease-in-out infinite;
+}
+@keyframes ml-file {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+/* La barre de navigation (18/11) : un lien suivi, et elle avance en haut de
+   l'écran jusqu'à ce que la page suivante s'affiche — vite d'abord, puis de
+   plus en plus lentement, sans jamais finir d'elle-même. */
+#ml-navigation {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2147482000;
+  height: 3px;
+  pointer-events: none;
+  background: var(--color-terracotta);
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+#ml-navigation.ml-en-route {
+  opacity: 1;
+  animation: ml-avance 10s cubic-bezier(0.08, 0.8, 0.2, 1) forwards;
+}
+@keyframes ml-avance {
+  0% {
+    transform: scaleX(0.02);
+  }
+  8% {
+    transform: scaleX(0.3);
+  }
+  100% {
+    transform: scaleX(0.94);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ml-squelette,
-  .ml-cfg-chargement {
+  .ml-cfg-chargement,
+  .ml-js img.ml-image-attente:not(.est-charge) {
     animation: none;
+  }
+  #ml-accueil {
+    transition: none;
+  }
+  .ml-accueil-barre > span {
+    animation: none;
+    width: 100%;
+  }
+  #ml-navigation.ml-en-route {
+    animation: none;
+    transform: scaleX(0.6);
   }
   .ml-roue,
   .ml-cfg-chargement-roue {
