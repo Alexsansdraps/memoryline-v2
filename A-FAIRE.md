@@ -1,188 +1,148 @@
-# À faire — état au 17 novembre, fin de matinée (écrit pour une reprise dans un autre contexte)
+# À faire — Memory Line (à jour le 18/11)
 
-> **17/11, fin de soirée (PC de la maison) : tout `EN-COURS.md` § 2 est fait et en ligne** (`264efe2` → `8c6a9bf`). Statut unique en étapes (frise sur la fiche, une colonne « Statut » dans les listes et la fiche client, étape suivante d'un clic ou en groupe) ; module « Ventes des stands en cours » à l'accueil ; écran « Code promo / Carte cadeau » ; usage unique compté seulement s'il a remisé ; cartes cadeaux au chiffre d'affaires à l'utilisation ; petits restes des cartes. Reste : l'essai Stripe en mode test avec une carte de 10 €, et l'import Shopify (CSV d'Alexandra). Détail dans `EN-COURS.md` § 1 bis.
->
-> **17/11 au soir : À REPRENDRE.**
-> - **Les travaux du 17/11 sont fusionnés dans `main` et en ligne** (codes promo et cartes cadeaux, 0 €, /commande sans panier). Le statut unique en étapes est interrompu : il est en sommeil côté API. **Ce qui reste à faire est dans `EN-COURS.md`.**
-> - **PageSpeed (17/11, 16:19, mobile)** : SEO 100, Accessibilité 100, Bonnes pratiques 100, Agents 3/3. Le 42 de 16:17 venait de la page de maintenance. **Performance 78** (4G lente simulée) : FCP 2,6 s, LCP 4,4 s, TBT 100 ms, CLS 0. À faire :
->   - charger Tag Manager après le chargement de la page (environ 75 Ko de JS tiers inutilisé, 3 tâches longues) ;
->   - alléger l’image LCP de l’accueil (92 Ko à gagner, format et taille, `fetchpriority="high"`, préchargement) ;
->   - réduire le CSS bloquant ;
->   - remplacer les 4 animations non composées.
->   - Les en-têtes CSP, HSTS et COOP sont des pistes facultatives.
->
-> **17/11 après-midi** (tout est en prod, voir `git log`) :
-> - **Historique Shopify : JAMAIS importé** : 0 commande et 0 cliente Shopify au vidage. L’import est réécrit et sûr sur la base en service (`941b5e4`).
->   - Il lit l’export natif, ou Matrixify.
->   - Il ne supprime rien et fusionne les clientes par e-mail, en complétant les fiches sans rien écraser. Il n’abonne jamais une adresse désabonnée.
->   - Les numéros sont `SHOP-1001` (pas de collision avec WEB/SAL), les statuts paid / cancelled / voided, et les commandes reprises restent hors des listes de travail.
->   - Sur ces commandes, l’API refuse facture, courriels, étiquette, encaissement et remboursement (409, garde dans index.ts), et le BO l’annonce par un bandeau.
->   - Les finances ne les comptent pas en anomalies.
->   - Une cliente reprise choisit son mot de passe avec « mot de passe oublié ». Si elle s’inscrit à la place, elle obtient une seconde fiche, à rattacher au BO.
->   - **Procédure :**
->     1. Les CSV (Clients › Exporter › Tous les clients ; Commandes › Exporter › Toutes les commandes) vont dans `data/exports/shopify/`.
->     2. `scp -r data/exports/shopify debian@…:~/import-shopify`.
->     3. Sur le serveur : `docker compose -f docker-compose.prod.yml cp ~/import-shopify api:/tmp/import-shopify`.
->     4. Aperçu : `docker compose -f docker-compose.prod.yml exec -w /app/apps/api -e IMPORT_DIR=/tmp/import-shopify api npx tsx scripts/import-historique.ts`.
->     5. `bash apps/api/scripts/sauvegarder.sh`.
->     6. La même commande d’aperçu avec `--pour-de-bon`.
->     7. Effacer `~/import-shopify` et `/tmp/import-shopify` (données personnelles).
->   - **À trancher en lisant l’aperçu :**
->     - les commandes pending ou authorized de Shopify sont reprises hors ventes ;
->     - les payées non expédiées sont marquées traitées (à envoyer depuis Shopify) ;
->     - le taux de transformation sera gonflé sur les périodes Shopify.
->   - Corrigé au passage : `codePays("France")` donnait « FX » dans l’import de clientes du BO (codes périmés d’Intl).
-> - **Cache Docker du serveur.** Le crontab de debian lance `0 23,0 * * *` → `apps/api/scripts/vider-cache-docker.sh`. Le script ne fait rien hors de 1 h, heure de Paris. Il garde 3 Go de cache de construction et retire les images sans nom. Journal : `sauvegardes/journal-cache.txt`. Le disque avait 23 Go libres le 17/11 à 13 h.
-> - **Newsletter.** En-têtes `List-Unsubscribe` et `List-Unsubscribe-Post` : c'est le bouton « Se désabonner » de Gmail, Outlook et Apple Mail, en un clic. Le courrier et les pages de désabonnement disent « newsletter ».
-> - **BO › Réglages › Textes légaux.** Mentions légales, CGV, confidentialité et cookies s'ouvrent chacun dans l'éditeur visuel des pages, traductions comprises.
-> - **BO.** Les blocs « + Ajouter … » sont toujours ouverts : comptes, cadres, catégories, lieux, pages, redirections, types d'affiche.
-> - **Calendrier des stands.** Chaque jour peut être Normal, Fermé, Matin fermé, Après-midi fermé ou Non-stop, et la ligne s'affiche selon ce choix. En non-stop, elle montre le début du matin et la fin de l'après-midi.
-> - **Google Tag Manager** `GTM-PJ2BFXCB` est dans Base.astro, en production seulement. Le Consent Mode de Google est branché sur le bandeau cookies : tout est refusé tant que « Accepter » n'est pas cliqué. Reste à faire :
->   - pour qui règle GTM : toute balise d'un autre éditeur que Google doit attendre le consentement ;
->   - pour Margaux, dans Textes légaux : la page Cookies doit citer la mesure d'audience.
-> - **Retrait au stand jusqu'au dernier moment** (décision d'Alexandra : « ça peut être préparé le jour même »). Un stand activé et non archivé est proposé à la caisse jusqu'à l'heure de fermeture de son dernier jour ouvert, au lieu de 3 jours avant la fin (`retraitProposable`, `MARGE_RETRAIT_JOURS` supprimée). Le stand de test, du 16 au 18/11, réapparaît donc jusqu'au 18/11 à la fermeture.
-> - **Caisse : les 7 prochains jours en vrai.** Sous le stand, un petit tableau (jour | heures, « Aujourd’hui » en gras, « Fermé ») montre seulement les 7 prochains jours, à partir d’aujourd’hui ou du premier jour du stand, puis « … » s’il continue. Les données viennent de `/shipping` (`semaine`, `du`, `au`, calculées par `semaineDuStand`). Le texte du lieu, gardé par la commande et repris dans les courriels, dit pareil : 7 jours, « … », puis le dernier moment. Il avance d’un jour à minuit. Le BO garde le résumé complet.
-> - **Carte d’identité au retrait au stand** (17/11, 5 langues). À la caisse, une ligne en gras s’affiche sous le tableau des jours, et la case à cocher dit « …au plus tard le …, avec ma carte d’identité ». Le texte de chaque stand se termine par la même phrase (`mentionIdentite`), si bien que la commande la garde et que les courriels (confirmation, « votre commande vous attend ») la reprennent. Dans la case, tout ce qui suit « au plus tard » est en gras : le passage est marqué par ** dans ui.ts.
-> - **Éditeur de personnage : plus de pièce qui disparaît** quand on change une couleur. Une pièce dessinée en pixels est recoloriée par le serveur (`/pieces/:id/image-couleurs`). L’ancienne image reste affichée jusqu’à ce que la nouvelle soit chargée, avec un petit indicateur en haut à droite de l’aperçu (`Couche` dans CharacterLayer.tsx). Les couches portent comme clé leur emplacement, plus la pièce : changer de pantalon garde l’ancien affiché jusqu’au nouveau.
-> - **Migration 0085** : « Tour d’Europe » devient « Tour de l’Europe » dans les textes des affiches (nom, description, SEO, textes pré-remplis, traductions). L’adresse de la fiche ne change pas. En prod, une seule affiche est touchée : « MULHOUSE Vieux Mulhouse tour de l’Europe ».
-> - **Pied de page réglé au BO** (migration 0086, onglet « Pied de page » de Menu du site). Chaque entrée de premier niveau est une colonne, dont le libellé est le titre ; ses sous-liens sont les liens de la colonne. 4 colonnes visibles au plus. Le pied est semé avec « La boutique » et « Aide et informations », les liens d’avant, traduits. Si le pied est vide ou si l’API ne répond pas, le site reprend les colonnes écrites en dur. Enregistrer un menu ne touche jamais l’autre. « Ranger aussi dans le menu du site » ne range que le menu du haut. Pages du site propose « Ajouter au pied de page ».
-> - **BO › Ventes stand › Calendrier.** « Appliquer avec l’IA » affiche un spinner et refuse un second clic. Les horaires de base peuvent être « Avec une pause à midi » ou « Non-stop » (ouverture → fermeture). Sous une base non-stop, chaque jour s’affiche « Non-stop ». Le choix « Normal » d’un jour s’appelle maintenant « Avec pause ». La consigne de l’IA comprend « tout en non-stop » : chaque jour devient un seul créneau, de l’ouverture du matin actuelle à la fermeture actuelle, sans rien inventer. Le format d’un jour non-stop est écrit dans la consigne, avec un exemple : un seul créneau dans « matin », « apresMidi » à null. Si l’IA rend quand même deux créneaux qui se touchent, ou une journée entière dans l’après-midi, `rangerNonStop` (stand-horaires-ia.ts) remet tout en un seul créneau avant l’enregistrement.
-> - **Régler plusieurs jours d’un coup** (BO › Calendrier, au-dessus du tableau des jours). On choisit un réglage et ses heures, puis on coche des jours de la semaine (lun.… dim., chacun coche toutes ses dates) ou des dates précises dans le tableau, et on clique « Appliquer aux jours cochés ». Les lignes se remplissent, puis on enregistre le calendrier. Tout se passe dans la page : les champs du bloc n’ont pas de nom et ne partent pas avec le formulaire.
+Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE.
 
-> **17/11 : BASCULE FAITE. memoryline.fr est servi par le VPS.** Ce qui a été fait :
-> - **Vidage par Alexandra à 08 h 38**, script modifié à sa demande (`8e15016`). TOUTES les commandes et clientes du nouveau site sont parties, WEB-0016 comprise. L'IA et les personnages n'ont pas été touchés. (« Les clientes Shopify restent » : il n'y en avait aucune, voir plus haut.) Sauvegarde : `sauvegardes/base/2026-11-17-avant-vidage.sql.gz`.
-> - **Le `.env` du serveur.** Il contient maintenant DOMAINE=memoryline.fr, DOMAINE_WWW avec www et l'ancien nom du VPS, PUBLIC_ORIGIN=https://memoryline.fr et PUBLIC_NOINDEX=false. Un second `PUBLIC_NOINDEX=true`, plus bas, a été retiré. Copie de l'ancien fichier : `.env.avant-domaine`, à effacer à J+7. Images de secours : `secours-{api,web,admin}:avant-domaine`.
-> - **La construction**, puis les deux lignes A chez OVH (@ et www) passées à 51.255.34.187, puis `up -d`. Le TTL est resté par défaut.
-> - **Vérifié** : certificat Let's Encrypt de memoryline.fr ; www, http et l'ancien nom du VPS en 301/308 vers https://memoryline.fr, chemin gardé ; robots.txt « Allow: / » ; pages en « index, follow », canoniques en memoryline.fr.
-> - **Piège** : un copier-coller depuis le chat change `www.memoryline.fr` en lien Markdown `[www.memoryline.fr](https://…)`, jusque dans le .env. Contrôler avec `grep '^DOMAINE_WWW=' .env | tr '.' ' '`.
->
-> **Le marché de Noël de Mulhouse commence le VENDREDI 20/11** (Alexandra, 17/11). Tout ce qui touche au stand doit être prêt le 19 au soir : page du stand, collection, les 15 affiches prêtes à imprimer, et un essai sur la tablette sans valider de vente.
->
-> **Fait par Claude le 17/11 après la bascule (migration 0080, code cms.ts)** :
-> - **Pages légales.** Date « 17 novembre 2026 » dans les CGV et la confidentialité. Téléphone et RCS retirés des CGV. SendCloud et OpenAI ajoutés aux destinataires des données (photo des affiches IA). Notes internes retirées des cookies et des mentions. **Restent 3 « À COMPLÉTER »** : le médiateur (CGV, obligatoire) et les deux durées d'inactivité (confidentialité, à décider).
-> - **Page /pages/mulhouse** : elle devient « Marché de Noël de Mulhouse », réservée à la tablette, et montre la collection `marche-de-noel-mulhouse-2026`. Une page « tablette du stand seulement » peut maintenant montrer une collection DÉSACTIVÉE (jamais archivée) : celle du marché reste invisible sur le site.
-> - **Bouton Tuto éteint** tant que la vidéo est celle de test (Big Buck Bunny).
->
-> **Aussi le 17/11 (après-midi)** :
-> - le BO dit « Désactiver / Activer / désactivé » au lieu de « Éteindre / Allumer / éteint », partout ;
-> - le lien « Alexandra Porhansl » du pied de page s'ouvre dans un nouvel onglet ;
-> - une grille de page peut montrer jusqu'à 200 affiches (48 par défaut). La page du stand montre les 80 affiches de la collection du marché (0081), dans l'ordre de la collection : l'Alsace y est déjà (Mulhouse, Colmar, Kaysersberg, Riquewihr…) ; Margaux règle l'ordre dans Produits › Ordre d'affichage ;
-> - la page d'un rayon a une liste « Lieux » où l'on tape pour chercher (accents ignorés). Sans JavaScript, le menu d'origine reste.
->
-> **17/11, fin d'après-midi** :
-> - **Recherche instantanée.** Sur grand écran, le panneau sous le champ de l'en-tête montre jusqu'à 24 vignettes. Sur téléphone, la loupe ouvre une recherche plein écran, sur 2 colonnes. Un clic ou Entrée mène à la fiche, sans page de résultats. La page /recherche reste pour le cas sans JavaScript, et se met aussi à jour en tapant. Le code est dans `apps/web/src/lib/recherche-instantanee.ts`.
-> - **Le mode stand ne vit plus que dans l'adresse (`?stand=1`)**, sans cookie. `memoryline.fr` sans le paramètre est le site normal. Base.astro ajoute `stand=1` aux liens et aux formulaires au moment où on les suit, `avecStand()` fait de même pour les îlots, et l'API reconnaît la tablette par l'en-tête `X-Stand: 1` (cadres.ts). Plus besoin de rouvrir le lien chaque matin ; garder le lien complet reste nécessaire.
-> - **Grands bandeaux** (bandeaux visuels) : masqués en mode stand, comme le bandeau d'annonce.
->
-> **17/11 au soir — PANNE DU SERVEUR, puis redémarrage** : pendant une mise en ligne (construction des images), Claude faisait préparer en série les images légères des 243 fonds SVG. La mémoire a saturé, et le VPS ne répondait plus du tout (ni site ni SSH). Il a repris TOUT SEUL au bout d'environ une heure, sans redémarrage (uptime de 67 jours, charge sur 15 minutes encore à 23). **Le VPS n'est pas dans le compte OVH du domaine** : il est dans un autre compte (Margaux ?). Noter son identifiant client OVH ici quand on l'a. Depuis : `ff16502`, une seule conversion de fond SVG à la fois pour tout le serveur. **Ne jamais lancer de préparation en masse pendant une mise en ligne.** Après un incident pareil, l'OpenSSH récent pénalise l'adresse qui a raté trop de connexions (jusqu'à environ 10 minutes) : ne pas insister, réessayer une fois plus tard.
->
-> **17/11, aussi fait (en ligne avant la panne)** : bande « Stand fermé » sur la tablette, avec la vente bloquée (`c916765`). Inscription avec confirmation du mot de passe, et « Afficher / Masquer » sur tous les champs mot de passe. Phrase sous l'e-mail de la caisse retirée. Silhouette de chargement de la caisse et du panier (`1e27158`). Fonds SVG servis en WebP léger (`?l=`) et chargement de l'aperçu (`efa2097`).
->
-> **EN LIGNE depuis le 17/11 au soir (`734c16c`)** : `31755a2`, **Retrait au stand** (migration 0082). Vérifié : « Retrait au stand » à 0 € à la caisse, avec le stand ouvert Marché de Noël Mulhouse. **Reste à saisir son « Emplacement exact »** dans BO › Ventes stand. Sont aussi en ligne : clés de paiement en points sans bouton « Effacer » (`d8a8333`), « Commandes en ligne » sans les paniers, « Abonnez-vous à notre newsletter ». Préparation des fonds relancée UN À LA FOIS, avec arrêt si la charge du serveur dépasse 2,5. Il comprend le champ « Emplacement exact » dans Ventes stand, le lieu de retrait de chaque stand tenu tout seul (`pickup_point.stand_id`), et le mode « Retrait au stand » à 0 €, qui ne propose que les stands ouverts. S'y ajoute `ff16502`, une seule conversion de fond à la fois.
->
-> **17/11, après-midi — stands (en ligne, `fdf3e2d`)** :
-> - **Calendrier** : premier et dernier jour, horaires de base (matin, après-midi), jours fermés ou à horaires différents ; chaque jour peut être Normal, Fermé, Matin fermé, Après-midi fermé ou Non-stop (un seul créneau, du début du matin à la fin de l'après-midi). Il se règle à la main jour par jour, OU en une phrase que l'IA applique (`stand-horaires-ia.ts`, OpenAI comme les traductions). Suivi, il ouvre la tablette les jours de marché, toute la journée (`stands-calendrier.ts`, chaque minute). Le bouton prend la main : fermé à la main, il le reste jusqu'à « Rouvrir ».
-> - **Retrait au stand** : tous les stands **activés** (« Activer / Désactiver sur le site », `stand.actif`, 0084), ouverts ou fermés, jusqu'à la fermeture du dernier jour (plus de marge de 3 jours depuis le 17/11 après-midi). À la caisse, le rectangle « Retrait au stand » contient un bouton par stand avec « Ouvert / Fermé en ce moment ». Dessous : l'emplacement, les horaires et la case « au plus tard le <dernier jour ouvert> à <heure> », vérifiée aussi par l'API.
-> - **« Supprimer » en rouge** : seulement un stand sans vente (archivé puis supprimé d'un geste) ; son lieu de retrait part avec lui.
-> - **Prod au 17/11 midi** : Mulhouse (20/11 → 27/12, 11:00–12:30 / 13:00–20:00), **et un « stand de test » visible à la caisse, à supprimer**.
-> - **Aussi** : recherche instantanée ; mode stand par l'adresse seule ; chargements (squelettes, aperçu léger en 400 px puis net) ; fonds SVG en WebP (`?l=`), sans cache mémoire (`sharp.cache(false)`). La préparation des 250 fonds se fait un à un et s'arrête si le serveur est chargé.
-> - **À faire** : passe 4G sur tout le site (demandée le 17/11). Libérer le disque : `docker builder prune -f --keep-storage 3GB` (19,8 Go de cache de construction, refusé à Claude par ses réglages, Alexandra le lance). Supprimer le « stand de test ».
->
-> **Reste, dans l'ordre** :
-> 1. **Webhook Stripe live** : passer son URL à https://memoryline.fr/api/payments/stripe/webhook, puis BO › Paiements › « Vérifier ». PayPal n'a rien à faire : pas de webhook, capture par le serveur.
-> 2. **Le stand.** BO › Ventes stand › « Nouveau code » › « Ouvrir ». Ouvrir le nouveau lien sur la tablette.
-> 3. **Page /pages/mulhouse** : encore « TEST TOUT VOIR », PUBLIQUE, sur la collection « cuisine ».
-> 4. **Les 15 affiches prêtes à imprimer** : sans visuel HD (sinon, les passer en brouillon).
-> 5. **Au BO** : vidéo Tuto (test), collection « Cuisine », relance de panier, pages légales (médiateur), compte vendeur@ à archiver.
-> 6. **Search Console et redirections.** Search Console : propriété et sitemap. Puis l'import des redirections Shopify, et Stripe › Payment method domains.
-> 7. **Remboursement de WEB-0016** sur paypal.com, et `rm ~/.env` (fichier parasite de /home/debian).
-> 8. **À J+7** : ne pas détacher le domaine de Shopify avant, puis mettre le mot de passe sur la boutique Shopify ; effacer `.env.avant-domaine` et les images de secours.
+## 1. Où on en est
 
+- **memoryline.fr est servi par le VPS** (OVH, `debian@51.255.34.187`) depuis la bascule du 17/11. www, http et l'ancien nom `vps-5c917e9d.vps.ovh.net` redirigent vers https://memoryline.fr.
+- **La boutique encaisse pour de vrai depuis le 16/11 à 22 h 29.** Stripe live (compte « Vestiairesauvage »), PayPal live, vrais courriels par Resend (`commandes@memoryline.fr`), bordereaux SendCloud facturés. **Aucune commande d'essai sur le VPS : c'est de l'argent réel.**
+- **Marché de Noël de Mulhouse : du vendredi 20/11 au 27/12** (11:00–12:30 / 13:00–20:00). Tout ce qui touche au stand doit être prêt le 19 au soir.
+- 18/11 : tous les écrans clients contrôlés en ligne sur tablette (768 × 1024 et 1024 × 768, 16 pages) : rien ne déborde, aucune image cassée.
 
-> **17/11 matin : pour la bascule de memoryline.fr, lire `RECETTE-17-11.md`** (plan vérifié pas à pas, avec retour arrière, et ce qu'il faut régler au BO avant). Le script de vidage a été corrigé : il GARDE les ventes payées pour de vrai (WEB-0016) et ne se lance qu'une fois. La recette complète (§ 1 de ce fichier) a été faite et ses bugs corrigés et mis en ligne (`9de3957`). **Bloquant restant, côté données : les 15 affiches prêtes à imprimer n'ont pas de visuel HD, leur PDF est refusé** (visuels de Margaux, ou les passer en brouillon).
+## 2. Avant le marché (19/11 au soir)
 
-> **17/11 dans la matinée (PC du bureau)** : 6 des petits défauts de la recette sont corrigés et en ligne. Le code postal et le téléphone sont contrôlés à la caisse (forme du pays, `codePostalValide` et `telephoneValide` dans packages/types/src/livraison.ts). Le panier garde l'ordre des lignes et la pastille suit les quantités. Les courriels emploient le prénom saisi (`apps/api/src/prenom.ts`). « Encaissé » n'apparaît que pour un paiement réussi. Le message d'encaissement ne promet plus des PDF déjà prêts. La liste est barrée dans RECETTE-17-11.md. **Bascule du domaine prévue aujourd'hui** (Alexandra). Au moment de cette mise en ligne, le TTL est encore à 3600 chez OVH.
+- **Les 15 affiches « prêtes à imprimer »** : leur PDF d'impression est refusé (photo de mise en scène 1020 × 1400 seulement). Soit Margaux dépose le visuel HD de chacune (BO › Produits › la fiche › Images, au moins 1754 × 2480, idéalement 2480 × 3508), soit on les passe en brouillon, soit elles sont déjà imprimées en stock.
+- **BO › Ventes stand** : saisir l'« Emplacement exact » du stand de Mulhouse ; supprimer le « stand de test » (16–18/11).
+- **Webhook Stripe live** : passer son URL à `https://memoryline.fr/api/payments/stripe/webhook` (Stripe ne suit pas les redirections), puis BO › Réglages › Paiements › « Vérifier ». Alexandra s'en charge (clés de prod).
+- **Sur la tablette** (lien complet avec `?stand=1`) : essai à la main du geste « retour » pendant une personnalisation, sans valider de vente. Attendu : la fenêtre se ferme et l'affiche est toujours là.
+- **Consignes au stand** : pas d'écriture chinoise, japonaise ni coréenne sur une affiche ; ne valider aucune vente d'essai.
 
-Fichier de reprise : à lire en premier. `main` fait foi ; la prod (VPS) est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` (messages de commit) et dans les commentaires du code : ce fichier ne garde que ce qui RESTE.
+## 3. Dans le code (Claude)
 
-## 1. Ce qui est en prod (VPS)
+- **Chargements** (demandé le 18/11) : écran d'accueil, places réservées pendant le chargement des images, îlots sans état de chargement. Passe « 4G lente » sur tout le site.
+- **Essai Stripe en mode TEST, en local seulement** : une carte cadeau de 10 € sur une commande de 15 € + port. L'intention Stripe doit s'ouvrir pour le total moins 10 € (montant dans la table `payment`).
+- **PageSpeed** : à relancer après le changement d'image de l'accueil. Alexandra remplace elle-même cette image : ne pas y toucher. Au 17/11 : SEO, accessibilité et bonnes pratiques à 100 ; performance à 78, avec du CSS bloquant et 4 animations non composées.
+- **Import Shopify** : dès qu'Alexandra dépose les deux CSV (procédure au § 5).
+- **Petits défauts de la recette du 16-17/11**, non corrigés :
+  - sur 360 px avec un cadre choisi, la barre du bas déborde (les cadres sont éteints sur le site) ;
+  - la bulle « Plus bas » couvre deux vignettes de personnages sur petit téléphone, jusqu'au premier défilement ;
+  - la poignée ⠿ fait 19 px ;
+  - le champ d'une ligne longue ne s'agrandit pas ;
+  - les emojis plus récents que Twemoji 15.0 disparaissent du papier sans avertissement ;
+  - ♥ ☀ ❄ sont en noir à l'écran, en couleur sur le papier ;
+  - la facture PDF retire les emojis ;
+  - la vignette d'aperçu reste sur le disque après qu'on retire l'article.
+- **Jamais essayé au navigateur avec le BO connecté** :
+  - la suppression définitive sur les écrans atelier, catalogue et contenu ;
+  - le remboursement à montant libre ;
+  - le retour de Stripe après un paiement à redirection (codé et testé, `tests/retour-stripe.test.ts`) ;
+  - la vidéo du Tuto sur un vrai iPhone ou iPad.
 
-Tout `main` jusqu'à `58c4cfb` (17/11 vers 0 h 30), migrations jusqu'à **0079**. **La boutique ENCAISSE POUR DE VRAI depuis le 16/11 à 22 h 29** (interrupteur « La boutique encaisse » de BO › Réglages › Paiements sur « Production » ; `/api/payments/config` répond `essai: false`) : clés live Stripe (compte « Vestiairesauvage », acct_1Gf3EMDHpiqWhnk8) et PayPal saisies au BO et vérifiées, webhook Stripe live sur `https://vps-5c917e9d.vps.ovh.net/api/payments/stripe/webhook`. Les vrais courriels partent (Resend, domaine memoryline.fr vérifié, `MAIL_FROM=Memory Line <commandes@memoryline.fr>`) et les bordereaux SendCloud achetés sont FACTURÉS. `PUBLIC_JEU_ESSAI` retiré du .env le 16/11 (plus de bandeau « Site de test » ni de compte pré-rempli). Le site reste sur l'adresse du VPS, en noindex : **memoryline.fr pointe toujours sur Shopify** (voir § 2, bascule du domaine).
+## 4. Pour Alexandra et Margaux (BO, comptes, décisions)
 
-**Commande d'essai RÉELLE à rembourser** : WEB-0016 (id 111), payée par PayPal live le 16/11 à 22 h 35 par Alexandra. Remboursement refusé par PayPal (`REFUND_FAILED_INSUFFICIENT_FUNDS`) : le solde contenait la vente MOINS les frais PayPal, et un remboursement complet doit rendre tout ce que le client a payé (PayPal ne rend pas ses frais). Vaut pour tout remboursement complet d'une vente PayPal. À faire : Margaux lie un compte bancaire à son PayPal (Portefeuille › Associer une banque) ou ajoute quelques euros au solde, puis BO › la commande › « Rembourser » (montant plein, case « Annuler aussi la commande »). **Ne pas acheter de bordereau pour elle.**
+**Légal**
+- **Pages légales** (BO › Réglages › Textes légaux) : 3 « À COMPLÉTER ». Le **médiateur de la consommation** (CGV, obligatoire) et deux durées d'inactivité (confidentialité).
+- **Page Cookies** : elle doit citer la mesure d'audience. Google Tag Manager (`GTM-PJ2BFXCB`) est en ligne, avec le Consent Mode sur le bandeau.
+- Dans GTM, **toute balise d'un autre éditeur que Google doit attendre le consentement**.
+- **Licence commerciale de la police « Another Shabby »** : la version en service est une licence d'essai, non commerciale. L'acheter, puis remplacer `apps/api/fonts/AnotherShabby-Regular.ttf` et `apps/web/public/fonts/AnotherShabby-Regular.ttf` (hors git).
 
-**Derniers ajouts en ligne (16–17/11)** : remboursement à un seul endroit (bloc « Rembourser » de la fiche : tout par défaut, montant en € ou en %, case « Annuler aussi la commande » ; le bloc « Annuler » ne touche plus à l'argent ; « tout » rend exactement ce qui reste encaissé, remises et montants libres compris) ; annuler une commande annule aussi son bordereau chez SendCloud (avant l'argent) ; refus PayPal expliqués en clair ; fuseau de Paris partout ; emojis en couleur dans le PDF (Twemoji, crédit dans les mentions légales, 0079) ; fonds imprimés à pleine résolution ; page de maintenance pendant les mises en ligne ; suppression définitive des éléments archivés ; Reply-To des courriels.
+**Argent**
+- **WEB-0016** (PayPal live, 16/11) : à rembourser. PayPal a refusé, faute de solde : un remboursement complet rend tout ce que la cliente a payé, alors que PayPal garde ses frais. Margaux lie une banque ou ajoute quelques euros, puis BO › la commande › « Rembourser », montant plein, « Annuler aussi la commande ». Ne pas acheter de bordereau pour elle.
 
-## 2. Reste à faire dans le code (Claude)
+**Référencement et ancien site**
+- **Search Console** : propriété « Domaine » memoryline.fr (un TXT de plus dans la zone OVH, sans toucher au SPF) et plan du site.
+- **Redirections Shopify** : admin Shopify › Contenu › Menus › Redirections d'URL › Exporter, puis BO › Boutique en ligne › Redirections › Importer.
+- **Stripe › Payment method domains** : ajouter memoryline.fr.
+- Rejouer `node apps/web/scripts/verifier-anciennes-adresses.mjs https://memoryline.fr`, puis suivre les 404 dans la Search Console (chaque ancienne adresse en 404 va dans BO › Redirections).
+- **À J+7 (24/11)** : ne pas détacher le domaine de Shopify avant. Ensuite, mettre le mot de passe sur la boutique Shopify ; sur le serveur, effacer `.env.avant-domaine` et les images `secours-{api,web,admin}:avant-domaine`.
 
-- **BASCULE DU DOMAINE memoryline.fr AVANT JEUDI 19/11 (avant-première du marché de Noël)** — décidée par Alexandra le 16/11 au soir. **Déroulé à suivre : `RECETTE-17-11.md` § 2 et § 3** (le reste de ce paragraphe est l'ancienne version, gardée pour mémoire ; l'ordre « DNS puis mettre-en-ligne.sh » y est FAUX, et WEB-0016 n'a plus à être remboursée avant le vidage). Ancien déroulé : `MISE-EN-PROD.md` § « Jour J » (étapes 0 et 5 déjà faites : APP_SECRET posé, clés live, interrupteur en production). Restent : (1) vider les données d'essai (`apps/api/scripts/vider-donnees-test.sh` : écrit le 6/10, JAMAIS relancé depuis — le relire contre le schéma actuel avant ; le mode automatique de Claude refuse de le lancer, même en lecture : Alexandra le lance) — attention, il FERME le stand « Marché de Noël Mulhouse » (le rouvrir ensuite, nouveau code, nouveau lien de tablette) et supprime la commande WEB-0016 (la rembourser AVANT) ; (2) .env : `DOMAINE=memoryline.fr`, `DOMAINE_WWW=www.memoryline.fr` (absente aujourd'hui), `PUBLIC_ORIGIN=https://memoryline.fr`, `PUBLIC_NOINDEX=false` ; (3) DNS chez OVH : A de `memoryline.fr` et de `www` → `51.255.34.187` à la place de Shopify (23.227.38.65), NE PAS toucher MX, SPF, ni les lignes Resend (`resend._domainkey`, `send`, `rsend`, `_dmarc`), puis reconstruire aussitôt (`mettre-en-ligne.sh`) ; (4) nouveau webhook Stripe live sur `https://memoryline.fr/api/payments/stripe/webhook` et son `whsec_` au BO ; (5) vérifications § 8. Le 16/11 au soir, deux analyses tournaient sur le PC de la maison (relecture adverse de cette bascule + recette complète : stand, fonds, emojis, commande, mobile) : si leurs résultats ne sont pas reportés ici, les relancer.
-- **Page du stand** (BO › Pages) : /pages/mulhouse s'appelle « TEST TOUT VOIR », ne montre que la collection « cuisine » et est visible hors stand. La régler sur la collection « marche-de-noel-mulhouse-2026 » (80 affiches) et « Où la page se montre : stand ».
+**Serveur**
+- `rm ~/.env` : un fichier parasite dans `/home/debian`, avec une ligne MAIL_FROM. Ce n'est pas celui de `~/memoryline`.
+- **Sauvegardes** : les copier hors du serveur au moins une fois par semaine (la dernière ligne de `sauvegarder.sh` donne la commande). `restaurer.sh` n'existe pas. Ne jamais restaurer une sauvegarde d'avant le vidage du 17/11 à 08 h 38.
+- **Le VPS n'est pas dans le compte OVH du domaine.** Noter ici son identifiant client OVH quand on l'a.
 
-**16/11 au soir, en ligne (`f3bd825`) — liste de Margaux avant le marché de Noël (avant-première jeudi 19/11)** :
-- **16/11, 23 h, en ligne (`08e590f`, migration 0079)** : crédit Twemoji dans les mentions légales ; retour Stripe : message dédié quand le montant payé diffère (issue « ecart ») ; une vente du stand passée par la caisse du site perd sa note « Stand : … » et son étiquette ; commentaires de schema.ts à jour.
-- **Passage en production (paiements)** : au 16/11 le VPS n'a QUE des clés d'essai (Stripe sk_test/pk_test sans secret de webhook, PayPal sandbox complet) et aucune clé dans le BO → « Passer en production » est grisé (« Aucune clé live »). Il faut les clés live de Margaux (PayPal : Client ID + Secret ; Stripe : pk_live, sk_live, whsec du webhook `…/api/payments/stripe/webhook`, événement `payment_intent.succeeded`), saisies au BO colonne « Production » puis « Vérifier ». PayPal seul suffit pour basculer. Marche à suivre envoyée à Margaux le 16/11. Variables du .env : PAYPAL_CLIENT_ID, PUBLIC_PAYPAL_CLIENT_ID, PAYPAL_SECRET, PAYPAL_ENV, STRIPE_SECRET_KEY, PUBLIC_STRIPE_KEY, STRIPE_WEBHOOK_SECRET. SendCloud : mêmes clés en essai et en réel (déjà là) ; en production chaque bordereau acheté est facturé.
-- **Page du stand pas prête (vu le 16/11 sur le VPS)** : /pages/mulhouse (id 10) s'appelle « TEST TOUT VOIR », est visible hors stand, et son seul bloc montre la collection « cuisine » (1 affiche). La collection « marche-de-noel-mulhouse-2026 » (80 affiches) n'est sur aucune page. À régler au BO › Pages par Margaux/Alexandra. Stand créé : « Marché de Noël Mulhouse » (id 1).
-- **Recette du 16/11 au soir** (workflow, pile locale) : stand sur tablette, rendu de tous les fonds avec la nouvelle densité, emojis, commande du site, module sur mobile — résultats à reporter ici.
-- **Fuseau horaire** : `packages/types/src/fuseau.ts` (jourAParis, instantDeParis, champAParis, debutDuMoisAParis…), tests `tests/fuseau.test.ts` (tournent en TZ=America/Los_Angeles). Vrai bug corrigé : le total « Aujourd'hui » de /admin/stats/orders (Ventes salon, Commandes, accueil du BO) comptait les 24 dernières heures au lieu du jour à Paris ; aussi quota IA du mois, courbe de ventes d'une fiche, suppression d'une promo datée. Factures, courriels, filtres, exports, champs datetime-local des promos/bandeaux calés explicitement sur Paris. La base PostgreSQL reste en UTC (normal, les requêtes de découpage ont `at time zone`).
-- **Emojis dans le PDF** : posés comme images Twemoji en couleur (`@twemoji/svg`, `packages/types/src/emojis.ts`, `pdf.ts`), tests `tests/emojis.test.ts`. Ligne sans emoji : pixels identiques. **À ajouter aux mentions légales** : « Emojis : graphismes Twemoji — Copyright 2019 Twitter, Inc and other contributors (github.com/jdecked/twemoji) — licence CC-BY 4.0. »
-- **Qualité d'impression** : fonds SVG dessinés directement à la taille d'impression (densité calculée, plus de 150 dpi agrandi) + léger renforcement (`fondSvgRasterise`). Cache des fonds renouvelé : premier PDF d'un fond plus lent (jusqu'à ~1 min).
-- **Remboursement à montant libre** (Stripe ou PayPal, selon qui a encaissé) : fiche commande › Rembourser › « OU un montant libre » ; API `amountCents` dans `/admin/orders/:id/refunds`, plafonné à ce qui reste encaissé. **Pas cliqué au BO connecté** : à essayer sur une commande payée en essai.
-- **Menu** : le lien « TOUT VOIR » (menu_item 15) menait à /pages/collection-tout-voir (404) → /affiches?collection=collection-tout-voir (corrigé en base).
-- **Courriels testés sur le VPS** (en essai → Mailpit) : contact → boutique (Reply-To client), accusé au client (Reply-To boutique), avis « Nouvelle commande » → agence.glowup@gmail.com. Les commandes WEB-0015/0042 n'avaient pas eu d'avis car MAIL_BOUTIQUE était vide à l'époque.
-- **Resend** : 4 lignes DNS ajoutées chez OVH le 16/11 (DKIM `resend._domainkey`, CNAME `rsend` et `send`, DMARC `_dmarc`), vérifiées ; `MAIL_FROM="Memory Line <commandes@memoryline.fr>"` dans le .env du serveur (par Alexandra). Domaine **vérifié par Resend le 16/11 à 21 h 29** : un mail d'essai envoyé du serveur par Resend (expéditeur commandes@memoryline.fr) vers memoryline.contact@gmail.com a été accepté (200). Un `~/.env` parasite traîne dans /home/debian (une ligne MAIL_FROM) : à effacer (`rm ~/.env`). Les vrais courriels ne partent qu'en « Pour de vrai » (interrupteur, qui passe aussi les paiements en réel).
+**Au BO**
+- Vidéo du Tuto : c'est toujours celle d'essai, le bouton reste éteint jusqu'à la vraie.
+- Collection « Cuisine » (une seule affiche).
+- Relance de panier : base légale, délai et texte à valider par Margaux, sinon l'éteindre.
+- Relire les promotions et les bandeaux.
+- Archiver le compte d'essai `vendeur@memoryline.fr`.
+- **Compte BO de Margaux** : un seul compte, rôle « Propriétaire », créé avec `create-admin` SUR le VPS, jamais depuis le PC. Mot de passe de 10 caractères au moins, jamais collé dans une conversation.
 
-- **14/11, en ligne (`0d59ff2`)** : carte « Pouvoir supprimer aussi les images sur les fiches produits » jugée « pas bonne » par Margaux — le bouton définitif n'était que dans la section repliée des visuels archivés. Chaque visuel en service a maintenant « Supprimer » (archive puis supprime ; s'il sert à une commande, il reste archivé avec un message). Pas cliqué au BO connecté.
+**Margaux**
+- **Tenues par défaut** des personnages de face : BO › Personnages › fiche › Calage des pièces.
+- **Calages à refaire** :
+  - femmes de dos : « Cheveux longs raides femme 6 », « Hair raides longs », « Hair bouclés courts » ;
+  - Femme 6 : « TEST ».
+- **Textes des fiches à valider** : https://claude.ai/artifact/XKJoTgX1W2JJatZ6H3UJDm. Elle remplit la colonne « Décision », puis on importe par BO › Produits › Importer.
+- **Rayon « Accessoires »** : 25 affiches de villes sous un texte de porte-clés et de chaussettes. Le cacher, ou lui donner un texte juste. La question est à lui reformuler.
+- Valider les 18 redirections des fiches disparues (`apps/web/src/lib/anciennes-adresses.ts`) et les seuils de composition des personnages (`packages/types/src/composition-personnages.ts`).
+- Traductions des fiches, catégories et cadres : au BO, « Proposer les traductions manquantes ».
+- Facultatif : une page « affiches-personnalisables » avec le texte de l'ancienne page Shopify (`memoryline-page-affiches-personnalisables.html`, PC du bureau).
+- En attente : la carte Trello « Bordereau La Poste » (Alexandra) ; la question des fonds WebP des commandes, à reposer.
 
-- **Pas essayé au navigateur, BO connecté** : la suppression définitive sur les écrans atelier, catalogue et contenu (seuls les écrans « ventes » l'ont été).
-- **Vidéo du Tuto sur un vrai iPhone/iPad** : corrigée pour Safari le 11/11 (`dd72e8b`) mais vérifiée seulement en Chrome simulé. À faire retester par Margaux. Depuis le 12/11 (`330e4c5`), elle s'affiche aussi en mode stand (vérifié sur le VPS avec ?stand=1) : sur la tablette du stand, elle ne la voyait pas car elle y était masquée exprès.
-- **Retour de Stripe après un paiement à redirection** : codé et testé (`tests/retour-stripe.test.ts`), jamais essayé avec un vrai paiement d'essai.
-- Petits restes sans gravité : une vente du stand passée par le site garde sa note « Stand : … » ; les commentaires d'en-tête de `apps/api/src/db/schema.ts` disent encore « numérotation sans trou ni doublon » / canal « immuable » ; au retour de Stripe, un paiement réussi d'un montant différent (`MontantEncaisseDifferent`) affiche « en cours de validation » au lieu de dire qu'on revient vers la cliente.
+## 5. Import de l'historique Shopify
 
-## 3. À faire sur le BO ou le serveur (vérifié sur le VPS le 11/11, réponses d'Alexandra du 11/11)
+L'import est prêt et sûr sur la base en service (`apps/api/scripts/import-historique.ts`).
+- Il lit l'export natif, ou Matrixify.
+- Il ne supprime rien. Il fusionne les clientes par e-mail en complétant les fiches, sans rien écraser. Il n'abonne jamais une adresse désabonnée.
+- Les numéros sont `SHOP-1001…`. Les commandes reprises restent hors des listes de travail ; l'API leur refuse facture, courriels, étiquette, encaissement et remboursement.
+- Une cliente reprise choisit son mot de passe par « mot de passe oublié ».
 
-**Pour Margaux (à lui transmettre) :**
-- **Tenues par défaut des personnages de face** : aucune aujourd'hui (c'est à elle de voir). Sans elles, les couleurs de face ne se voient qu'après avoir touché un vêtement. BO › Personnages › fiche › Calage des pièces › « Le personnage porte cette pièce par défaut ».
-- **Calages à refaire** (depuis le 27/10) : sur les femmes de dos, recaler séparément « Cheveux longs raides femme 6 », « Hair raides longs », « Hair bouclés courts » ; sur Femme 6, caler « TEST ».
-- **Visuels HD des 15 affiches « prêtes à imprimer »** : vérifié le 11/11, elles n'ont toujours que des images de 1 020 × 1 400 px (les visuels HD ne sont pas sur le site). Sans eux, leur PDF d'impression est refusé (il faut ≥ 1 240 × 1 754 en A4, 1 754 × 2 480 en A3). Elle peut les déposer elle-même : fiche de l'affiche › bloc « Images ».
-- **Vidéo du Tuto** : elle ne l'a pas encore ; c'est la vidéo de TEST qui reste en attendant. Fichier .mp4 à téléverser (BO › Contenu du site › Personnalisation — vidéo explicative).
+**Procédure :**
+1. Les CSV (Clients › Exporter › Tous les clients ; Commandes › Exporter › Toutes les commandes) vont dans `data/exports/shopify/`.
+2. `scp -r data/exports/shopify debian@…:~/import-shopify`.
+3. Sur le serveur : `docker compose -f docker-compose.prod.yml cp ~/import-shopify api:/tmp/import-shopify`.
+4. Aperçu : `docker compose -f docker-compose.prod.yml exec -w /app/apps/api -e IMPORT_DIR=/tmp/import-shopify api npx tsx scripts/import-historique.ts`.
+5. `bash apps/api/scripts/sauvegarder.sh`.
+6. La même commande que l'aperçu, avec `--pour-de-bon`.
+7. Effacer `~/import-shopify` et `/tmp/import-shopify` (données personnelles).
 
-**Pour plus tard :**
-- **Compte du BO de Margaux** (agence.glowup@gmail.com) : on le fera plus tard. **Un seul compte, rôle « Propriétaire »** : ce rôle fait déjà tout, y compris vendre au stand (Ventes stand › « Ouvrir ») — pas besoin d'un compte vendeur en plus. Le compte vendeur@memoryline.fr n'est qu'un compte d'essai (à archiver un jour).
-- **Courriels réels — l'expéditeur (`MAIL_FROM`)** : Alexandra voulait l'adresse de Memory Line (memoryline.contact@gmail.com). Resend refuse d'envoyer « au nom » d'une adresse gmail : il faut une adresse sur le domaine **memoryline.fr**, une fois ce domaine vérifié chez Resend (des lignes DNS à ajouter chez l'hébergeur du domaine). Par ex. `Memory Line <commandes@memoryline.fr>`, les réponses partant déjà vers la boîte de la boutique (Reply-To = `CONTACT_TO`). À faire au moment de l'ouverture (MISE-EN-PROD § 3). **Le 13/11** : la clé Resend est dans le `.env` du serveur (Alexandra). Reste à Margaux la vérification du domaine memoryline.fr chez Resend (lignes DNS dans la zone OVH, instructions pas à pas données le 13/11), puis `MAIL_FROM` dans le `.env` et redémarrage de l'API. BO › Réglages › Paiements dit exactement ce qui manque (`b813c8c`).
-- **Interrupteur « Garder en essai / Production »** (BO › Réglages › Paiements ; il décide aussi des courriels et des étiquettes) : rien à faire maintenant (sans clic, la boutique reste en essai). Le jour de l'ouverture : « Pour de vrai ».
-- **Lieux de retrait** : aucun pour l'instant ; la cliente choisira son lieu à la caisse parmi ceux créés (BO › Livraison › Lieux de retrait). À créer quand ils seront connus ; sans lieu, le retrait sur place n'apparaît pas.
-- **Redirections de Shopify** (avant de fermer la boutique Shopify) : sur l'ancien site, des adresses ont pu être renvoyées vers d'autres à la main (ex. une ancienne fiche « strasbourg » vers « colmar »). La liste s'exporte de l'admin Shopify (Contenu › Menus › Redirections d'URL › Exporter) et s'importe dans BO › Boutique en ligne › Redirections. Les adresses des fiches et collections Shopify, elles, sont déjà redirigées automatiquement par le nouveau site.
-- **Page « affiches-personnalisables »** : l'ancienne adresse `/pages/affiches-personnalisables` mène déjà au rayon « Affiches personnalisables » (vérifié). Facultatif : y reprendre le long texte de l'ancienne page Shopify (fichier `memoryline-page-affiches-personnalisables.html`, PC du bureau) en créant une page de ce nom.
-- Relire la promotion 3+1 (BO › Promotions) et les messages du bandeau.
+**À trancher en lisant l'aperçu** :
+- les commandes pending ou authorized de Shopify sont reprises hors ventes ;
+- les payées non expédiées sont marquées traitées (à envoyer depuis Shopify) ;
+- le taux de transformation sera gonflé sur les périodes Shopify.
 
-**Fait le 13/11** (`d0695db`, `3b37a83`, `9afbc64`) : une page « tablette du stand seulement » s'ouvre sur la tablette en mode stand, et son lien au menu ne se voit qu'en mode stand (cms.ts, `demandeDuStand`) — pour le marché de Noël de Mulhouse : page avec d'abord un bloc d'affiches de la collection Mulhouse ; hors stand, page introuvable et lien absent. Une collection vide dit au BO comment la remplir (Produits › filtrer › cocher › Ajouter). Bande « ● Mode stand » en haut de l'en-tête en mode stand.
+## 6. Bon à savoir
 
-**Fait le 13/11 (suite)** : (1) **Mon mot de passe** (BO, lien en haut à droite, `/mot-de-passe`) — chaque compte change le sien, vendeur compris ; l'ancien est demandé, les autres sessions sont fermées (`POST /auth/mot-de-passe`). La propriétaire change celui de n'importe quel compte dans BO › Comptes ; les clientes dans Mon compte › Mes infos ou par « Mot de passe oublié » ; en dernier recours, `create-admin` sur le VPS (MISE-EN-PROD.md). (2) **Mode stand** : seul le lien de la tablette (avec `code=`) le retient d'une page à l'autre ; un simple `?stand=1` (lien « Voir la page » d'une page réservée au stand) ne vaut que pour la page ouverte. Alexandra : « le mode stand est uniquement sur des pages spécifiques créées quand on fait un salon ». Un cookie posé avant reste 24 h : `?stand=0` l'enlève. (3) **Signature** « Créé avec ♥ par Alexandra Porhansl » (lien alexandraporhansl.com) dans le pied de page, 5 langues, et section « Conception et réalisation » dans les mentions légales (migration 0078).
+**Mettre en ligne** (Git Bash, à la racine du dépôt ; seul ce qui est commité part) :
+```
+rm -f ../memoryline-deploiement.tar ../memoryline-deploiement.tar.gz
+git -c core.autocrlf=false archive --format=tar -o ../memoryline-deploiement.tar HEAD -- . ':(exclude)data/memoryline-archive'
+tar --force-local -rf ../memoryline-deploiement.tar apps/api/fonts/AnotherShabby-Regular.ttf apps/web/public/fonts/AnotherShabby-Regular.ttf
+gzip -9 ../memoryline-deploiement.tar
+ssh -n -i ~/.ssh/memoryline_deploiement debian@51.255.34.187 "uptime; free -m"
+scp -i ~/.ssh/memoryline_deploiement ../memoryline-deploiement.tar.gz debian@51.255.34.187:~/memoryline-deploiement.tar.gz
+ssh -n -i ~/.ssh/memoryline_deploiement debian@51.255.34.187 "tar -xzf ~/memoryline-deploiement.tar.gz -C ~/memoryline apps/api/scripts/mettre-en-ligne.sh && bash ~/memoryline/apps/api/scripts/mettre-en-ligne.sh"
+```
+- `mettre-en-ligne.sh` fait la sauvegarde, la construction, les migrations et le redémarrage.
+- Une page de maintenance s'affiche pendant environ 2 minutes. Ne pas lancer PageSpeed à ce moment-là : le 17/11, un SEO à 42 venait de là.
+- La clé `~/.ssh/memoryline_deploiement` est sur le PC du bureau. Sans elle (PC de la maison), on retire `-i …` et Alexandra tape elle-même le mot de passe.
 
-**Fait le 12/11** : bouton « Supprimer définitivement » sur la page globale Archives (essayé en local sur une pièce d'essai) ; adresse de la boutique dans les factures, les mentions légales, les CGV et la confidentialité (0075).
+**Vérifier avant de commiter** (conteneurs Docker locaux `memoryline-*`) :
+- API : `npx tsc --noEmit -p .` puis `npx tsx --test tests/*.test.ts` dans `apps/api` ; 353 tests ou plus doivent passer.
+- BO : `npx astro check` dans `apps/admin`.
+- Site : `npx tsc --noEmit -p .` dans `apps/web` (3 erreurs anciennes de StandSalon, tolérées).
+- Configurateur : `tsc` dans `packages/configurator`.
+- Migrations locales : `npm run db:migrate` dans `apps/api`.
+- Essais à l'écran : Chrome sans écran piloté par script (CDP), jamais en prenant la main sur l'écran.
+- Compte d'essai du BO local : le recréer avec `pnpm --filter @memoryline/api run create-admin <email> <mdp> owner`.
 
-**Fait et vérifié le 11/11** (sorti de la liste) : les trois « Femme test » archivées ; signature réglée (9) ; ombres cochées sur les pièces 517, 520, 521, 523 ; une vraie commande payée sur le site depuis la correction du 500 (WEB-0015, 29/10) ; `CONTACT_TO` et `MAIL_BOUTIQUE` renseignées ; SIRET 00047 et délai dans les pages légales.
+**Serveur**
+- Il n'a que 3,8 Go de mémoire. **Ne jamais lancer de préparation en masse pendant une mise en ligne** : le 17/11 au soir, le VPS est resté une heure sans répondre.
+- Après trop de connexions SSH ratées, OpenSSH bloque l'adresse pendant environ 10 minutes : ne pas insister, réessayer une fois plus tard.
+- Cache Docker : le crontab de debian lance `apps/api/scripts/vider-cache-docker.sh` chaque nuit à 1 h (heure de Paris). Il garde 3 Go. Journal : `sauvegardes/journal-cache.txt`.
+- Journal de l'API : `docker compose -f docker-compose.prod.yml logs api`, dans `~/memoryline`.
+- Page de maintenance à la main : `touch ~/memoryline/maintenance/ACTIVE`, puis `rm`.
+- Lister les variables du `.env` sans les secrets : `grep -oE '^[A-Za-z_]+=' ~/memoryline/.env`.
+- **Piège** : un copier-coller depuis une conversation change `www.memoryline.fr` en lien Markdown, jusque dans le `.env`. Contrôler avec `grep '^DOMAINE_WWW=' .env | tr '.' ' '`.
 
-## 4. En attente d'une décision ou de Margaux
-
-- **Vu le 13/11 sur le VPS** : le sous-lien « TOUT VOIR » du menu mène à /pages/collection-tout-voir, qui n'existe pas (404) : le rediriger au BO › Menu du site en choisissant une page dans la liste. La collection « Mulhouse » est à remplir (Produits › filtrer › cocher › Ajouter) et la page /pages/mulhouse (id 10, « tablette du stand seulement ») n'a encore aucun bloc d'affiches.
-- **Compte BO de Margaux / de la boutique** (memoryline.contact@gmail.com) : Alexandra a lancé `create-admin` depuis PowerShell sur son PC, ça ne pouvait pas marcher. À lancer SUR le VPS (après `ssh -i ~/.ssh/memoryline_deploiement debian@51.255.34.187`), mot de passe de 10 caractères au moins, jamais collé dans une conversation ; ensuite chacun le change dans BO › Mon mot de passe.
-- **Remboursements** : fait le 16/11 (montant libre + rappel des règles de rétractation sous le formulaire).
-
-- **Pages légales** : le 12/11, Alexandra a fait retirer des mentions légales la demande de téléphone, de nom et de RCS (0077). Reste surtout le **médiateur de la consommation** (obligatoire, dans les CGV), et les autres « À COMPLÉTER » des CGV et de la confidentialité (date, durées, prestataires, crédits des illustrations dans les mentions). Ancien constat : il manque un téléphone, son nom complet (entrepreneur et directeur de la publication), l'immatriculation (RCS ou répertoire des métiers) s'il y en a une, et le **médiateur de la consommation (obligatoire)**. L'adresse (7 chemin du Jeu d'Arc, 60170 Saint-Crépin-aux-Bois) et « Entrepreneur individuel » sont posées depuis le 12/11 (migration 0075), comme l'adresse des factures.
-- **Textes des fiches** (23/10) : document « Textes des fiches à valider », https://claude.ai/artifact/XKJoTgX1W2JJatZ6H3UJDm — colonne « Décision » à remplir (Margaux a demandé ce que c'est : lui expliquer). Ensuite, import des descriptions par BO › Produits › Importer.
-- **Rayon « Accessoires »** : 25 affiches de villes sous un texte qui parle de porte-clés et de chaussettes. Le cacher, ou lui donner un texte juste ? (Margaux n'a pas compris la question : la lui reformuler.)
-- Faire valider par Margaux : les 18 redirections des fiches disparues (`apps/web/src/lib/anciennes-adresses.ts`) et les seuils de composition des personnages (`packages/types/src/composition-personnages.ts`).
-- Traductions des fiches, catégories et cadres : au BO (« Proposer les traductions manquantes »).
-- Carte Trello « Bordereau La Poste » : en attente côté Alexandra.
-- Fonds WebP des commandes : question à reposer à Margaux.
-
-## 5. Bon à savoir
-
-- **Mise en ligne** : `MISE-EN-PROD.md`, étape 1 (archive depuis `main` + polices AnotherShabby hors git, puis `mettre-en-ligne.sh` sur le serveur : sauvegarde, construction, migrations, redémarrage). Depuis le PC du **bureau** et, depuis le 22/10, celui de la **maison**, Claude peut mettre en ligne sans mot de passe (clé SSH `~/.ssh/memoryline_deploiement` sur chacun) : `scp -i ~/.ssh/memoryline_deploiement …` puis `ssh -i ~/.ssh/memoryline_deploiement …` avec la commande de `MISE-EN-PROD.md`. L'archive se construit avec `git -c core.autocrlf=false archive --format=tar -o memoryline-deploiement.tar HEAD -- . ':(exclude)data/memoryline-archive'`, plus les deux polices AnotherShabby (`tar --force-local -rf`), puis `gzip -9` (≈ 4,4 Mo ; sans l'exclusion, 1 Go). Journal de l'API : `docker compose -f docker-compose.prod.yml logs api` dans `~/memoryline`. Depuis l'autre PC : la commande en une ligne de `MISE-EN-PROD.md`, avec le mot de passe.
-- **Page de maintenance** : posée et retirée par `mettre-en-ligne.sh` (fichier `maintenance/ACTIVE`, servi par Caddy en 503 ; l'API et le BO n'y passent pas). À la main sur le serveur : `touch ~/memoryline/maintenance/ACTIVE` / `rm`.
-- **Mailpit du serveur** (pré-prod en essai : tous les courriels y vont) : `ssh -i ~/.ssh/memoryline_deploiement -L 8026:127.0.0.1:8025 debian@51.255.34.187`, puis http://localhost:8026.
-- Compte d'essai du BO **local** : `essai-claude@example.test` sur le PC du bureau (ancien : `essai-module@example.test`) ; le remettre sur un PC avec `pnpm --filter @memoryline/api run create-admin <email> <mdp> owner`.
-- Le cache de construction Docker du VPS a été nettoyé le 19/10 (20 Go libérés, disque à 36 %) ; quand il se remplit : `docker builder prune -f --keep-storage 3GB` sur le serveur.
-- Tests à l'écran sans prendre la main : Chrome headless piloté par script (voir `tests-sans-prendre-l-ecran` dans la mémoire du PC du bureau), jamais de computer-use.
-- Règles : `main` fait foi ; ne jamais commiter `.env`, `data/`, `sauvegardes/` ni les polices AnotherShabby ; ne jamais lire `.env` ; on archive d'abord ; la suppression DÉFINITIVE (depuis le 8/11) n'existe que pour un élément déjà archivé, via `apps/api/src/suppression.ts` (refus 409 si quelque chose s'en sert encore) — commandes payées/facturées jamais supprimées ; messages pour Margaux en tutoiement, BO en vouvoiement ; textes du site dans `ui.ts` en 5 langues.
+**Règles**
+- Ne jamais lire ni afficher un `.env`. Les clés de prod, Alexandra les saisit elle-même.
+- Ne jamais commiter `.env`, `data/`, `sauvegardes/`, les polices AnotherShabby, ni `.claude/launch.json`.
+- Ne plus jamais lancer `vider-donnees-test.sh`.
+- Pas de branche de travail : tout va dans `main`, et ce qui reste à faire va dans ce fichier.
+- On archive d'abord. La suppression définitive ne vaut que pour un élément déjà archivé (`apps/api/src/suppression.ts`). Une commande payée ou facturée n'est jamais supprimée.
+- Textes pour Margaux au tutoiement, BO au vouvoiement, textes du site dans `apps/web/src/i18n/ui.ts` en 5 langues.
+- Sous Windows, les antislashs sont mangés dans `node -e '…'` et dans certains heredocs : écrire le code dans un fichier.
+- Des commentaires du code citent `AUDIT-SEO.md` (repères CNT-3, VIT-2…) ou `MISE-EN-PROD.md`. Ces fichiers ont été supprimés le 18/11 ; on les relit dans l'historique : `git show 1fdff55:AUDIT-SEO.md`.
