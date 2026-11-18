@@ -44,6 +44,7 @@ import { db, schema } from "./db/client.js";
 import { clientDeLaRequete } from "./comptes.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 import { supprimerPourToujours } from "./suppression.js";
+import { traductionDe } from "./traductions.js";
 import {
   STYLE_MEMORY_LINE,
   ajouterDemandeClient,
@@ -1733,7 +1734,7 @@ export function mountIaRoutes(app: Hono): void {
       | Record<string, { title?: string } | undefined>
       | null
       | undefined;
-    const traduit = t?.[langue]?.title;
+    const traduit = traductionDe(t, langue)?.title;
     return typeof traduit === "string" && traduit.trim()
       ? traduit.trim()
       : ligne.title;

@@ -50,6 +50,7 @@ import { cibleDuLien, menuSuitLOrdre } from "./menu-ordre.js";
 import { supprimerPourToujours } from "./suppression.js";
 import { languesDeLaPage } from "./referencement.js";
 import { dimensionsDuVisuel } from "./dimensions-visuels.js";
+import { traductionDe } from "./traductions.js";
 
 /**
  * L'ordre des pages, partout où elles se listent : celles que la boutique a
@@ -116,12 +117,14 @@ function pageDuLien(href: string): string | null {
  * colonnes elles-mêmes. Les noms servent les messages du back-office, où
  * « l'italien » se comprend mieux que « it ».
  */
-const LANGUES = ["en", "de", "it", "es"] as const;
+const LANGUES = ["en", "de", "it", "es", "ja", "zh"] as const;
 const NOM_LANGUE: Record<string, string> = {
   en: "anglais",
   de: "allemand",
   it: "italien",
   es: "espagnol",
+  ja: "japonais",
+  zh: "chinois",
 };
 
 /**
@@ -869,7 +872,7 @@ async function produitsDuBloc(
     slug: p.slug,
     // Même repli que sur la fiche produit : une traduction absente ou vide
     // affiche le français, jamais un blanc.
-    name: utile(langue === "fr" ? undefined : p.translations?.[langue]?.name) ?? p.name,
+    name: utile(langue === "fr" ? undefined : traductionDe(p.translations, langue)?.name) ?? p.name,
     basePriceCents: p.basePriceCents,
     image: imageParProduit.get(p.id) ?? null,
     variants: parProduit.get(p.id) ?? [],
@@ -1004,7 +1007,7 @@ function fusionnerBlocs(
  * ni l'endroit où elle se montre, ni le dictionnaire des traductions.
  */
 async function pagePubliee(page: PageEnregistree, langue: string) {
-  const traduction = langue === "fr" ? undefined : page.translations?.[langue];
+  const traduction = langue === "fr" ? undefined : traductionDe(page.translations, langue);
   const blocs = fusionnerBlocs(page.blocks ?? [], traduction?.blocks);
 
   return {
@@ -1407,7 +1410,7 @@ export function mountCms(app: Hono): void {
     );
 
     const libelle = (l: { label: string; translations: TraductionsMenu | null }) =>
-      utile(langue === "fr" ? undefined : l.translations?.[langue]?.label) ?? l.label;
+      utile(langue === "fr" ? undefined : traductionDe(l.translations, langue)?.label) ?? l.label;
 
     const enfantsPar = new Map<number, { id: number; label: string; href: string }[]>();
     for (const l of lignes) {

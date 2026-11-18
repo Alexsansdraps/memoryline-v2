@@ -562,19 +562,24 @@ type Traduisible = {
 };
 
 function traduire<T extends Traduisible>(p: T, langue?: string) {
-  const t = langue && langue !== "fr" ? p.translations?.[langue] : undefined;
   const utile = (v?: string | null) => (v && v.trim() ? v : undefined);
+  // Japonais et chinois : le champ anglais avant le français (18/11).
+  const champ = (k: "name" | "description") =>
+    !langue || langue === "fr"
+      ? undefined
+      : (utile(p.translations?.[langue]?.[k]) ??
+        (langue === "ja" || langue === "zh" ? utile(p.translations?.en?.[k]) : undefined));
   return {
     ...p,
-    name: utile(t?.name) ?? p.name,
-    description: utile(t?.description) ?? p.description,
+    name: champ("name") ?? p.name,
+    description: champ("description") ?? p.description,
   };
 }
 
 /** Langue demandée par le client (?lang=en). Inconnue ou absente -> français. */
 function langueDemandee(c: { req: { query: (k: string) => string | undefined } }) {
   const l = (c.req.query("lang") ?? "").toLowerCase();
-  return ["en", "de", "it", "es"].includes(l) ? l : "fr";
+  return ["en", "de", "it", "es", "ja", "zh"].includes(l) ? l : "fr";
 }
 
 app.get("/", (c) => c.json({ name: "memoryline-api", status: "ok" }));
@@ -2893,7 +2898,7 @@ app.post("/admin/products/:id/translations", async (c) => {
   const id = Number(c.req.param("id"));
   const b = await c.req.json();
   const langue = String(b.lang ?? "");
-  if (!["en", "de", "it", "es"].includes(langue)) {
+  if (!["en", "de", "it", "es", "ja", "zh"].includes(langue)) {
     return c.json({ error: "langue inconnue" }, 400);
   }
   const [p] = await db

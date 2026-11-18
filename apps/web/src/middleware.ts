@@ -317,7 +317,7 @@ async function destination(
  * redirige alors vers la nouvelle adresse DANS LA MÊME LANGUE, sans quoi une
  * visiteuse anglaise repartirait en français.
  */
-const LANGUES = ["en", "de", "it", "es"];
+const LANGUES = ["en", "de", "it", "es", "ja", "zh"];
 
 /**
  * La personne du back-office qui regarde la page, ou null.

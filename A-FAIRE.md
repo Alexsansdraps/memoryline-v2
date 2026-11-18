@@ -56,6 +56,19 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
   - **Clients suisses** : hors de l'Union européenne (Suisse, Royaume-Uni…), la caisse ne propose plus de point relais, puisqu'aucun réseau n'y livre (0 point trouvé à Bâle). Il reste l'envoi à domicile (douane déclarée sur l'étiquette SendCloud) et le retrait au stand (`passeLaDouane`, packages/types).
   - **Restes de français dans les 4 langues** (migration 0095, relevé page par page du site en ligne) : les 10 rayons (« Thèmes & paysages »…), les 4 modes de livraison, le lieu du marché de Noël, la promotion « 3 achetées = 1 A4 offerte », « TOUT VOIR » dans le menu, et les 4 pages légales. Chaque page légale traduite commence par un avertissement : la version française fait foi.
   - ⚠ Les pages légales contiennent encore des « À COMPLÉTER » (médiateur, durées de conservation), traduits tels quels. Le jour où Margaux les complète en français, il faut aussi mettre à jour les traductions.
+- **18/11, fin d'après-midi, japonais et chinois simplifié** (touristes du marché de Noël ; Alexandra a choisi « l'interface d'abord ») :
+  - **Fait** :
+    - les 639 textes du site, les 175 textes des e-mails, la page contact, les horaires du stand et la page de désinscription des relances ;
+    - sélecteur à 7 langues ; le Japon et la Chine dans la liste des pays, avec leur code postal ;
+    - libellés de la base (migration 0096) : menu, rayons, catégories et personnages du module, cadres, livraison, promotion, bandeau ;
+    - la traduction automatique du BO couvre aussi ja et zh.
+  - **Repli** : un texte qui manque en japonais ou en chinois s'affiche en anglais, puis en français (`LANGUE_REPLI` dans ui.ts, `traductionDe` dans traductions.ts, `tc` pour les e-mails).
+  - **Factures** : celle d'un client japonais ou chinois sort en anglais, car les polices standard du PDF n'ont pas les caractères.
+  - **Reste à faire** :
+    - les 257 fiches et les 4 pages légales en japonais et en chinois (même méthode que la 0094) ;
+    - la recherche dans ces langues ;
+    - un texte japonais ou chinois tapé SUR une affiche : les polices d'impression n'ont pas ces caractères.
+- **18/11** : « TOUT VOIR » en double dans le menu du haut : l'entrée de premier niveau est masquée (migration 0097), celle du menu déroulant reste.
 
 ## 2. Dans le code (Claude)
 

@@ -230,6 +230,58 @@ const TEXTES: Record<Langue, Record<Cle, string>> = {
     confidentialite:
       "Tus datos solo sirven para responderte. Consulta la política de privacidad.",
   },
+  ja: {
+    titre: "お問い合わせ",
+    intro:
+      "ポスターについてのご質問、配送中のご注文、パーソナライズの修正など、お気軽にご連絡ください。2営業日以内にご返信いたします。",
+    nom: "お名前",
+    email: "メールアドレス",
+    sujet: "件名",
+    message: "メッセージ",
+    commande: "注文番号（任意）",
+    commandeAide:
+      "注文確認メールに記載されています。必須ではありませんが、より早く対応できます。",
+    envoyer: "送信する",
+    envoiEnCours: "送信中…",
+    merciTitre: "メッセージを送信しました",
+    merciTexte:
+      "ありがとうございます。メッセージは送信され、確認メールをお送りしました。2営業日以内にご返信いたします。",
+    autreMessage: "別のメッセージを書く",
+    errNom: "返信先がわかるよう、お名前をご記入ください。",
+    errEmail: "有効なメールアドレスをご記入ください。返信はこちらにお送りします。",
+    errSujet: "メッセージの件名をご記入ください。",
+    errMessage: "メッセージをご記入ください（数語でもかまいません）。",
+    errEnvoi: "メッセージを送信できませんでした。数分後にもう一度お試しください。",
+    errTrop:
+      "すでに何度かご連絡いただいています。返信までお待ちいただき、1時間後にもう一度お試しください。",
+    errIllisible: "メッセージを読み取れませんでした。もう一度お試しください。",
+    confidentialite:
+      "ご入力いただいた情報は返信のためにのみ使用します。プライバシーポリシーをご覧ください。",
+  },
+  zh: {
+    titre: "联系我们",
+    intro:
+      "关于海报的问题、正在配送的订单、需要修改的个性化内容？请给我们留言，我们会在两个工作日内回复。",
+    nom: "您的姓名",
+    email: "您的电子邮箱",
+    sujet: "主题",
+    message: "您的留言",
+    commande: "订单号（选填）",
+    commandeAide: "您可以在订单确认邮件中找到它。填写后我们能更快处理，但不是必填项。",
+    envoyer: "发送留言",
+    envoiEnCours: "正在发送…",
+    merciTitre: "留言已发送",
+    merciTexte: "谢谢！您的留言已发出，确认邮件也已发送给您。我们会在两个工作日内回复。",
+    autreMessage: "再写一条留言",
+    errNom: "请填写您的姓名，以便我们回复。",
+    errEmail: "请填写有效的电子邮箱地址：我们会回复到这里。",
+    errSujet: "请为您的留言填写主题。",
+    errMessage: "请填写留言内容，几句话即可。",
+    errEnvoi: "留言未能发送，请几分钟后再试。",
+    errTrop: "您已经给我们写过几次了。请稍候我们的回复，一小时后再试。",
+    errIllisible: "无法读取您的留言，请重试。",
+    confidentialite: "您的信息仅用于回复您。请参阅隐私政策。",
+  },
 };
 
 const tr = (cle: Cle): string => TEXTES[langue][cle] ?? TEXTES.fr[cle];

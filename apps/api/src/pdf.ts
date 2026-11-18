@@ -1640,7 +1640,10 @@ export interface DonneesFacture {
  * facturé — on ne recalcule rien, l'appelant a déjà lu la commande.
  */
 export async function renderInvoicePdf(d: DonneesFacture): Promise<Buffer> {
-  const langue = d.langue ?? "fr";
+  // Les polices standard du PDF (Helvetica, WinAnsi) n'ont ni les caractères
+  // japonais ni les chinois : la facture d'un client japonais ou chinois sort
+  // en anglais, au lieu de pages aux intitulés vides (18/11).
+  const langue: Langue = d.langue === "ja" || d.langue === "zh" ? "en" : (d.langue ?? "fr");
   const t = tc(langue);
   const doc = await PDFDocument.create();
   doc.setTitle(t("facturePdf.titreDocument", { facture: d.numeroFacture }));

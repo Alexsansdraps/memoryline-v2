@@ -211,6 +211,8 @@ export const PAYS_PROPOSES: readonly string[] = [
   "GB",
   "CA",
   "US",
+  "JP",
+  "CN",
   "ZZ",
 ];
 
@@ -242,6 +244,8 @@ const FORMES_CODE_POSTAL: Record<string, RegExp> = {
   GB: /^[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}$/i,
   CA: /^[A-Z]\d[A-Z] ?\d[A-Z]\d$/i,
   US: /^\d{5}(-\d{4})?$/,
+  JP: /^\d{3}-?\d{4}$/,
+  CN: /^\d{6}$/,
 };
 
 /** Le code postal a-t-il la forme de ceux de ce pays ? */
@@ -278,7 +282,7 @@ export function codePaysSaisi(saisi: unknown): string {
     s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const cherche = simple(brut);
   if (!cherche) return "";
-  for (const langue of ["fr", "en", "de", "it", "es"]) {
+  for (const langue of ["fr", "en", "de", "it", "es", "ja", "zh"]) {
     const noms = new Intl.DisplayNames([langue], { type: "region" });
     const trouve = PAYS_PROPOSES.find(
       (c) => c !== "ZZ" && simple(noms.of(c) ?? "") === cherche,

@@ -203,6 +203,8 @@ const NOM_LANGUE: Record<string, string> = {
   de: "allemand",
   it: "italien",
   es: "espagnol",
+  ja: "japonais",
+  zh: "chinois",
 };
 
 function lireMessage(corps: Record<string, unknown>): MessageRecu {

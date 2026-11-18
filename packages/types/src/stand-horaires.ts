@@ -199,6 +199,8 @@ const LOCALES: Record<string, string> = {
   de: "de-DE",
   it: "it-IT",
   es: "es-ES",
+  ja: "ja-JP",
+  zh: "zh-CN",
 };
 
 const MOTS: Record<
@@ -259,6 +261,24 @@ const MOTS: Record<
     avant: (d) => `Recogida a más tardar el ${d}.`,
     aHeure: (h) => `a las ${h}`,
     identite: "Se le pedirá un documento de identidad para recoger su pedido.",
+  },
+  ja: {
+    periode: (d, f) => `${d}から${f}まで。`,
+    tousLesJours: "毎日",
+    et: "と",
+    ferme: "休業",
+    avant: (d) => `${d}までにお受け取りください。`,
+    aHeure: (h) => `${h}`,
+    identite: "ご注文の受け取りには身分証明書が必要です。",
+  },
+  zh: {
+    periode: (d, f) => `${d}至${f}。`,
+    tousLesJours: "每天",
+    et: "和",
+    ferme: "休息",
+    avant: (d) => `请于${d}前取货。`,
+    aHeure: (h) => `${h}`,
+    identite: "取货时需出示身份证件。",
   },
 };
 

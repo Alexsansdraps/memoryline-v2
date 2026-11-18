@@ -235,6 +235,8 @@ export const LANGUE_EN_FRANCAIS: Record<Langue, string> = {
   de: "allemand",
   it: "italien",
   es: "espagnol",
+  ja: "japonais",
+  zh: "chinois",
 };
 
 /**
@@ -249,7 +251,7 @@ export function langueDemandee(v: unknown): Langue | null {
 }
 
 export const LANGUE_INCONNUE =
-  "Cette langue n'existe pas sur le site : français, anglais, allemand, italien ou espagnol.";
+  "Cette langue n'existe pas sur le site : français, anglais, allemand, italien, espagnol, japonais ou chinois.";
 
 /** Le groupe sous lequel le back-office range ces réglages. */
 const GROUPE = "relance";
@@ -635,6 +637,8 @@ const TON_TRADUCTION_RELANCE: Record<LangueEtrangere, string> = {
   de: '- Address the customer with the polite "Sie", as the website does.',
   it: '- Address the customer informally with "tu", as the website does (never "Lei").',
   es: '- Address the customer informally with "tú", as the website does (never "usted").',
+  ja: "- Write natural, polite Japanese (です/ます style), as the website does.",
+  zh: '- Write Simplified Chinese (mainland China) and address the customer with the polite "您", as the website does.',
 };
 
 /** Les {variables} d'un texte, dans l'ordre, pour comparer deux versions. */
@@ -2537,6 +2541,72 @@ const TEXTES_REFUS: Record<Langue, TextesRefus> = {
       titre: "Hecho",
       corps: (email) => `<p>La dirección ${email} ya no recibirá recordatorios de la cesta.</p>
          <p class="discret">Tu cesta sigue siendo tuya: puedes terminar tu pedido cuando quieras desde la tienda.</p>`,
+    },
+  },
+  ja: {
+    exemple: {
+      titre: "リンクの例",
+      corps: `<p>このリンクはテストメールのものです。どなたの配信も停止されません。</p>
+           <p class="discret">実際のカートのリマインダーでは、ワンクリックでリマインダーを停止できます。</p>`,
+    },
+    inconnu: {
+      titre: "このリンクは無効です",
+      corps: `<p>このリンクを確認できません。メールソフトによってリンクが途中で切れている可能性があります。</p>
+           <p class="discret">メールにご返信いただければ、こちらでリマインダーを停止いたします。</p>`,
+    },
+    inconnuEnvoi: {
+      titre: "このリンクは無効です",
+      corps: `<p>このリンクを確認できません。</p>
+           <p class="discret">メールにご返信いただければ、こちらでリマインダーを停止いたします。</p>`,
+    },
+    deja: {
+      titre: "手続きは完了しています",
+      corps: (email) => `<p>${email} にはカートのリマインダーをお送りしていません。</p>
+           <p class="discret">これ以上の操作は必要ありません。</p>`,
+    },
+    demande: {
+      titre: "カートのリマインダーを停止する",
+      avant: (email) => `<p>ご注文が途中のままのときに ${email} 宛てにお送りしているリマインダーを停止します。</p>`,
+      bouton: "確認する",
+      apres: `<p class="discret" style="margin-top:20px">ご注文、アカウント、ニュースレターはそのままです。停止するのはカートのリマインダーだけです。</p>`,
+    },
+    fait: {
+      titre: "完了しました",
+      corps: (email) => `<p>${email} にカートのリマインダーをお送りすることはなくなります。</p>
+         <p class="discret">カートはそのまま残っています。いつでもショップからご注文を完了できます。</p>`,
+    },
+  },
+  zh: {
+    exemple: {
+      titre: "示例链接",
+      corps: `<p>此链接来自一封测试邮件，不会让任何人退订。</p>
+           <p class="discret">在真实的购物车提醒中，点击一次即可停止提醒。</p>`,
+    },
+    inconnu: {
+      titre: "此链接已失效",
+      corps: `<p>我们无法识别此链接，可能是您的邮件程序把它拆成了两段。</p>
+           <p class="discret">直接回复我们的邮件，我们会为您停止提醒。</p>`,
+    },
+    inconnuEnvoi: {
+      titre: "此链接已失效",
+      corps: `<p>我们无法识别此链接。</p>
+           <p class="discret">直接回复我们的邮件，我们会为您停止提醒。</p>`,
+    },
+    deja: {
+      titre: "已完成",
+      corps: (email) => `<p>${email} 已不再接收购物车提醒。</p>
+           <p class="discret">您无需再进行任何操作。</p>`,
+    },
+    demande: {
+      titre: "停止接收购物车提醒",
+      avant: (email) => `<p>订单未完成时，我们将不再向 ${email} 发送提醒。</p>`,
+      bouton: "确认",
+      apres: `<p class="discret" style="margin-top:20px">您的订单、账户和新闻通讯保持不变：只停止购物车提醒。</p>`,
+    },
+    fait: {
+      titre: "已完成",
+      corps: (email) => `<p>${email} 将不再收到购物车提醒。</p>
+         <p class="discret">您的购物车仍然保留：您可以随时在店铺完成订单。</p>`,
     },
   },
 };

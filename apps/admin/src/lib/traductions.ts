@@ -17,6 +17,8 @@ export const LANGUES_TRADUITES = [
   { code: "de", nom: "Allemand" },
   { code: "it", nom: "Italien" },
   { code: "es", nom: "Espagnol" },
+  { code: "ja", nom: "Japonais" },
+  { code: "zh", nom: "Chinois" },
 ] as const;
 
 /** Le dictionnaire d'une ligne, tel que l'API le rend : langue → champ → texte. */

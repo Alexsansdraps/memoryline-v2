@@ -13,11 +13,13 @@ import { en } from "./en.js";
 import { de } from "./de.js";
 import { it } from "./it.js";
 import { es } from "./es.js";
+import { ja } from "./ja.js";
+import { zh } from "./zh.js";
 
 export type { CleCourriel };
 
 /** Les langues du site, et donc des courriels. Le français d'abord. */
-export const LANGUES_COURRIEL = ["fr", "en", "de", "it", "es"] as const;
+export const LANGUES_COURRIEL = ["fr", "en", "de", "it", "es", "ja", "zh"] as const;
 export type Langue = (typeof LANGUES_COURRIEL)[number];
 
 const DICTIONNAIRES: Record<Langue, Partial<Record<CleCourriel, string>>> = {
@@ -26,6 +28,8 @@ const DICTIONNAIRES: Record<Langue, Partial<Record<CleCourriel, string>>> = {
   de,
   it,
   es,
+  ja,
+  zh,
 };
 
 /**
@@ -40,6 +44,8 @@ export const LOCALE_COURRIEL: Record<Langue, string> = {
   de: "de-DE",
   it: "it-IT",
   es: "es-ES",
+  ja: "ja-JP",
+  zh: "zh-CN",
 };
 
 /** Vrai si la valeur est une des cinq langues. */
@@ -108,7 +114,9 @@ export function tc(
   langue: Langue | null | undefined,
 ): (cle: CleCourriel, valeurs?: Record<string, string | number>) => string {
   const dico = DICTIONNAIRES[langue ?? "fr"] ?? fr;
-  return (cle, valeurs) => remplir(dico[cle] ?? fr[cle], valeurs);
+  // Japonais et chinois : l'anglais avant le français (18/11).
+  const relais = langue === "ja" || langue === "zh" ? en : null;
+  return (cle, valeurs) => remplir(dico[cle] ?? relais?.[cle] ?? fr[cle], valeurs);
 }
 
 /**

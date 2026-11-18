@@ -3,12 +3,13 @@ import {
   LANGUES,
   LANGUE_DEFAUT,
   LOCALE_COMPLETE,
+  LANGUE_REPLI,
   NOM_LANGUE,
   type Langue,
   type CleUi,
 } from "./ui";
 
-export { LANGUES, LANGUE_DEFAUT, LOCALE_COMPLETE, NOM_LANGUE };
+export { LANGUES, LANGUE_DEFAUT, LANGUE_REPLI, LOCALE_COMPLETE, NOM_LANGUE };
 export type { Langue, CleUi };
 
 /** Vrai si la valeur est une des langues gérées. */
@@ -36,8 +37,11 @@ export function langueDepuisParam(param?: string | undefined): Langue {
  */
 export function t(langue: Langue): (cle: CleUi) => string {
   const dico = ui[langue] as Record<string, string>;
+  // Japonais et chinois : l'anglais d'abord, puis le français (LANGUE_REPLI).
+  const relais = LANGUE_REPLI[langue];
+  const intermediaire = relais ? (ui[relais] as Record<string, string>) : null;
   const repli = ui[LANGUE_DEFAUT] as Record<string, string>;
-  return (cle: CleUi) => dico[cle] ?? repli[cle] ?? String(cle);
+  return (cle: CleUi) => dico[cle] ?? intermediaire?.[cle] ?? repli[cle] ?? String(cle);
 }
 
 /** Chemin interne préfixé par la langue (le français reste à la racine). */

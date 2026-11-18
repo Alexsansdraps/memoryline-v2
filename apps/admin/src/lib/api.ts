@@ -1203,7 +1203,7 @@ export interface TextesRelance {
 }
 
 /** Les langues des courriels, le français d'abord. */
-export type LangueCourriel = "fr" | "en" | "de" | "it" | "es";
+export type LangueCourriel = "fr" | "en" | "de" | "it" | "es" | "ja" | "zh";
 
 /** Une relance (1re, 2e, 3e) et son courriel, dans la langue demandée. */
 export interface CourrielRelance {

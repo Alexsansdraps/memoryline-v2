@@ -19,7 +19,7 @@ import { tc, type Langue } from "./courriels/index.js";
 import { fr } from "./courriels/fr.js";
 
 /** Les langues du site autres que le français, dans l'ordre du back-office. */
-export const LANGUES_ETRANGERES = ["en", "de", "it", "es"] as const;
+export const LANGUES_ETRANGERES = ["en", "de", "it", "es", "ja", "zh"] as const;
 export type LangueEtrangere = (typeof LANGUES_ETRANGERES)[number];
 
 const NOM_LANGUE: Record<LangueEtrangere, string> = {
@@ -27,7 +27,22 @@ const NOM_LANGUE: Record<LangueEtrangere, string> = {
   de: "German",
   it: "Italian",
   es: "Spanish",
+  ja: "Japanese",
+  zh: "Simplified Chinese (mainland China)",
 };
+
+/**
+ * La traduction d'une ligne dans une langue : la sienne, ou, pour le japonais
+ * et le chinois, l'anglais à défaut (18/11 : un visiteur de Tokyo lit plus
+ * volontiers l'anglais que le français). Le français n'a pas de traduction.
+ */
+export function traductionDe<T>(
+  traductions: Partial<Record<string, T | undefined>> | null | undefined,
+  langue: string,
+): T | undefined {
+  if (!langue || langue === "fr") return undefined;
+  return traductions?.[langue] ?? (langue === "ja" || langue === "zh" ? traductions?.en : undefined);
+}
 
 /** La langue demandée par le site (?lang=), le français à défaut. */
 export function langueDuVisiteur(c: {
@@ -55,9 +70,12 @@ export function champTraduit(
   champ: string,
 ): string | undefined {
   if (langue === "fr") return undefined;
-  const v = traductions?.[langue]?.[champ];
-  const texte = typeof v === "string" ? v.trim() : "";
-  return texte || undefined;
+  const lire = (l: string) => {
+    const v = traductions?.[l]?.[champ];
+    return typeof v === "string" ? v.trim() : "";
+  };
+  // Japonais et chinois : l'anglais avant le français, s'il existe (18/11).
+  return lire(langue) || ((langue === "ja" || langue === "zh") && lire("en")) || undefined;
 }
 
 /**
@@ -150,7 +168,7 @@ Rules:
 - Keep the exact same JSON keys; translate only the values. Answer with the JSON object only.
 - Keep ALL HTML tags and attributes exactly as they are; translate only the visible text between them.
 - Keep place names in their usual form for a ${NOM_LANGUE[langue]} reader. Proper names written in CAPITALS (city names such as AMIENS, BAIE DE SOMME) stay in capitals and unchanged. Ordinary words written in capitals (for example a promotional banner such as "3 AFFICHES ACHETÉES = 1 OFFERTE") ARE translated, and stay in capitals.
-- Tone: warm, natural e-commerce copy, as a native ${NOM_LANGUE[langue]} copywriter would write it — not a literal translation. Address the reader as the rest of the site does: "Sie" in German, informal "tu" in Italian and Spanish.
+- Tone: warm, natural e-commerce copy, as a native ${NOM_LANGUE[langue]} copywriter would write it — not a literal translation. Address the reader as the rest of the site does: "Sie" in German, informal "tu" in Italian and Spanish, the polite です/ます style in Japanese, the polite 您 in Chinese.
 - Product formats (A4, A3), prices and measurements stay as they are.
 - An empty value stays empty.`;
 
