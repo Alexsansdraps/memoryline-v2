@@ -153,7 +153,7 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
       </summary>
       <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
         <p>
-          Quand une cliente laisse son adresse au moment de commander puis
+          Quand un client laisse son adresse au moment de commander puis
           s'en va sans payer, la boutique peut lui écrire pour lui rappeler
           son affiche. Tout se règle dans
           <a href={url("/paniers")} class="text-bo-accent hover:underline">Paniers abandonnés</a>.
@@ -166,7 +166,7 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           </li>
           <li>
             <strong>Programmer</strong> : la 1re relance part au délai choisi
-            après le dernier geste de la cliente (10 heures est le réglage
+            après le dernier geste du client (10 heures est le réglage
             conseillé). Une 2e, puis une 3e, sont facultatives, chacune avec
             son délai. « N'envoyer qu'en journée » fait attendre le matin aux
             relances qui tomberaient la nuit. La liste indique, sous chaque
@@ -192,10 +192,10 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           <li>
             <strong>Dans chaque langue</strong> : les onglets Français,
             English, Deutsch, Italiano et Español, au-dessus du texte, ont
-            chacun leur courriel, enregistré à part. Une cliente reçoit celui
-            de sa langue : celle de son compte ou, si elle n'en a pas choisi,
-            celle du site sur lequel elle a rempli son panier. Tant que vous
-            n'avez rien écrit dans une langue, ses clientes reçoivent le texte
+            chacun leur courriel, enregistré à part. Un client reçoit celui
+            de sa langue : celle de son compte ou, s'il n'en a pas choisi,
+            celle du site sur lequel il a rempli son panier. Tant que vous
+            n'avez rien écrit dans une langue, ses clients reçoivent le texte
             d'origine de cette langue — jamais votre texte français.
             « Proposer la traduction » remplit les champs à partir du texte
             français : relisez, corrigez si besoin, puis « Enregistrer » (rien
@@ -210,7 +210,7 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
         <p>
           <strong>Ce qui ne part jamais</strong>, quels que soient les
           réglages : une relance pour un panier payé, vidé, ou dont plus
-          aucune affiche n'est disponible ; à une cliente qui a commandé
+          aucune affiche n'est disponible ; à un client qui a commandé
           depuis avec la même adresse, ou qui a demandé à ne plus recevoir de
           rappel ; pour un panier de plus de quatorze jours. Chaque relance
           automatique ne part qu'une fois ; le bouton « Relancer » en renvoie
@@ -234,7 +234,7 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
             de poids.
           </li>
           <li>
-            Les services du transporteur payé par la cliente s'affichent
+            Les services du transporteur payé par le client s'affichent
             d'abord ; celui qui tient sa promesse (signature, délai, point
             relais…) porte « correspond au mode payé » et est coché d'office.
             Cliquez <strong>« Acheter le bordereau — 3,42 € »</strong>. Une
@@ -255,7 +255,7 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           <strong>Un autre transporteur ?</strong> « Voir tous les services »
           liste ceux de Mondial Relay, Colissimo et Chronopost pour ce colis
           (pour un point relais, ceux qui y livrent). Ceux qui ne sont pas ce
-          que la cliente a payé le disent en orange : « autre transporteur »,
+          que le client a payé le disent en orange : « autre transporteur »,
           « sans la signature payée », « en boîte aux lettres »…
         </p>
         <p>
@@ -264,14 +264,14 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           dans le bloc, puis choisissez le service. L'adresse saisie devient
           celle de la commande, et la chronologie garde l'ancienne. Une
           adresse fausse se corrige au même endroit (« Corriger l'adresse »).
-          Pour un point relais fermé ou une cliente qui préfère être livrée
-          chez elle : « Envoyer à une adresse plutôt qu'au point relais ».
+          Pour un point relais fermé ou un client qui préfère être livré
+          chez lui : « Envoyer à une adresse plutôt qu'au point relais ».
         </p>
         <p>
           <strong>Le bloc dit pourquoi il n'achète pas</strong>, et quoi faire :
           une commande annulée ou un panier ne s'expédient jamais ; une
           commande non payée attend d'être encaissée ; un e-mail manquant
-          s'ajoute sur la fiche de la cliente (le transporteur la prévient
+          s'ajoute sur la fiche du client (le transporteur le prévient
           par là).
         </p>
         <p>
@@ -866,7 +866,7 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           La liste de <a href={url("/clients")} class="text-bo-accent underline">Clients</a>
           montre, comme Shopify, le nom (ou l'adresse e-mail quand il n'y en a
           pas), l'<strong>abonnement aux e-mails</strong> — « Abonné » si la
-          case est cochée sur sa fiche ou si elle s'est inscrite à la lettre
+          case est cochée sur sa fiche ou s'il s'est inscrit à la lettre
           d'information —, l'<strong>emplacement</strong> (la ville de son
           carnet d'adresses, sinon de sa dernière livraison), ses commandes et
           le montant dépensé. Cinquante par page ; un clic sur un titre de
@@ -977,14 +977,14 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           À la caisse, le mode « Retrait sur place » montre son propre texte
           (réglé dans <a href={url("/livraison")} class="text-bo-accent underline">Livraison</a>,
           sur le mode), puis la liste des lieux proposés. Un seul lieu : il est
-          choisi d'office ; plusieurs : la cliente choisit le sien. Il n'y a pas
+          choisi d'office ; plusieurs : le client choisit le sien. Il n'y a pas
           de créneau à choisir.
         </p>
         <p>
           Sans aucun lieu proposé, le retrait sur place disparaît de la caisse.
           Un lieu qu'on désactive reste dans la liste, prêt à rouvrir l'an
           prochain ; un lieu archivé se restaure plus bas sur le même écran.
-          La commande garde le lieu tel que la cliente l'a lu : on le retrouve
+          La commande garde le lieu tel que le client l'a lu : on le retrouve
           sur sa fiche, son bon, sa facture et dans le courriel « Votre
           commande vous attend », qui part quand vous la marquez traitée.
         </p>
@@ -1038,7 +1038,7 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           </li>
           <li>
             <strong>L'interrupteur « Production »</strong> : cochez « Je
-            confirme : les clientes paieront réellement », cliquez, et
+            confirme : les clients paieront réellement », cliquez, et
             relisez la confirmation. Le changement vaut tout de suite, sans
             redémarrage : l'encadré « Boutique en mode essai » disparaît de la
             caisse. Ensuite, une clé live remplacée est vérifiée avant d'être
@@ -1063,7 +1063,7 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
         </p>
         <p>
           <strong>Revenir en essai</strong> : « Revenir en essai » sur le même
-          écran. Les clientes ne peuvent plus payer réellement ; un paiement
+          écran. Les clients ne peuvent plus payer réellement ; un paiement
           réel déjà ouvert aboutit quand même. « Laisser les réglages du serveur
           décider » leur rend la main (le fichier .env de l'hébergement), comme
           avant l'écran ; les étiquettes ont le même lien.

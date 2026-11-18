@@ -125,9 +125,9 @@ export function raisonDesCommandes(
   if (numeros.length > 1)
     return `Des commandes s'en servent (${enBref(numeros)})${etPaniers} : elles en ont besoin pour se réimprimer. ${reste}`;
   if (nPaniers === 1)
-    return `Un panier en cours s'en sert : sa cliente doit pouvoir le payer tel quel. Il ne compte plus quatorze jours après sa dernière modification. ${reste}`;
+    return `Un panier en cours s'en sert : son client doit pouvoir le payer tel quel. Il ne compte plus quatorze jours après sa dernière modification. ${reste}`;
   if (nPaniers > 1)
-    return `${nPaniers} paniers en cours s'en servent : leurs clientes doivent pouvoir les payer tels quels. Un panier ne compte plus quatorze jours après sa dernière modification. ${reste}`;
+    return `${nPaniers} paniers en cours s'en servent : leurs clients doivent pouvoir les payer tels quels. Un panier ne compte plus quatorze jours après sa dernière modification. ${reste}`;
   return null;
 }
 

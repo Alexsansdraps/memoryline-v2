@@ -176,7 +176,7 @@ const MODELES: Modele[] = [
     id: "prete-au-retrait",
     nom: "Commande prête à retirer",
     quand:
-      "Part vers la cliente qui a choisi « Retrait sur place » quand vous marquez sa commande traitée : elle dit où venir la chercher. Aucun prix.",
+      "Part vers le client qui a choisi « Retrait sur place » quand vous marquez sa commande traitée : ce courrier lui dit où venir la chercher. Aucun prix.",
     besoinCommande: true,
   },
   {
@@ -213,7 +213,7 @@ const MODELES: Modele[] = [
     id: "carte-cadeau",
     nom: "Carte cadeau",
     quand:
-      "Part vers le destinataire d'une carte cadeau achetée sur le site, dès le paiement : le montant, le code et le petit mot de l'acheteuse.",
+      "Part vers le destinataire d'une carte cadeau achetée sur le site, dès le paiement : le montant, le code et le petit mot de l'acheteur.",
     besoinCommande: false,
   },
   {
@@ -476,7 +476,7 @@ const EXEMPLES_DU_RENDU = {
   transporteur: "Colissimo",
   suivi: "6A12345678901",
   evenement: "Salon du livre de Nantes 2026",
-  motif: "Annulée à la demande de la cliente, avant impression.",
+  motif: "Annulée à la demande du client, avant impression.",
   facture: "F2026-0001",
 } as const;
 

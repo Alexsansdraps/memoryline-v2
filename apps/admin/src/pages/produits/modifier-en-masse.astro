@@ -1714,7 +1714,7 @@ const puce = "inline-block rounded-full bg-bo-bg px-2 py-0.5 text-xs";
         <EditeurTexte
           nom="description-de-la-fenetre"
           etiquette="Description de l'affiche"
-          invite="La description que la cliente lit sur la page de l'affiche."
+          invite="La description que le client lit sur la page de l'affiche."
         />
       </div>
       <div class="flex justify-end gap-2 border-t border-bo-border px-4 py-3">
@@ -2330,7 +2330,7 @@ const puce = "inline-block rounded-full bg-bo-bg px-2 py-0.5 text-xs";
         if (champ) {
           var ligne = champ.closest("[data-ligne]");
           titre.textContent = "Description de « " + (ligne ? ligne.dataset.nom : "") + " »";
-          aide.textContent = "Le texte que la cliente lit sur la page de l'affiche.";
+          aide.textContent = "Le texte que le client lit sur la page de l'affiche.";
         } else {
           titre.textContent = "Remplacer la description de toutes les lignes";
           aide.textContent =

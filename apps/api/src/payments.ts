@@ -740,7 +740,7 @@ export async function verifierStripe(
       remarques.push(
         opts.local
           ? "En local, Stripe ne joint pas localhost : utilisez « stripe listen » (voir plus bas)."
-          : `Aucun webhook de test ne vise ${opts.adresseWebhook} : sans lui, la commande se valide quand même au retour de la cliente.`,
+          : `Aucun webhook de test ne vise ${opts.adresseWebhook} : sans lui, la commande se valide quand même au retour du client.`,
       );
   } else if (hooks.statut === 403) {
     remarques.push("Liste des webhooks non lisible avec cette clé restreinte : vérifiez à la main dans Stripe que le webhook existe.");

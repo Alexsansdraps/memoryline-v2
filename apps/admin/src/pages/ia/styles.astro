@@ -191,7 +191,7 @@ const boutonDiscret =
   {erreur && <p class="mb-4 text-sm text-red-600">{erreur}</p>}
 
   <p class="mb-6 max-w-3xl text-sm text-bo-muted">
-    Un style, c'est ce que la cliente choisit avant d'envoyer sa photo. Elle ne
+    Un style, c'est ce que le client choisit avant d'envoyer sa photo. Il ne
     voit que son <strong>titre</strong> et ses <strong>images</strong> ; la
     consigne, elle, ne sort jamais d'ici.
   </p>
@@ -203,7 +203,7 @@ const boutonDiscret =
     {styles.length === 0 && !erreur && (
       <p class="rounded border border-bo-border bg-bo-surface px-4 py-6 text-sm text-bo-muted">
         Aucun style pour l'instant. Tant qu'il n'y en a pas, le site continue
-        de fonctionner comme avant : la cliente envoie sa photo et la consigne
+        de fonctionner comme avant : le client envoie sa photo et la consigne
         générale de la boutique s'applique seule.
       </p>
     )}
@@ -377,7 +377,7 @@ const boutonDiscret =
             class={champ}
           />
           <span class="mt-1 block text-xs text-bo-muted">
-            Le seul mot que la cliente voit. Court et concret.
+            Le seul mot que le client voit. Court et concret.
           </span>
         </label>
 
@@ -409,7 +409,7 @@ const boutonDiscret =
         <p class="mt-1 mb-1 text-xs text-bo-muted">
           Elle s'ajoute à la consigne générale de la boutique, et passe après
           elle. Décrivez ce que ce style change : le cadrage, l'ambiance, ce
-          qu'il faut garder de la photo. La cliente ne la lit jamais.
+          qu'il faut garder de la photo. Le client ne la lit jamais.
         </p>
         <EditeurTexte
           nom="prompt"
@@ -424,7 +424,7 @@ const boutonDiscret =
           Images du style ({IMAGES_MAX} au maximum)
         </span>
         <p class="mt-1 mb-3 text-xs text-bo-muted">
-          Elles servent deux fois : montrées à la cliente comme exemples, et
+          Elles servent deux fois : montrées au client comme exemples, et
           envoyées au modèle comme références. C'est pour cela qu'il n'y en a
           qu'un jeu — deux séries séparées finiraient par ne plus se
           ressembler, et l'exemple montré deviendrait faux.

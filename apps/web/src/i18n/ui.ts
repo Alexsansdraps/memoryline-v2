@@ -706,7 +706,7 @@ export const ui = {
     "commande.err.paypal_ouverture":
       "Le paiement par PayPal n'a pas pu être ouvert. Essayez la carte bancaire, ou revenez dans quelques minutes.",
     "commande.err.compte_requis":
-      "Il faut être connectée pour valider la commande. Créez votre compte ou connectez-vous, votre panier vous attend.",
+      "Il faut être connecté pour valider la commande. Créez votre compte ou connectez-vous, votre panier vous attend.",
     "commande.err.generique":
       "La commande n'a pas pu être préparée. Vérifiez vos informations, puis réessayez.",
     /* Une panne, pas un refus : l'API qui lève, le réseau coupé (CheckoutIsland). */

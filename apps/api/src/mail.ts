@@ -780,7 +780,7 @@ export function courrierModePaiement(d: {
     d.mode === "reel"
       ? "Les cartes et PayPal sont réellement débités. L'encadré « Boutique en mode essai » a disparu de la caisse."
       : d.mode === "essai"
-        ? "Aucun paiement réel n'est possible : les clientes paient avec les clés d'essai. Les paiements réels déjà ouverts aboutiront quand même."
+        ? "Aucun paiement réel n'est possible : les clients paient avec les clés d'essai. Les paiements réels déjà ouverts aboutiront quand même."
         : "Chaque prestataire suit de nouveau les réglages du serveur, comme avant l'écran Paiements.";
   const quand = d.le.toLocaleString("fr-FR", {
     timeZone: "Europe/Paris",
@@ -1052,7 +1052,7 @@ export const TEXTES_RELANCE_DEFAUT: Record<EtapeRelance, TextesRelance> =
  * qui n'a jamais saisi de code.
  */
 export const VARIABLES_RELANCE = [
-  { nom: "prenom", sens: "le prénom de la cliente (« vous » si on ne le connaît pas)" },
+  { nom: "prenom", sens: "le prénom du client (« vous » si on ne le connaît pas)" },
   { nom: "articles", sens: "le nom des affiches du panier, entre guillemets" },
   { nom: "montant", sens: "le total du panier, par exemple 49,00 €" },
   {

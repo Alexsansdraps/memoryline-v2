@@ -325,8 +325,8 @@ export function mountFacturation(app: Hono): void {
       dateFacture: maintenant,
       numeroCommande: "WEB-0000",
       dateCommande: maintenant,
-      clientNom: "Cliente d'exemple",
-      clientEmail: "cliente@exemple.fr",
+      clientNom: "Client d'exemple",
+      clientEmail: "client@exemple.fr",
       clientAdresse: ["1 rue de l'Exemple", "00000 Ville d'exemple", "FR"],
       lignes: [
         {

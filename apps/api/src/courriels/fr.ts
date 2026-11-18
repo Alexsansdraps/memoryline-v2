@@ -270,7 +270,7 @@ export const fr = {
   /** Les motifs que la boutique choisit dans une liste, au back-office. */
   "annulee.motifSaisie": "Erreur de saisie",
   "annulee.motifRupture": "Rupture — article indisponible",
-  "annulee.motifCliente": "Demande de la cliente",
+  "annulee.motifCliente": "Demande du client",
   "annulee.motifImpaye": "Paiement non reçu",
 
   /* --- Facture : le courrier ---------------------------------------------- */

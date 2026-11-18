@@ -382,7 +382,7 @@ function plan(c: ClienteLue, fiche: FicheExistante | undefined) {
       changements.push(
         `adresse : ${[c.adresse.line1, c.adresse.postalCode, c.adresse.city].filter(Boolean).join(" ")}`,
       );
-    changements.push(c.abonnement ? "abonnée aux e-mails" : "non abonnée aux e-mails");
+    changements.push(c.abonnement ? "abonné aux e-mails" : "non abonné aux e-mails");
     return {
       action: "creation" as const,
       changements,
@@ -533,7 +533,7 @@ export function mountImportClients(app: Hono): void {
           });
         if (!email) {
           refuser(
-            "pas d'adresse e-mail : rien ne permettrait de reconnaître cette cliente au prochain import",
+            "pas d'adresse e-mail : rien ne permettrait de reconnaître ce client au prochain import",
           );
           continue;
         }
@@ -615,7 +615,7 @@ export function mountImportClients(app: Hono): void {
           sortie.changements = [...p.changements];
           if (lue.abonnementIllisible && !fiche)
             sortie.changements.push(
-              `« ${lue.abonnementIllisible} » n'est pas compris comme un accord : importée non abonnée`,
+              `« ${lue.abonnementIllisible} » n'est pas compris comme un accord : importé non abonné`,
             );
           // Seulement quand l'adresse aurait servi : une fiche qui a déjà la
           // sienne ne la prend pas du fichier, incomplète ou non.

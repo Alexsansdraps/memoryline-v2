@@ -231,7 +231,7 @@ function texteBascule(e: EtatPaiements): string {
     "• L'encadré « Boutique en mode essai » disparaît de la caisse.",
     "• Les commandes payées en essai restent dans le back-office, marquées « Payée en ESSAI » : elles n'ont rapporté aucun argent.",
     "• Une clé live remplacée ensuite sera vérifiée avant de servir.",
-    "• Les courriels partent réellement chez les clientes (Resend), au lieu de la boîte d'essai.",
+    "• Les courriels partent réellement chez les clients (Resend), au lieu de la boîte d'essai.",
     e.etiquettes.configure
       ? "• Les bordereaux SendCloud achetés depuis une fiche commande seront de vraies étiquettes, facturées."
       : "• SendCloud n'est pas branché : pas d'étiquettes à acheter.",
@@ -240,7 +240,7 @@ function texteBascule(e: EtatPaiements): string {
 }
 
 const TEXTE_ESSAI =
-  "Revenir en essai ?\n\nLes clientes ne pourront plus payer réellement. Les paiements réels déjà ouverts aboutiront quand même. Les courriels resteront dans la boîte d'essai, et les étiquettes SendCloud seront des étiquettes d'essai, gratuites.";
+  "Revenir en essai ?\n\nLes clients ne pourront plus payer réellement. Les paiements réels déjà ouverts aboutiront quand même. Les courriels resteront dans la boîte d'essai, et les étiquettes SendCloud seront des étiquettes d'essai, gratuites.";
 // La boutique est déjà en essai par les réglages du serveur : on ne « revient »
 // de rien, on fixe l'essai ici pour qu'un changement du serveur ne le défasse pas.
 const TEXTE_GARDER_ESSAI =
@@ -385,7 +385,7 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
         <p class="mt-1 text-xs text-bo-muted">
           Courriels en ce moment :{" "}
           {etat.courriels.voie === "boite"
-            ? "dans la boîte d'essai, rien ne part chez les clientes."
+            ? "dans la boîte d'essai, rien ne part chez les clients."
             : etat.courriels.voie === "resend"
               ? "envoyés réellement (Resend)."
               : "nulle part : ni boîte d'essai ni Resend dans les réglages du serveur."}
@@ -425,7 +425,7 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
                 <input type="hidden" name="valeur" value="reel" />
                 <label class="flex items-start gap-2 text-sm">
                   <input type="checkbox" name="confirme" value="oui" required disabled={!etat.bascule.possible} class="mt-0.5" />
-                  <span>Je confirme : les clientes paieront réellement.</span>
+                  <span>Je confirme : les clients paieront réellement.</span>
                 </label>
                 <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!etat.bascule.possible}>
                   Passer en production
@@ -592,7 +592,7 @@ const boutonLong = "max-w-full rounded border border-bo-border px-3 py-1.5 text-
             <div class="mt-5 rounded-lg border border-bo-border p-4 text-sm">
               <h3 class="font-medium">Le webhook</h3>
               <p class="mt-1 text-bo-muted">
-                Stripe prévient la boutique de chaque paiement abouti, même si la cliente ferme
+                Stripe prévient la boutique de chaque paiement abouti, même si le client ferme
                 l'onglet pendant la validation de sa banque. Adresse à recopier dans Stripe :
               </p>
               <div class="mt-2 flex flex-wrap items-center gap-2">

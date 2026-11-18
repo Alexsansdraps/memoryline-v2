@@ -158,7 +158,7 @@ if (Astro.request.method === "POST" && estProprietaire) {
         case "emplacement": {
           const { stand } = await api.majStand(cible, { emplacement: texte("emplacement") });
           flash = stand.emplacement
-            ? `Emplacement de « ${stand.nom} » enregistré : les clientes le voient à la caisse sous « Retrait au stand » tant que le stand est ouvert.`
+            ? `Emplacement de « ${stand.nom} » enregistré : les clients le voient à la caisse sous « Retrait au stand » tant que le stand est ouvert.`
             : `Emplacement de « ${stand.nom} » effacé.`;
           break;
         }
@@ -911,7 +911,7 @@ const classeBouton =
                 ouvert sans coupure, de l'heure de début du matin à l'heure de fin
                 de l'après-midi. Après avoir
                 changé les dates, enregistrez : la liste des jours se met à jour.
-                Les clientes voient ces dates et ces horaires sous « Retrait au
+                Les clients voient ces dates et ces horaires sous « Retrait au
                 stand », proposé à la caisse du site jusqu'à la fermeture du dernier jour.
               </p>
               <button class={classeBouton}>Enregistrer le calendrier</button>
@@ -925,7 +925,7 @@ const classeBouton =
             <input type="hidden" name="_action" value="emplacement" />
             <input type="hidden" name="id" value={stand.id} />
             <label class="block text-xs text-bo-muted" for={`emplacement-${stand.id}`}>
-              Emplacement exact — montré aux clientes qui choisissent « Retrait au stand » (gratuit) à la caisse du site
+              Emplacement exact — montré aux clients qui choisissent « Retrait au stand » (gratuit) à la caisse du site
             </label>
             <div class="mt-1 flex flex-wrap gap-2">
               <input

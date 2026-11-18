@@ -149,7 +149,7 @@ if (Astro.request.method === "POST") {
       saisie = r.textes;
       message = r.personnalise
         ? etrangere
-          ? `Courriel ${langueChoisie.adjectif} enregistré. Les prochaines relances aux clientes qui lisent ${langueChoisie.article} partiront avec ce texte.`
+          ? `Courriel ${langueChoisie.adjectif} enregistré. Les prochaines relances aux clients qui lisent ${langueChoisie.article} partiront avec ce texte.`
           : "Courriel enregistré. Les prochaines relances partiront avec ce texte."
         : etrangere
           ? `Courriel enregistré : c'est le texte d'origine en ${langueChoisie.adjectif}, il part tel qu'avant.`
@@ -158,7 +158,7 @@ if (Astro.request.method === "POST") {
       const r = await api.retablirCourrielRelance(etape, langue);
       saisie = r.textes;
       message = etrangere
-        ? `Le texte d'origine en ${langueChoisie.adjectif} est revenu. Les prochaines relances aux clientes qui lisent ${langueChoisie.article} partiront avec lui.`
+        ? `Le texte d'origine en ${langueChoisie.adjectif} est revenu. Les prochaines relances aux clients qui lisent ${langueChoisie.article} partiront avec lui.`
         : "Le texte d'origine est revenu. Les prochaines relances partiront avec lui.";
     } else {
       message = "Ce bouton n'a pas été compris. Réessayez.";
@@ -294,12 +294,12 @@ const confirmationRetablir = etrangere
 
   {ecran && (
     <p class="mb-4 max-w-3xl text-sm text-bo-muted">
-      Ce courriel part aux clientes dont le compte est en {langueChoisie.adjectif}
-      ou, si elles n'ont pas choisi de langue, qui ont rempli leur panier sur
+      Ce courriel part aux clients dont le compte est en {langueChoisie.adjectif}
+      ou, s'ils n'ont pas choisi de langue, qui ont rempli leur panier sur
       le site en {langueChoisie.adjectif}.
       {etrangere
-        ? ` Tant que vous n'avez pas écrit votre texte ${langueChoisie.adjectif}, elles reçoivent le texte d'origine en ${langueChoisie.adjectif} — jamais votre texte français.`
-        : " Les clientes des autres langues reçoivent le texte de leur langue : choisissez-la ci-dessus pour l'écrire."}
+        ? ` Tant que vous n'avez pas écrit votre texte ${langueChoisie.adjectif}, ils reçoivent le texte d'origine en ${langueChoisie.adjectif} — jamais votre texte français.`
+        : " Les clients des autres langues reçoivent le texte de leur langue : choisissez-la ci-dessus pour l'écrire."}
     </p>
   )}
 
@@ -443,7 +443,7 @@ const confirmationRetablir = etrangere
         </div>
 
         <p class="rounded border border-dashed border-bo-border bg-bo-bg px-3 py-2 text-xs text-bo-muted">
-          Ici s'ajoute tout seul le panier de la cliente : ses affiches avec
+          Ici s'ajoute tout seul le panier du client : ses affiches avec
           leur vignette, leurs prix, le total, l'avertissement si l'une n'est
           plus disponible, et son code de réduction s'il y en a un — dans sa
           langue.
@@ -453,7 +453,7 @@ const confirmationRetablir = etrangere
           <span class="text-sm font-medium">Libellé du bouton</span>
           <input lang={langue} name="bouton" data-champ="bouton" value={textes.bouton} maxlength="60" required class={classeChamp("bouton")} />
           <span class="mt-1 block text-xs text-bo-muted">
-            Le bouton rouvre le panier de la cliente, tel qu'elle l'a laissé,
+            Le bouton rouvre le panier du client, tel qu'il l'a laissé,
             code de réduction compris. Son lien est fabriqué par la boutique.
           </span>
           {francais && (
@@ -478,8 +478,8 @@ const confirmationRetablir = etrangere
 
         <p class="rounded border border-dashed border-bo-border bg-bo-bg px-3 py-2 text-xs text-bo-muted">
           Puis, toujours, le lien « Ne plus recevoir de rappel de panier » (dans
-          la langue de la cliente). Il est obligatoire, et une cliente qui
-          l'utilise n'est plus jamais relancée.
+          la langue du client). Il est obligatoire, et un client qui
+          l'utilise n'est plus jamais relancé.
         </p>
 
         <details class="rounded border border-bo-border px-3 py-2 text-sm" open>
@@ -495,7 +495,7 @@ const confirmationRetablir = etrangere
               français et entre accolades
               (<code class="rounded bg-bo-bg px-1">{"{prenom}"}</code>, jamais
               <code class="rounded bg-bo-bg px-1">{"{name}"}</code>). Elles se
-              remplissent dans la langue de la cliente : le montant s'écrit à
+              remplissent dans la langue du client : le montant s'écrit à
               la manière de son pays, et un prénom inconnu devient la formule
               de sa langue.
             </li>
@@ -556,7 +556,7 @@ const confirmationRetablir = etrangere
           </div>
           <div data-sujet class="text-sm font-medium" lang={langue}>{apercu?.sujet}</div>
           <div class="mt-0.5 text-xs text-bo-muted">
-            Rempli avec un panier d'exemple, tel que le recevrait une cliente
+            Rempli avec un panier d'exemple, tel que le recevrait un client
             qui lit {langueChoisie.article} : Camille, deux affiches et un code
             de réduction, qui n'existent pas.
           </div>

@@ -374,7 +374,7 @@ function ecartAvec(o: OptionSendcloud, e: Exigences): string | null {
   // Par le code, pas par `weekend_delivery` : les consignes Mondial Relay
   // ouvrent le samedi sans que ce soit une option payée.
   const samedi = /saturday/.test(o.code);
-  if (samedi && !e.samedi) return "supplément samedi, que la cliente n'a pas payé";
+  if (samedi && !e.samedi) return "supplément samedi, que le client n'a pas payé";
   if (!samedi && e.samedi) return "sans la livraison du samedi payée";
   const boite = f.form_factor === "mailbox";
   if (boite && !e.boiteAuxLettres) return "en boîte aux lettres : un tube d'affiche n'y entre pas";
@@ -392,7 +392,7 @@ function ecartAvec(o: OptionSendcloud, e: Exigences): string | null {
   // La seule différence que le filtre de la destination laisse passer : une
   // commande payée en point relais qu'on envoie finalement à une adresse.
   if (e.pointRelais && !o.requirements?.is_service_point_required)
-    return "à domicile, alors que la cliente a payé un point relais";
+    return "à domicile, alors que le client a payé un point relais";
   return null;
 }
 
@@ -591,7 +591,7 @@ export async function manquesDe(order: Commande, situation: Situation): Promise<
         situation.envoiPaye === "stand"
           ? "Commande prise au stand : elle n'a pas d'adresse de livraison. Si elle doit voyager, saisissez celle du destinataire."
           : situation.envoiPaye === "retrait"
-            ? "La cliente avait choisi le retrait sur place : saisissez l'adresse où lui envoyer le colis."
+            ? "Le client avait choisi le retrait sur place : saisissez l'adresse où lui envoyer le colis."
             : point && !lieuDeRetrait(order)
               ? `Le point relais choisi (${order.relayPointLabel ?? point}) ne vient pas de SendCloud : une étiquette SendCloud ne sait pas le viser. Saisissez l'adresse où envoyer le colis, ou créez l'envoi chez le transporteur.`
               : "La commande n'a pas d'adresse de livraison : saisissez celle du destinataire.",
@@ -620,13 +620,13 @@ export async function manquesDe(order: Commande, situation: Situation): Promise<
     manques.push({
       champ: "email",
       message:
-        "Aucune cliente n'est rattachée à cette commande, donc aucune adresse e-mail : le transporteur en a besoin pour la prévenir. Créez cet envoi directement dans SendCloud.",
+        "Aucun client n'est rattaché à cette commande, donc aucune adresse e-mail : le transporteur en a besoin pour le prévenir. Créez cet envoi directement dans SendCloud.",
     });
   else if (!(await emailDe(order)))
     manques.push({
       champ: "email",
       message:
-        "La fiche de la cliente n'a pas d'adresse e-mail : le transporteur en a besoin pour la prévenir. Ajoutez-la sur sa fiche, puis revenez ici.",
+        "La fiche du client n'a pas d'adresse e-mail : le transporteur en a besoin pour le prévenir. Ajoutez-la sur sa fiche, puis revenez ici.",
     });
   return manques;
 }
@@ -661,7 +661,7 @@ async function adresseDuPoint(
   );
   if (!res.ok)
     throw new RefusBordereau(
-      "SendCloud ne retrouve plus le point relais de la cliente : il a peut-être fermé. Contactez-la ; si elle préfère être livrée chez elle, « Envoyer à une adresse plutôt qu'au point relais » dans le bloc du bordereau.",
+      "SendCloud ne retrouve plus le point relais du client : il a peut-être fermé. Contactez-le ; s'il préfère être livré chez lui, « Envoyer à une adresse plutôt qu'au point relais » dans le bloc du bordereau.",
       409,
     );
   const p = (await res.json()) as {
@@ -801,7 +801,7 @@ async function annoncer(b: Bordereau): Promise<Bordereau> {
   if (!email)
     return marquerEchec(
       b,
-      "Il manque l'e-mail de la cliente : le transporteur en a besoin pour la prévenir. Ajoutez-le sur sa fiche.",
+      "Il manque l'e-mail du client : le transporteur en a besoin pour le prévenir. Ajoutez-le sur sa fiche.",
     );
 
   const idPoint = idPointRelais(order);

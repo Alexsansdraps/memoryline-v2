@@ -630,7 +630,7 @@ const boutonLien = "text-bo-accent hover:underline";
       <fieldset data-type="buy_x_get_y" hidden={!pourLeType(["buy_x_get_y"])} disabled={!pourLeType(["buy_x_get_y"])} class="grid gap-4 rounded border border-bo-border p-4 sm:col-span-2 sm:grid-cols-2">
         <legend class="px-1 font-medium">L'offre</legend>
         <div>
-          <p class="font-medium">Ce que la cliente achète</p>
+          <p class="font-medium">Ce que le client achète</p>
           <label class="mt-2 block">
             <span class="text-bo-muted">Nombre d'affiches</span>
             <input name="achatQuantite" type="number" min="1" max="99" required value={saisie.achatQuantite} class={champ} />
@@ -685,7 +685,7 @@ const boutonLien = "text-bo-accent hover:underline";
             <span>
               Le cadre est offert aussi
               <span class="block text-xs text-bo-muted">
-                Décoché : seule l'affiche est offerte, la cliente paie son cadre.
+                Décoché : seule l'affiche est offerte, le client paie son cadre.
               </span>
             </span>
           </label>
@@ -741,8 +741,8 @@ const boutonLien = "text-bo-accent hover:underline";
             <input type="radio" name="usage" value="unique" checked={saisie.usageUnique} /> Usage unique
           </label>
           <span class="mt-1 block text-xs text-bo-muted">
-            Usage unique : le code sert à UNE commande payée, toutes clientes
-            confondues ; ensuite la caisse répond « Ce code a déjà été
+            Usage unique : le code sert à UNE commande payée, tous clients
+            confondus ; ensuite la caisse répond « Ce code a déjà été
             utilisé ». Une commande annulée ou remboursée en entier le rend
             utilisable de nouveau. Sans code, la promotion est automatique et
             ce réglage ne compte pas.
@@ -754,7 +754,7 @@ const boutonLien = "text-bo-accent hover:underline";
           <span class="text-bo-muted">Livraison offerte à partir de (€)</span>
           <input name="seuil" inputmode="decimal" value={saisie.seuil} class={champ} />
           <span class="mt-1 block text-xs text-bo-muted">
-            Le montant est celui du panier APRÈS remises — ce que la cliente
+            Le montant est celui du panier APRÈS remises — ce que le client
             paie vraiment pour ses affiches. L'offre vaut pour tous les modes
             de livraison et toutes les zones ; elle se cumule avec la franchise
             d'un transporteur (écran Livraison) : le port est offert dès que
@@ -1006,7 +1006,7 @@ const boutonLien = "text-bo-accent hover:underline";
         const { remiseCents } = remisesPanier(lignes, [r], new Date(), []);
         calcul.textContent =
           remiseCents > 0
-            ? `Exemple : ${quoi}, soit ${euros(avant)}. Le panier déduit ${euros(remiseCents)} : la cliente paie ${euros(avant - remiseCents)}.`
+            ? `Exemple : ${quoi}, soit ${euros(avant)}. Le panier déduit ${euros(remiseCents)} : le client paie ${euros(avant - remiseCents)}.`
             : `Exemple : ${quoi}. Sur ce panier, l'offre ne déduit rien : vérifiez les quantités, les formats et les conditions.`;
       }
       form.addEventListener("input", suivre);

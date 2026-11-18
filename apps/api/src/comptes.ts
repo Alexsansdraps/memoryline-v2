@@ -1618,7 +1618,7 @@ export function mountCompteRoutes(app: Hono): void {
   app.get("/admin/customers/export.csv", async (c) => {
     if (c.get("utilisateur")?.role !== "owner")
       return c.json(
-        { error: "La liste des clientes est réservée à la propriétaire." },
+        { error: "La liste des clients est réservée à la propriétaire." },
         403,
       );
 
@@ -1690,7 +1690,7 @@ export function mountCompteRoutes(app: Hono): void {
     return new Response(csv, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": 'attachment; filename="clientes.csv"',
+        "Content-Disposition": 'attachment; filename="clients.csv"',
       },
     });
   });
@@ -1745,7 +1745,7 @@ export function mountCompteRoutes(app: Hono): void {
       Array.isArray(b.ids) ? b.ids.map((v) => String(v)) : undefined,
     );
     if (!ids?.length)
-      return c.json({ error: "Cochez au moins une cliente dans la liste." }, 400);
+      return c.json({ error: "Cochez au moins un client dans la liste." }, 400);
     const ajouter = etiquette(b.ajouter);
     const retirer = etiquette(b.retirer);
     if (!ajouter && !retirer)

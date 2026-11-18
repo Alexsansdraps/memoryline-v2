@@ -101,7 +101,7 @@ export const PAGES_DE_LA_BOUTIQUE: Destination[] = [
     href: "/compte",
     traductions: { en: "My account", de: "Mein Konto", it: "Il mio account", es: "Mi cuenta" },
     enLigne: true,
-    remarque: "la connexion, puis les commandes de la cliente",
+    remarque: "la connexion, puis les commandes du client",
   },
 ];
 

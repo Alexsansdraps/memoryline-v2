@@ -356,7 +356,7 @@ const teinte = (sens: string) =>
           ["Affiches au catalogue", stats.products],
           ["Commandes en ligne", stats.ordersByChannel.web ?? 0],
           ["Ventes stand", stats.ordersByChannel.salon ?? 0],
-          ["Clientes", stats.customers],
+          ["Clients", stats.customers],
         ].map(([label, value]) => (
           <div class="rounded-lg border border-bo-border bg-bo-surface p-4">
             <p class="text-sm text-bo-muted">{label}</p>

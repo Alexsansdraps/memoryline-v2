@@ -309,7 +309,7 @@ export function motifCommandeAGarder(e: EtatCommandeASupprimer): string | null {
   // Une commande en attente de virement, si : la cliente a reçu son numéro
   // par courriel, et le virer avec ce libellé l'attribuerait à une autre.
   if (e.dernierDeSaSerie)
-    return `C'est la dernière commande numérotée de sa série : la supprimer redonnerait son numéro à la prochaine commande, alors que la cliente a pu le recevoir par courriel. Elle pourra partir dès qu'une commande plus récente aura été passée. ${suite}`;
+    return `C'est la dernière commande numérotée de sa série : la supprimer redonnerait son numéro à la prochaine commande, alors que le client a pu le recevoir par courriel. Elle pourra partir dès qu'une commande plus récente aura été passée. ${suite}`;
   return null;
 }
 
@@ -2583,7 +2583,7 @@ export function mountOrderRoutes(app: Hono): void {
         (rembourseCents > 0
           ? ` ${(rembourseCents / 100).toFixed(2).replace(".", ",")} € remboursés dans la foulée.`
           : resteADevoir > 0
-            ? ` Le montant réglé n'a PAS été remboursé : ${(resteADevoir / 100).toFixed(2).replace(".", ",")} € restent à rendre à la cliente.`
+            ? ` Le montant réglé n'a PAS été remboursé : ${(resteADevoir / 100).toFixed(2).replace(".", ",")} € restent à rendre au client.`
             : "") +
         (rendueALaCarte > 0
           ? ` ${(rendueALaCarte / 100).toFixed(2).replace(".", ",")} € recrédités sur la carte cadeau qui avait payé.`
@@ -2598,7 +2598,7 @@ export function mountOrderRoutes(app: Hono): void {
       await db.insert(schema.orderEvents).values({
         orderId: id,
         kind: "event",
-        message: `La facture ${order.invoiceNumber} a déjà été éditée pour cette commande : elle garde son numéro et reste éditable, portant désormais la mention « annulée ». Un avoir reste à établir si elle est partie chez la cliente.`,
+        message: `La facture ${order.invoiceNumber} a déjà été éditée pour cette commande : elle garde son numéro et reste éditable, portant désormais la mention « annulée ». Un avoir reste à établir si elle est partie chez le client.`,
       });
 
     /* --- 6. Le courrier ------------------------------------------------ */
@@ -2710,7 +2710,7 @@ export function mountOrderRoutes(app: Hono): void {
           orderId,
           kind: "event",
           message:
-            "Aucun courrier d'annulation : commande prise au stand, c'est la vendeuse qui prévient la cliente.",
+            "Aucun courrier d'annulation : commande prise au stand, c'est la vendeuse qui prévient le client.",
         });
         return;
       }
@@ -2719,7 +2719,7 @@ export function mountOrderRoutes(app: Hono): void {
           orderId,
           kind: "event",
           message:
-            "Aucun courrier d'annulation : l'envoi d'e-mails n'est pas configuré. La cliente n'a pas été prévenue.",
+            "Aucun courrier d'annulation : l'envoi d'e-mails n'est pas configuré. Le client n'a pas été prévenu.",
         });
         return;
       }
@@ -2756,7 +2756,7 @@ export function mountOrderRoutes(app: Hono): void {
           orderId,
           kind: "event",
           message:
-            "Aucun courrier d'annulation : aucune adresse e-mail sur la fiche de la cliente.",
+            "Aucun courrier d'annulation : aucune adresse e-mail sur la fiche du client.",
         });
         return;
       }
@@ -2974,7 +2974,7 @@ export function mountOrderRoutes(app: Hono): void {
         {
           error:
             order.totalCents > 0
-              ? "Une carte cadeau couvre toute cette commande : il n'y a rien à encaisser. La cliente la valide elle-même à la caisse."
+              ? "Une carte cadeau couvre toute cette commande : il n'y a rien à encaisser. Le client la valide lui-même à la caisse."
               : "Cette commande ne vaut rien : il n'y a rien à encaisser.",
         },
         400,
@@ -2986,7 +2986,7 @@ export function mountOrderRoutes(app: Hono): void {
       return c.json(
         {
           error:
-            "Indiquez comment la cliente a réglé : virement, chèque, espèces, ou autre.",
+            "Indiquez comment le client a réglé : virement, chèque, espèces, ou autre.",
         },
         400,
       );
@@ -3081,7 +3081,7 @@ export function mountOrderRoutes(app: Hono): void {
         );
       return c.json(
         {
-          error: `La commande ${order.number} a changé pendant la saisie : la cliente a modifié son panier, et son total n'est plus ${(order.totalCents / 100).toFixed(2).replace(".", ",")} €. Rien n'a été encaissé. Rechargez la page pour voir ce qu'elle contient maintenant.`,
+          error: `La commande ${order.number} a changé pendant la saisie : le client a modifié son panier, et son total n'est plus ${(order.totalCents / 100).toFixed(2).replace(".", ",")} €. Rien n'a été encaissé. Rechargez la page pour voir ce qu'elle contient maintenant.`,
         },
         409,
       );

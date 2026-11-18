@@ -422,7 +422,7 @@ export function checklistOuverture(
       fait: ou,
       titre: ou ? "Un stand est ouvert" : "Ouvrir un stand",
       detail: ou
-        ? `${ctx.lieuxRetraitActifs} stand${ctx.lieuxRetraitActifs > 1 ? "s" : ""} ouvert${ctx.lieuxRetraitActifs > 1 ? "s" : ""} : la cliente choisit où venir chercher sa commande, avec l'emplacement réglé dans Ventes stand.`
+        ? `${ctx.lieuxRetraitActifs} stand${ctx.lieuxRetraitActifs > 1 ? "s" : ""} ouvert${ctx.lieuxRetraitActifs > 1 ? "s" : ""} : le client choisit où venir chercher sa commande, avec l'emplacement réglé dans Ventes stand.`
         : "Aucun stand ouvert : ce mode s'affiche tout seul à la caisse dès qu'un stand ouvre (Ventes stand).",
     });
   } else if (m.kind === "pickup") {
@@ -431,7 +431,7 @@ export function checklistOuverture(
       fait: ou,
       titre: ou ? "Il y a un endroit où retirer" : "Dire où retirer",
       detail: ou
-        ? `${ctx.lieuxRetraitActifs} lieu${ctx.lieuxRetraitActifs > 1 ? "x" : ""} de retrait actif${ctx.lieuxRetraitActifs > 1 ? "s" : ""} : la cliente choisit le sien au moment de payer, avec son adresse et son texte.`
+        ? `${ctx.lieuxRetraitActifs} lieu${ctx.lieuxRetraitActifs > 1 ? "x" : ""} de retrait actif${ctx.lieuxRetraitActifs > 1 ? "s" : ""} : le client choisit le sien au moment de payer, avec son adresse et son texte.`
         : "Aucun lieu de retrait actif : personne ne saurait où venir chercher la commande. Ajoutez le chalet, l'atelier ou le salon dans Livraison › Lieux de retrait.",
     });
   }

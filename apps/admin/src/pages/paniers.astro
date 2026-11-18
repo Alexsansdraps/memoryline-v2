@@ -79,7 +79,7 @@ if (Astro.request.method === "POST") {
       // La phrase redit le programme en entier : c'est la meilleure façon de
       // vérifier qu'on a réglé ce qu'on croyait régler.
       const quand = [
-        `la 1re ${duree(r.palierHeures)} après le dernier geste de la cliente`,
+        `la 1re ${duree(r.palierHeures)} après le dernier geste du client`,
         ...(r.relance2Heures !== null ? [`la 2e ${duree(r.relance2Heures)} après`] : []),
         ...(r.relance3Heures !== null ? [`la 3e ${duree(r.relance3Heures)} après`] : []),
       ];
@@ -166,14 +166,14 @@ const chiffres = ecran?.chiffres ?? {
  * d'ici — un délai sans phrase s'affiche quand même.
  */
 const AIDES_PALIERS: Record<number, string> = {
-  1: "Très tôt : la cliente est peut-être encore devant son écran.",
-  2: "Tôt : le message arrive pendant qu'elle y pense encore.",
-  3: "Tôt : le message arrive pendant qu'elle y pense encore.",
+  1: "Très tôt : le client est peut-être encore devant son écran.",
+  2: "Tôt : le message arrive pendant qu'il y pense encore.",
+  3: "Tôt : le message arrive pendant qu'il y pense encore.",
   6: "Le message arrive dans la même demi-journée.",
   10: "Le réglage conseillé : le panier du soir est rappelé le matin.",
   12: "Une demi-journée plus tard.",
   24: "Un jour plus tard, à la même heure qu'hier.",
-  48: "Deux jours plus tard : discret, mais la cliente a peut-être déjà oublié.",
+  48: "Deux jours plus tard : discret, mais le client a peut-être déjà oublié.",
 };
 const PALIERS = (ecran?.paliers ?? [1, 6, 10, 24]).map((h) => ({
   h,
@@ -240,7 +240,7 @@ const cartesCourriel = [1, 2, 3].map((etape) => {
   return {
     etape,
     nom: c?.nom ?? (etape === 1 ? "1re relance" : `${etape}e relance`),
-    quand: heures === null ? null : `${duree(heures)} après le dernier geste de la cliente`,
+    quand: heures === null ? null : `${duree(heures)} après le dernier geste du client`,
     objet: c?.textes.objet ?? null,
     personnalise: c?.personnalise ?? false,
   };
@@ -278,7 +278,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
   )}
 
   <p class="mb-5 max-w-3xl text-sm text-bo-muted">
-    Un panier devient « abandonné » quand une cliente a laissé son adresse
+    Un panier devient « abandonné » quand un client a laissé son adresse
     e-mail au tunnel de commande et que plus rien n'a bougé depuis le délai
     d'affichage réglé plus bas. Il apparaît alors ici. Les courriers de
     relance, eux, ne partent qu'aux délais du programme — et jamais au-delà de
@@ -337,7 +337,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
       ))}
     </ul>
     <p class="px-4 pb-3 pt-1 text-xs text-bo-muted">
-      L'objet affiché est celui que lisent les clientes en français : chaque
+      L'objet affiché est celui que lisent les clients en français : chaque
       langue a son courriel, à modifier dans le même écran (Paniers abandonnés
       › Courriel de relance). L'essai part à l'adresse de votre compte. Quand
       et à qui les relances partent se règle juste en dessous.
@@ -391,7 +391,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
           <span class="mt-0.5 block text-xs text-bo-muted">
             Décochée, aucune relance ne part toute seule : il faut cliquer sur
             « Relancer » panier par panier. Cochée, la boutique regarde toutes
-            les cinq minutes et écrit d'elle-même aux clientes concernées.
+            les cinq minutes et écrit d'elle-même aux clients concernés.
           </span>
         </span>
       </label>
@@ -402,7 +402,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
       <fieldset class="max-w-3xl">
         <legend class="text-sm font-medium">Programme des relances</legend>
         <p class="mt-0.5 text-xs text-bo-muted">
-          Les délais se comptent à partir du dernier geste de la cliente
+          Les délais se comptent à partir du dernier geste du client
           (article ajouté, adresse saisie…), pas de la création du panier.
           Une relance ne part jamais avant l'écart prévu depuis la précédente,
           et plus aucune ne part après quatorze jours.
@@ -465,7 +465,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
                 </a>
                 <span class="basis-full text-xs text-bo-muted">
                   {etape === 2
-                    ? "Facultative. Elle ne part qu'aux clientes qui n'ont toujours pas commandé."
+                    ? "Facultative. Elle ne part qu'aux clients qui n'ont toujours pas commandé."
                     : "Facultative, et seulement s'il y a une 2e relance. Son courriel d'origine annonce qu'elle est la dernière."}
                   {courriels[etape - 1]!.phrase}
                 </span>
@@ -535,8 +535,8 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
             ))}
           </select>
           <span class="mt-1 block text-xs text-bo-muted">
-            Le temps qu'on laisse à une cliente avant de considérer qu'elle est
-            partie. En dessous de dix minutes, on prendrait pour un abandon
+            Le temps qu'on laisse à un client avant de considérer qu'il est
+            parti. En dessous de dix minutes, on prendrait pour un abandon
             quelqu'un qui remplit encore son adresse.
           </span>
         </label>
@@ -555,7 +555,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
           <span>
             <span class="text-sm">Consentement</span>
             <span class="mt-0.5 block text-xs text-bo-muted">
-              On n'écrit qu'aux clientes qui ont accepté de recevoir nos
+              On n'écrit qu'aux clients qui ont accepté de recevoir nos
               messages. C'est le choix le plus prudent : moins de courriers
               partent, mais aucun ne peut être reproché.
             </span>
@@ -572,11 +572,11 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
           <span>
             <span class="text-sm">Intérêt légitime</span>
             <span class="mt-0.5 block text-xs text-bo-muted">
-              On écrit à toute cliente qui a laissé une commande en cours, même
+              On écrit à tout client qui a laissé une commande en cours, même
               sans case cochée — le RGPD l'autorise pour une commande entamée.
               En contrepartie, chaque courrier porte alors un lien
-              « Ne plus recevoir de rappel », et une cliente qui l'utilise n'est
-              plus jamais relancée.
+              « Ne plus recevoir de rappel », et un client qui l'utilise n'est
+              plus jamais relancé.
             </span>
           </span>
         </label>
@@ -636,7 +636,7 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
         <tr>
           <th class="px-4 py-2 font-medium">Panier</th>
           <th class="px-4 py-2 font-medium">État</th>
-          <th class="px-4 py-2 font-medium">Cliente</th>
+          <th class="px-4 py-2 font-medium">Client</th>
           <th class="px-4 py-2 font-medium">Articles</th>
           <th class="px-4 py-2 text-right font-medium">Montant</th>
           <th class="px-4 py-2 font-medium">Lien de récupération</th>
@@ -721,16 +721,16 @@ function tonEtat(etat: PanierAbandonne["etat"]): string {
   </section>
 
   <p class="mt-3 max-w-3xl text-sm text-bo-muted">
-    Avant chaque envoi, la boutique vérifie cinq choses : que la cliente n'a
+    Avant chaque envoi, la boutique vérifie cinq choses : que le client n'a
     pas commandé entre-temps avec la même adresse, que cette relance-là n'est
-    pas déjà partie, qu'on a le droit de lui écrire (et qu'elle n'a pas
+    pas déjà partie, qu'on a le droit de lui écrire (et qu'il n'a pas
     demandé à ne plus recevoir de rappel), que ses affiches sont toujours
     disponibles — un panier vidé n'est jamais relancé —, et que le panier a
     moins de quatorze jours. Le motif s'affiche dans la colonne « État »
     chaque fois qu'un envoi est écarté, et la prochaine relance prévue juste
     en dessous. Le bouton « Relancer » passe outre l'unicité et le
     consentement — jamais les trois autres —, et le courrier qu'il envoie à
-    une cliente sans consentement porte alors son lien de désinscription,
+    un client sans consentement porte alors son lien de désinscription,
     quel que soit le réglage.
   </p>
 </Admin>

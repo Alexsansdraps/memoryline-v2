@@ -79,7 +79,7 @@ if (Astro.request.method === "POST") {
       .filter((n) => Number.isInteger(n) && n > 0);
     const mot = String(f.get("etiquette") ?? "").trim();
     const retirer = f.get("_action") === "retirer";
-    if (!ids.length) throw new Error("Cochez au moins une cliente dans la liste.");
+    if (!ids.length) throw new Error("Cochez au moins un client dans la liste.");
     if (f.get("_action") === "supprimer") {
       // La suppression définitive, par sélection (18/11) : l'API garde les
       // fiches qui ont une vente (payée, facturée…), et les nomme ici.
@@ -213,7 +213,7 @@ const bouton =
       <a
         href={lienExport}
         class={bouton}
-        title="La liste affichée (toutes les pages), en fichier, avec l'abonnement aux e-mails de chacune."
+        title="La liste affichée (toutes les pages), en fichier, avec l'abonnement aux e-mails de chaque client."
       >
         Exporter
       </a>
@@ -276,7 +276,7 @@ const bouton =
         class="flex flex-wrap items-center gap-2 border-y border-bo-border bg-bo-bg px-4 py-2 text-sm"
       >
         <span id="compte-selection" class="mr-2 text-bo-muted">
-          Cochez des lignes pour agir sur plusieurs clientes.
+          Cochez des lignes pour agir sur plusieurs clients.
         </span>
         <button
           type="submit"
@@ -322,7 +322,7 @@ const bouton =
           name="_action"
           value="supprimer"
           data-selection
-          data-confirme="Supprimer DÉFINITIVEMENT les fiches cochées ? C'est sans retour : elles partent avec leurs adresses, et ces clientes devront recréer un compte. Une fiche qui a une commande payée ou facturée est gardée (une vente se garde dix ans), et le message vous le dira."
+          data-confirme="Supprimer DÉFINITIVEMENT les fiches cochées ? C'est sans retour : elles partent avec leurs adresses, et ces clients devront recréer un compte. Une fiche qui a une commande payée ou facturée est gardée (une vente se garde dix ans), et le message vous le dira."
           class="ml-auto rounded border border-red-300 bg-bo-surface px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-40"
         >
           Supprimer définitivement
@@ -357,7 +357,7 @@ const bouton =
               </th>
               <th
                 class="px-4 py-2 font-medium"
-                title="Où elle a passé sa première commande : sur le site, ou à un stand (et lequel)."
+                title="Où il a passé sa première commande : sur le site, ou à un stand (et lequel)."
               >
                 Vient de
               </th>
@@ -412,7 +412,7 @@ const bouton =
                     {c.compte && (
                       <span
                         class="ml-1 rounded-full bg-bo-bg px-1.5 py-0.5 text-[11px] text-bo-muted"
-                        title="Elle a un compte client : elle retrouve ses commandes en se connectant."
+                        title="Il a un compte client : il retrouve ses commandes en se connectant."
                       >
                         compte
                       </span>
@@ -427,9 +427,9 @@ const bouton =
                         class="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800"
                         title={
                           c.acceptsMarketing && c.inscritLettre
-                            ? "Case cochée sur sa fiche, et inscrite au formulaire de la lettre."
+                            ? "Case cochée sur sa fiche, et inscrit au formulaire de la lettre."
                             : c.acceptsMarketing
-                              ? "Case « accepte d'être contactée » cochée sur sa fiche."
+                              ? "Case « accepte d'être contacté » cochée sur sa fiche."
                               : "Inscrite au formulaire de la lettre d'information."
                         }
                       >

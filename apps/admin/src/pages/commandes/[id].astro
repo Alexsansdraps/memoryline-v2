@@ -137,7 +137,7 @@ if (Astro.request.method === "POST" && estProprietaire) {
           flash =
             `Remboursement de ${formatPrice(r1.amountCents)} enregistré, commande ${r2.numero} annulée.` +
             (r2.resteADevoir > 0
-              ? ` ${formatPrice(r2.resteADevoir)} restent encaissés : ils ne sont pas rendus à la cliente.`
+              ? ` ${formatPrice(r2.resteADevoir)} restent encaissés : ils ne sont pas rendus au client.`
               : "");
         }
       } else {
@@ -169,7 +169,7 @@ if (Astro.request.method === "POST" && estProprietaire) {
           ? ` ${formatPrice(r.rembourseCents)} remboursés.`
           : "") +
         (r.resteADevoir > 0
-          ? ` Attention : ${formatPrice(r.resteADevoir)} restent à rendre à la cliente — aucun remboursement n'a été enregistré.`
+          ? ` Attention : ${formatPrice(r.resteADevoir)} restent à rendre au client — aucun remboursement n'a été enregistré.`
           : "");
     } else if (action === "encaisser") {
       const r = await api.encaisserCommande(id, {
@@ -182,7 +182,7 @@ if (Astro.request.method === "POST" && estProprietaire) {
         : f.get("moyen") === "sur_place"
           ? // Une vente du stand (17/11) : aucun courrier ne part.
             `Vente du stand marquée payée : ${formatPrice(r.montantCents ?? 0)} réglés sur place.`
-          : `Commande encaissée : ${formatPrice(r.montantCents ?? 0)} reçus par ${r.moyen}. La confirmation est partie chez la cliente. Les fichiers d'impression se préparent : leur état est en bas de la fiche.`;
+          : `Commande encaissée : ${formatPrice(r.montantCents ?? 0)} reçus par ${r.moyen}. La confirmation est partie chez le client. Les fichiers d'impression se préparent : leur état est en bas de la fiche.`;
     } else if (action === "envoyer-facture") {
       const r = await api.envoyerFacture(id, Astro.locals.user?.email ?? undefined);
       flash = `Facture ${r.numeroFacture} envoyée à ${r.destinataire}.`;
@@ -369,7 +369,7 @@ const remiseAuStand = auStand && !(bordereauActif && !bordereauActif.essai);
  */
 const SANS_ENVOI_PAYE: Record<string, string> = {
   retrait:
-    "La cliente avait choisi le retrait sur place : elle n'a payé aucun envoi. L'étiquette est à la charge de la boutique, sauf si vous lui facturez le port à part.",
+    "Le client avait choisi le retrait sur place : il n'a payé aucun envoi. L'étiquette est à la charge de la boutique, sauf si vous lui facturez le port à part.",
   stand:
     "Vente du stand : aucun envoi n'a été payé. L'étiquette est à la charge de la boutique, sauf si le port a été réglé à part.",
   inconnu:
@@ -560,7 +560,7 @@ const resteSiPasRembourse = encaisse ? total - rembourse : 0;
 
 /** Les motifs d'annulation, dans l'ordre où ils se présentent à l'esprit. */
 const MOTIFS_ANNULATION = [
-  ["cliente", "Demande de la cliente"],
+  ["cliente", "Demande du client"],
   ["rupture", "Rupture — article indisponible"],
   ["saisie", "Erreur de saisie"],
   ["impaye", "Paiement non reçu"],
@@ -919,7 +919,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               <>
                 {" "}
                 <strong class="font-medium text-red-800">
-                  {formatPrice(total - rembourse)} restent à rendre à la cliente :
+                  {formatPrice(total - rembourse)} restent à rendre au client :
                   aucun remboursement de ce montant n'est enregistré.
                 </strong>
               </>
@@ -929,7 +929,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 {" "}
                 La facture {order.invoiceNumber} a déjà été éditée : elle garde
                 son numéro et porte désormais la mention « annulée ». Si elle est
-                partie chez la cliente, il faut lui établir un avoir.
+                partie chez le client, il faut lui établir un avoir.
               </>
             )}
           </p>
@@ -1171,7 +1171,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                            expédier, elle part par e-mail au paiement. */
                         <div class="mt-0.5 text-bo-muted">
                           {[
-                            `Pour ${it.carteCadeau.destinatairePrenom ? `${it.carteCadeau.destinatairePrenom}, ` : ""}${it.carteCadeau.destinataireEmail ?? "l'acheteuse"}`,
+                            `Pour ${it.carteCadeau.destinatairePrenom ? `${it.carteCadeau.destinatairePrenom}, ` : ""}${it.carteCadeau.destinataireEmail ?? "l'acheteur"}`,
                             it.carteCadeau.carte
                               ? `${it.carteCadeau.carte.masque} · ${it.carteCadeau.carte.envoyeeLe ? "envoyée par e-mail" : "courriel non parti"}`
                               : "carte créée au paiement",
@@ -1551,8 +1551,8 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                                   data-confirmer={`Envoyer ce colis à cette adresse plutôt qu'au point relais « ${etatBordereau.pointRelais ?? ""} » ? Le point relais quitte la commande ; la chronologie le garde.`}
                                 >
                                   <p class="text-xs text-bo-muted">
-                                    Pour un point relais fermé, ou une cliente qui préfère
-                                    être livrée chez elle. Elle a payé un point relais : un
+                                    Pour un point relais fermé, ou un client qui préfère
+                                    être livré chez lui. Il a payé un point relais : un
                                     envoi à domicile coûte en général plus cher.
                                   </p>
                                   <input type="hidden" name="_action" value="adresse" />
@@ -1595,7 +1595,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                             {m.message}{" "}
                             {client && (
                               <a href={url(`/clients/${client.id}`)} class="underline">
-                                Ouvrir la fiche de la cliente
+                                Ouvrir la fiche du client
                               </a>
                             )}
                           </p>
@@ -1654,7 +1654,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                               <p>
                                 {situation?.envoiPaye === "transporteur" ||
                                 situation?.envoiPaye === "hors_sendcloud"
-                                  ? "La cliente a payé : "
+                                  ? "Le client a payé : "
                                   : "Mode choisi : "}
                                 <strong>{order.shippingLabel}</strong>
                                 {order.shippingDescription && (
@@ -1671,7 +1671,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                               </p>
                             ) : situation?.envoiPaye === "hors_sendcloud" ? (
                               <p class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
-                                La cliente a payé un envoi {situation.transporteurPaye}, que
+                                Le client a payé un envoi {situation.transporteurPaye}, que
                                 SendCloud n'expédie pas pour la boutique : voici les services
                                 des autres transporteurs. Choisissez le plus proche de ce
                                 qu'elle a payé (délai, signature, point relais).
@@ -1929,8 +1929,8 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                     À utiliser quand l'argent est bien arrivé mais pas par le
                     site : virement, chèque, espèces. La commande passe en
                     « Payée » pour {formatPrice(total)}, ses fichiers
-                    d'impression sont fabriqués, et la confirmation part chez la
-                    cliente — exactement comme un paiement en ligne.
+                    d'impression sont fabriqués, et la confirmation part chez le
+                    client — exactement comme un paiement en ligne.
                   </p>
                   <div class="flex flex-wrap items-end gap-4">
                     <label class="text-sm">
@@ -2020,7 +2020,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   </label>
                   <label class="block text-sm">
                     <span class="mb-1 block text-xs text-bo-muted">
-                      Note interne (jamais envoyée à la cliente)
+                      Note interne (jamais envoyée au client)
                     </span>
                     <input name="noteRemb" class="w-full rounded border border-bo-border px-3 py-2" />
                   </label>
@@ -2038,7 +2038,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                         <span>
                           Annuler aussi la commande
                           <span class="block text-xs text-bo-muted">
-                            Elle sort de vos chiffres, ne peut plus rien expédier, et la cliente est prévenue par courrier.
+                            Elle sort de vos chiffres, ne peut plus rien expédier, et le client est prévenu par courrier.
                           </span>
                         </span>
                       </label>
@@ -2057,7 +2057,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                           </select>
                         </label>
                         <label class="block">
-                          <span class="mb-1 block text-xs text-bo-muted">Précision (écrite à la cliente)</span>
+                          <span class="mb-1 block text-xs text-bo-muted">Précision (écrite au client)</span>
                           <input
                             name="motifLibre"
                             placeholder="Le fond choisi n'est plus disponible"
@@ -2092,7 +2092,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               <textarea
                 name="message"
                 rows="2"
-                placeholder="Laisser un commentaire — « cliente rappelée », « à joindre au colis de sa sœur »…"
+                placeholder="Laisser un commentaire — « client rappelé », « à joindre au colis de sa sœur »…"
                 class="w-full rounded border border-bo-border px-3 py-2 text-sm"
               />
               <div class="mt-2 flex items-center justify-between">
@@ -2329,8 +2329,8 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               <h3 class="mb-2 font-medium text-amber-900">Annuler la commande</h3>
               <p class="mb-2 text-sm text-bo-muted">
                 La commande reste lisible et garde toute son histoire. Elle sort
-                de vos chiffres, ne peut plus rien expédier, et la cliente est
-                prévenue par courrier.
+                de vos chiffres, ne peut plus rien expédier, et le client est
+                prévenu par courrier.
               </p>
               {resteAExpedier < nbArticles && (
                 <p class="mb-2 rounded bg-amber-50 px-2 py-1 text-sm text-amber-900">
@@ -2366,7 +2366,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   </label>
                   <label class="block">
                     <span class="mb-1 block text-xs text-bo-muted">
-                      Précision (écrite à la cliente)
+                      Précision (écrite au client)
                     </span>
                     <input
                       name="motifLibre"

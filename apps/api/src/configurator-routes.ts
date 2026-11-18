@@ -1561,8 +1561,8 @@ async function noterPaiementBloque(
     kind: "event",
     message:
       `PAIEMENT À RÉGULARISER : ${nomPrestataire} a encaissé ${euros(recu.montantCents)} (${externalRef}), ` +
-      `mais ${obstacle.pourLeJournal}. La commande n'a PAS été marquée payée : voyez avec la cliente, ` +
-      `puis remboursez ce paiement depuis votre compte ${nomPrestataire} ; elle pourra repasser commande.`,
+      `mais ${obstacle.pourLeJournal}. La commande n'a PAS été marquée payée : voyez avec le client, ` +
+      `puis remboursez ce paiement depuis votre compte ${nomPrestataire} ; il pourra repasser commande.`,
   });
 }
 
@@ -1656,8 +1656,8 @@ async function verifierEncaissement(
           ? ""
           : ", sans compter le port : le mode de livraison choisi ne sait plus porter ce colis") +
         `. Le panier a sans doute été modifié pendant le paiement. La commande n'a PAS été marquée payée : ` +
-        `voyez avec la cliente, puis remboursez ce paiement depuis votre compte ${nomPrestataire} ; ` +
-        `elle pourra repasser commande au bon montant.`,
+        `voyez avec le client, puis remboursez ce paiement depuis votre compte ${nomPrestataire} ; ` +
+        `il pourra repasser commande au bon montant.`,
     });
   }
   return { valide: false, attenduCents: Math.max(0, attendu) };

@@ -452,7 +452,7 @@ const choix = (actif: boolean) =>
             avant: euros(a.resume.precedent.panierMoyenCents),
           },
           {
-            titre: "Clientes servies",
+            titre: "Clients servis",
             valeur: String(a.resume.clients),
             ev: { texte: "", classe: "" },
             avant: "",
@@ -584,16 +584,16 @@ const choix = (actif: boolean) =>
         {/* ============================================================= */}
         <div class="space-y-6">
           <section class={`${cadre} p-5`}>
-            <h3 class="mb-1 font-semibold">Vos clientes</h3>
+            <h3 class="mb-1 font-semibold">Vos clients</h3>
             <p class="mb-3 text-sm text-bo-muted">
-              « Nouvelle » se juge sur la première commande payée, pas sur la
-              date d'inscription — et sur le site comme aux stands : une
-              cliente du site qui achète au stand revient.
+              « Nouveau » se juge sur la première commande payée, pas sur la
+              date d'inscription — et sur le site comme aux stands : un
+              client du site qui achète au stand revient.
             </p>
             <div class="flex gap-8">
               <div>
                 <p class="text-2xl font-semibold">{a.clients.nouvelles}</p>
-                <p class="text-xs text-bo-muted">nouvelles</p>
+                <p class="text-xs text-bo-muted">nouveaux</p>
               </div>
               <div>
                 <p class="text-2xl font-semibold">{a.clients.revenantes}</p>
@@ -777,7 +777,7 @@ const choix = (actif: boolean) =>
           <section class={`${cadre} p-5`}>
             <h3 class="mb-1 font-semibold">Où partent les affiches</h3>
             <p class="mb-3 text-sm text-bo-muted">
-              La ville de livraison — celle de vos clientes, pas celle de
+              La ville de livraison — celle de vos clients, pas celle de
               l'affiche.
               {canal.cle === "tout" &&
                 " Les ventes du stand, remises sur place, n'y figurent pas."}
