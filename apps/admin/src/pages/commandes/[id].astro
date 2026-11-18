@@ -2159,6 +2159,25 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 {order.shippingPhone && (
                   <div class="text-bo-muted">{order.shippingPhone}</div>
                 )}
+                {/* L'adresse de facturation (18/11) : l'adresse par défaut du
+                    compte du client au moment de commander, celle de la
+                    facture. Absente avant : la facture reprend la livraison. */}
+                {order.billingLine1 && (
+                  <div class="pt-1">
+                    <p class="text-xs text-bo-muted">Facturation</p>
+                    <p>
+                      {order.billingName && <span class="block">{order.billingName}</span>}
+                      <span class="block">
+                        {[order.billingLine1, order.billingLine2].filter(Boolean).join(", ")}
+                      </span>
+                      <span class="block">
+                        {[order.billingPostalCode, order.billingCity, order.billingCountry]
+                          .filter(Boolean)
+                          .join(" ")}
+                      </span>
+                    </p>
+                  </div>
+                )}
                 <p class="text-bo-muted">
                   {detail?.commandesDuClient ?? 0} commande{(detail?.commandesDuClient ?? 0) > 1 ? "s" : ""} au total
                 </p>

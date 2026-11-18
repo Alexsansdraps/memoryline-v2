@@ -645,6 +645,13 @@
       "when": 1794929597879,
       "tag": "0091_carte_cadeau_menu",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1794930797879,
+      "tag": "0092_adresse_facturation",
+      "breakpoints": true
     }
   ]
 }

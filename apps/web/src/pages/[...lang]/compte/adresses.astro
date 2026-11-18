@@ -54,8 +54,10 @@ if (session.etat === "connecte" && Astro.request.method === "POST") {
       city: texte("city"),
       country: texte("country"),
       phone: texte("phone"),
-      isDefaultShipping: formulaire.get("isDefaultShipping") !== null,
-      isDefaultBilling: formulaire.get("isDefaultBilling") !== null,
+      // UNE adresse par défaut (18/11) : celle de la facturation, proposée
+      // aussi d'abord pour la livraison (adresses-client.ts, côté API).
+      isDefaultShipping: formulaire.get("parDefaut") !== null,
+      isDefaultBilling: formulaire.get("parDefaut") !== null,
     });
     // Redirection après enregistrement : un rafraîchissement ne doit pas
     // recréer une deuxième fois la même adresse.
@@ -141,14 +143,9 @@ const paysEdite = edite
               ))}
           </address>
           <p class="mt-3 flex flex-wrap gap-2 text-xs">
-            {a.isDefaultShipping && (
+            {(a.isDefaultBilling || a.isDefaultShipping) && (
               <span class="border border-ink/15 bg-paper-deep px-2 py-1">
-                {tr("compte.adresses.badge_livraison")}
-              </span>
-            )}
-            {a.isDefaultBilling && (
-              <span class="border border-ink/15 bg-paper-deep px-2 py-1">
-                {tr("compte.adresses.badge_facturation")}
+                {tr("compte.adresses.badge_defaut")}
               </span>
             )}
           </p>
@@ -266,23 +263,17 @@ const paysEdite = edite
               class={champ}
             />
           </label>
+          {/* Une seule case (18/11) : l'adresse par défaut est celle de la
+              facturation, et la première proposée pour la livraison. La
+              toute première adresse l'est d'office. */}
           <label class="flex items-start gap-3 text-sm">
             <input
               type="checkbox"
-              name="isDefaultShipping"
-              checked={edite?.isDefaultShipping ?? false}
+              name="parDefaut"
+              checked={edite ? edite.isDefaultBilling || edite.isDefaultShipping : liste.length === 0}
               class="mt-1"
             />
-            <span>{tr("compte.adresses.defaut_livraison")}</span>
-          </label>
-          <label class="flex items-start gap-3 text-sm">
-            <input
-              type="checkbox"
-              name="isDefaultBilling"
-              checked={edite?.isDefaultBilling ?? false}
-              class="mt-1"
-            />
-            <span>{tr("compte.adresses.defaut_facturation")}</span>
+            <span>{tr("compte.adresses.defaut_unique")}</span>
           </label>
           <div class="flex flex-wrap items-center gap-4">
             <button

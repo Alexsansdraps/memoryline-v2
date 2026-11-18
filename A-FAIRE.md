@@ -32,10 +32,16 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - **18/11, vers 11 h 15, carte cadeau** :
   - au récapitulatif de la caisse : l'image de la carte, plus de « Envoyée par e-mail… », et le montant se change dans la ligne (PUT `carteCadeau`, revérifié par le serveur ; message sous le champ s'il ne va pas) ;
   - BO › Contenu du site › **Carte cadeau** : montants proposés (`carte_cadeau.montants`, celui du milieu choisi d'avance), nom dans les rayons, titre, introduction, les 3 points et la description Google, en 5 langues (vide = texte de la boutique).
-- **À FAIRE ensuite : carnet d'adresses client** (demande du 18/11) :
-  - le client gère ses adresses dans son compte ;
-  - l'adresse qu'il choisit par défaut est son adresse de FACTURATION ;
-  - à la caisse, la livraison se fait à cette adresse, à une autre de ses adresses enregistrées, ou à une nouvelle.
+- **18/11, vers 12 h 15, carnet d'adresses et facturation** (`apps/api/src/adresses-client.ts`, migration 0092) :
+  - **Compte › Mes adresses** : une seule case « adresse par défaut ». C'est l'adresse de facturation, proposée d'abord pour la livraison. La première adresse l'est d'office ; si on la supprime, une autre la remplace. La migration a fondu les deux anciens drapeaux.
+  - **Caisse** :
+    - un bloc « Adresse de facturation » avec l'adresse par défaut et « La changer dans mon compte » ;
+    - la livraison se fait à cette adresse (premier choix, marqué), à une autre du carnet ou à une nouvelle ;
+    - une nouvelle adresse a la case « Garder cette adresse dans mon compte », cochée d'avance ; avec un carnet vide, elle y entre d'office et devient l'adresse de facturation.
+  - **Serveur** : il relit lui-même l'adresse par défaut et la fige sur la commande (`billing_*`). La facture la met dans « Facturé à » ; les commandes d'avant gardent la livraison. Le BO la montre dans le bloc Client de la fiche commande.
+- **À FAIRE ensuite (demandes du 18/11)** :
+  - BO › Ventes stand › Archivées : suppression définitive ;
+  - BO › Clients : suppression par sélection.
 
 ## 2. Dans le code (Claude)
 

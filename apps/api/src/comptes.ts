@@ -58,6 +58,7 @@ import {
 } from "./courriels/index.js";
 import { langueDuVisiteur, livraisonDansLaLangue, nomTraduit } from "./traductions.js";
 import { lieuDeRetrait } from "./lieux-retrait.js";
+import { carnetDe, normaliserParDefaut } from "./adresses-client.js";
 import { mountImportClients } from "./import-clients.js";
 import { prenomPourCourrier } from "./prenom.js";
 
@@ -1444,16 +1445,12 @@ export function mountCompteRoutes(app: Hono): void {
 
   /* ===== Boutique — carnet d'adresses ================================== */
 
+  /** Le carnet, l'adresse par défaut (de facturation) en tête (adresses-client.ts). */
   app.get("/compte/adresses", async (c) => {
     const moi = await clientDeLaRequete(c);
     if (!moi) return c.json({ error: "Non authentifié" }, 401);
-    return c.json(
-      await db
-        .select()
-        .from(schema.customerAddresses)
-        .where(eq(schema.customerAddresses.customerId, moi.id))
-        .orderBy(desc(schema.customerAddresses.isDefaultShipping), schema.customerAddresses.id),
-    );
+    await normaliserParDefaut(db, moi.id);
+    return c.json(await carnetDe(db, moi.id));
   });
 
   /** Création ou modification : `id` présent = modification de SA propre adresse. */
@@ -1462,6 +1459,11 @@ export function mountCompteRoutes(app: Hono): void {
     if (!moi) return c.json({ error: "Non authentifié" }, 401);
     const b = await c.req.json().catch(() => ({}) as Record<string, unknown>);
     const texte = (v: unknown) => String(v ?? "").trim() || null;
+    // UNE adresse par défaut (18/11) : celle de la facturation, proposée
+    // aussi d'abord pour la livraison. « parDefaut » la désigne ; les deux
+    // anciens drapeaux, s'ils arrivent encore, veulent dire la même chose.
+    const parDefaut =
+      b.parDefaut === true || b.isDefaultBilling === true || b.isDefaultShipping === true;
     const valeurs = {
       label: texte(b.label),
       name: texte(b.name),
@@ -1471,8 +1473,8 @@ export function mountCompteRoutes(app: Hono): void {
       city: texte(b.city),
       country: texte(b.country),
       phone: texte(b.phone),
-      isDefaultShipping: b.isDefaultShipping === true,
-      isDefaultBilling: b.isDefaultBilling === true,
+      isDefaultShipping: parDefaut,
+      isDefaultBilling: parDefaut,
     };
     if (!valeurs.line1 || !valeurs.city || !valeurs.postalCode)
       return c.json({ error: "Adresse incomplète" }, 400);
@@ -1498,30 +1500,15 @@ export function mountCompteRoutes(app: Hono): void {
         .returning();
     }
 
-    // « Par défaut » n'a de sens qu'à un seul exemplaire : on retire le drapeau
-    // aux autres plutôt que de laisser deux adresses se disputer le titre.
-    if (valeurs.isDefaultShipping)
-      await db
-        .update(schema.customerAddresses)
-        .set({ isDefaultShipping: false })
-        .where(
-          and(
-            eq(schema.customerAddresses.customerId, moi.id),
-            ne(schema.customerAddresses.id, adresse!.id),
-          ),
-        );
-    if (valeurs.isDefaultBilling)
-      await db
-        .update(schema.customerAddresses)
-        .set({ isDefaultBilling: false })
-        .where(
-          and(
-            eq(schema.customerAddresses.customerId, moi.id),
-            ne(schema.customerAddresses.id, adresse!.id),
-          ),
-        );
-
-    return c.json(adresse);
+    // « Par défaut » n'existe qu'à un seul exemplaire : les autres le
+    // perdent. Une adresse qui ne l'est plus en laisse une autre le devenir
+    // (la plus ancienne), et la toute première l'est d'office.
+    await normaliserParDefaut(db, moi.id, parDefaut ? adresse!.id : undefined);
+    const [relue] = await db
+      .select()
+      .from(schema.customerAddresses)
+      .where(eq(schema.customerAddresses.id, adresse!.id));
+    return c.json(relue ?? adresse);
   });
 
   app.delete("/compte/adresses/:id", async (c) => {
@@ -1538,6 +1525,8 @@ export function mountCompteRoutes(app: Hono): void {
       )
       .returning({ id: schema.customerAddresses.id });
     if (!supprimee) return c.json({ error: "Adresse introuvable" }, 404);
+    // L'adresse par défaut retirée : une autre prend sa place.
+    await normaliserParDefaut(db, moi.id);
     return c.json({ ok: true });
   });
 

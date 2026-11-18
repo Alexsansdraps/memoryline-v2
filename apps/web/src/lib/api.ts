@@ -1116,6 +1116,12 @@ export const browserApi = {
        * Le serveur le relit et en garde une copie sur la commande.
        */
       pickupPointId?: number;
+      /**
+       * Une NOUVELLE adresse de livraison à garder dans le carnet du compte
+       * (18/11, « Garder cette adresse dans mon compte »). Un carnet vide
+       * la garde d'office, comme adresse par défaut (de facturation).
+       */
+      enregistrer?: boolean;
     },
     /**
      * La langue de la page de caisse : la commande la garde. Elle ne change

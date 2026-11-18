@@ -1465,6 +1465,18 @@ export const orders = pgTable(
     shippingCity: text("shipping_city"),
     shippingCountry: text("shipping_country"),
     shippingPhone: text("shipping_phone"),
+    /**
+     * Adresse de FACTURATION (18/11) : l'adresse par défaut du carnet de la
+     * cliente au moment de commander, figée ici comme celle de livraison. La
+     * facture la porte dans « Facturé à ». Vide (commandes d'avant, retrait
+     * sans carnet) : la facture reprend l'adresse de livraison, comme avant.
+     */
+    billingName: text("billing_name"),
+    billingLine1: text("billing_line1"),
+    billingLine2: text("billing_line2"),
+    billingPostalCode: text("billing_postal_code"),
+    billingCity: text("billing_city"),
+    billingCountry: text("billing_country"),
     /** Point relais choisi (identifiant Mondial Relay et libellé lisible). */
     relayPointId: text("relay_point_id"),
     relayPointLabel: text("relay_point_label"), // idempotence envoi salon (§17.2)

@@ -3417,17 +3417,32 @@ export function mountOrderRoutes(app: Hono): void {
       dateFacture: emiseLe,
       numeroCommande: order.number,
       dateCommande: order.createdAt,
-      clientNom: order.shippingName ?? client?.name ?? t("facturePdf.clientParDefaut"),
+      // « Facturé à » : l'adresse de FACTURATION de la commande (18/11,
+      // l'adresse par défaut du carnet de la cliente) ; à défaut (commandes
+      // d'avant, retrait sans carnet), celle de livraison, comme avant.
+      clientNom:
+        (order.billingLine1 ? order.billingName : null) ??
+        order.shippingName ??
+        client?.name ??
+        t("facturePdf.clientParDefaut"),
       clientEmail: client?.email ?? null,
-      clientAdresse: [
-        // Un point relais reste ici, comme avant ; un lieu de retrait (ou un
-        // ancien retrait au stand, « stand:… ») part sous la commande.
-        lieu ? null : order.relayPointLabel,
-        order.shippingLine1,
-        order.shippingLine2,
-        [order.shippingPostalCode, order.shippingCity].filter(Boolean).join(" "),
-        order.shippingCountry,
-      ].filter((v): v is string => Boolean(v)),
+      clientAdresse: (order.billingLine1
+        ? [
+            order.billingLine1,
+            order.billingLine2,
+            [order.billingPostalCode, order.billingCity].filter(Boolean).join(" "),
+            order.billingCountry,
+          ]
+        : [
+            // Un point relais reste ici, comme avant ; un lieu de retrait (ou un
+            // ancien retrait au stand, « stand:… ») part sous la commande.
+            lieu ? null : order.relayPointLabel,
+            order.shippingLine1,
+            order.shippingLine2,
+            [order.shippingPostalCode, order.shippingCity].filter(Boolean).join(" "),
+            order.shippingCountry,
+          ]
+      ).filter((v): v is string => Boolean(v)),
       lignes,
       // La remise se DÉDUIT de ce qui a été facturé, comme partout ailleurs :
       // c'est le montant encaissé qui fait foi, pas un recalcul.

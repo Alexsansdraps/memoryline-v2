@@ -657,6 +657,12 @@ export default function CheckoutIsland(props: {
   const [adresseChoisie, setAdresseChoisie] = createSignal<number | null>(
     adresseDepart()?.id ?? null,
   );
+  /**
+   * « Garder cette adresse dans mon compte », pour une NOUVELLE adresse de
+   * livraison (18/11), cochée d'avance. Un carnet vide la garde de toute
+   * façon : elle devient l'adresse par défaut, celle de la facturation.
+   */
+  const [garderAdresse, setGarderAdresse] = createSignal(true);
   const depart = adresseDepart();
   const [adresse, setAdresse] = createSignal({
     line1: depart?.line1 ?? "",
@@ -1492,6 +1498,8 @@ export default function CheckoutIsland(props: {
               phone: a.phone.trim(),
               relayPointId: relais.id.trim(),
               relayPointLabel: relais.label.trim(),
+              // Une nouvelle adresse, gardée au carnet si la case est cochée.
+              ...(adresseChoisie() === null && garderAdresse() ? { enregistrer: true } : {}),
               ...(lieu ? { pickupPointId: lieu.id } : {}),
               ...(lieu?.standId != null ? { retraitCompris: standCompris() } : {}),
             }
@@ -2213,6 +2221,40 @@ export default function CheckoutIsland(props: {
                 </div>
               </Show>
 
+              {/* La FACTURATION (18/11) : l'adresse par défaut du compte, que
+                  le serveur relit et garde sur la commande. Elle se change
+                  dans « Mes adresses » ; la livraison se choisit dessous
+                  (cette adresse, une autre du carnet, une nouvelle). Sans
+                  carnet, la première adresse de livraison la devient. */}
+              <Show when={props.compte ? adresseDepart() : null}>
+                {(a) => (
+                  <div class="rounded-lg border border-ink/15 p-3 text-sm">
+                    <p class="font-medium">{tr("livraison.facturation_titre")}</p>
+                    <address class="mt-1 not-italic text-ink-soft">
+                      {[
+                        a().name,
+                        a().line1,
+                        a().line2,
+                        [a().postalCode, a().city].filter(Boolean).join(" "),
+                        codePaysSaisi(a().country) && codePaysSaisi(a().country) !== "FR"
+                          ? a().country
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .map((ligne) => (
+                          <span class="block">{ligne}</span>
+                        ))}
+                    </address>
+                    <a
+                      href={lien(langue, "/compte/adresses")}
+                      class="mt-1 inline-block text-xs underline underline-offset-2 hover:text-terracotta"
+                    >
+                      {tr("livraison.facturation_modifier")}
+                    </a>
+                  </div>
+                )}
+              </Show>
+
               {/* Adresse : demandée seulement quand le mode en a besoin. */}
               <Show when={demandeUneAdresse(optionChoisie()?.mode.kind ?? "")}>
                 <div class="space-y-4">
@@ -2241,6 +2283,13 @@ export default function CheckoutIsland(props: {
                               <span class="block text-xs text-ink-soft">
                                 {[a.postalCode, a.city].filter(Boolean).join(" ")}
                               </span>
+                              {/* Livrer à son adresse de facturation : le
+                                  premier choix, déjà coché (18/11). */}
+                              <Show when={a.parDefaut}>
+                                <span class="block text-xs text-terracotta-deep">
+                                  {tr("livraison.facturation_titre")}
+                                </span>
+                              </Show>
                             </button>
                           )}
                         </For>
@@ -2350,6 +2399,26 @@ export default function CheckoutIsland(props: {
                     <p class="-mt-2 text-sm text-red-700" role="alert">
                       {tr("livraison.telephone_invalide")}
                     </p>
+                  </Show>
+                  {/* Une NOUVELLE adresse (18/11) : la garder au carnet, case
+                      cochée d'avance. Carnet vide : elle y entre d'office et
+                      devient l'adresse de facturation, on le dit. */}
+                  <Show when={props.compte && adresseChoisie() === null}>
+                    <Show
+                      when={(props.carnet ?? []).length > 0}
+                      fallback={
+                        <p class="text-sm text-ink-soft">{tr("livraison.facturation_auto")}</p>
+                      }
+                    >
+                      <label class="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={garderAdresse()}
+                          onChange={(e) => setGarderAdresse(e.currentTarget.checked)}
+                        />
+                        <span>{tr("livraison.enregistrer")}</span>
+                      </label>
+                    </Show>
                   </Show>
                 </div>
               </Show>

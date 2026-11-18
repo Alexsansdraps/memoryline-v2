@@ -51,6 +51,7 @@ import {
   statutFinancier,
 } from "./commandes.js";
 import { clientDeLaRequete } from "./comptes.js";
+import { carnetDe, memeAdresse } from "./adresses-client.js";
 import {
   envoyer as envoyerMail,
   courrierConfirmation,
@@ -3465,6 +3466,45 @@ export function mountConfiguratorRoutes(app: Hono) {
         panier.channel !== "web" && panier.internalNote?.startsWith("Stand : ")
           ? panier.internalNote.slice("Stand : ".length)
           : null;
+
+      // La FACTURATION (18/11) : l'adresse par défaut du carnet de la
+      // cliente, lue ici et pas dans la page. L'adresse de livraison du jour
+      // entre au carnet quand elle le demande (« Garder cette adresse dans
+      // mon compte »), ou d'office si le carnet est vide : elle devient alors
+      // son adresse par défaut, donc celle de la facture. Jamais en double.
+      const carnet = await carnetDe(tx, customer!.id);
+      let facturation = carnet[0] ?? null;
+      const saisie = {
+        name: String(liv.name ?? "").trim() || name || null,
+        line1: ligne1,
+        line2: String(liv.line2 ?? "").trim() || null,
+        postalCode: cp,
+        city: ville,
+        country: pays,
+        phone: String(liv.phone ?? "").trim() || null,
+      };
+      if (
+        avecAffiches &&
+        !lieu &&
+        ligne1 &&
+        cp &&
+        ville &&
+        (liv.enregistrer === true || carnet.length === 0) &&
+        !carnet.some((a) => memeAdresse(a, saisie))
+      ) {
+        const premiere = carnet.length === 0;
+        const [ajoutee] = await tx
+          .insert(schema.customerAddresses)
+          .values({
+            customerId: customer!.id,
+            ...saisie,
+            isDefaultBilling: premiere,
+            isDefaultShipping: premiere,
+          })
+          .returning();
+        if (premiere) facturation = ajoutee ?? null;
+      }
+
       const [order] = await tx
         .update(schema.orders)
         .set({
@@ -3500,6 +3540,16 @@ export function mountConfiguratorRoutes(app: Hono) {
           shippingCity: avecAffiches ? ville || null : null,
           shippingCountry: avecAffiches ? pays : null,
           shippingPhone: avecAffiches ? String(liv.phone ?? "").trim() || null : null,
+          // L'adresse de facturation, figée comme celle de livraison (vide
+          // sans carnet : la facture reprend alors la livraison).
+          billingName: facturation ? facturation.name || customer!.name || name || null : null,
+          billingLine1: facturation?.line1 ?? null,
+          billingLine2: facturation?.line2 ?? null,
+          billingPostalCode: facturation?.postalCode ?? null,
+          billingCity: facturation?.city ?? null,
+          billingCountry: facturation
+            ? normaliserPays(facturation.country) || facturation.country || null
+            : null,
           // Un point relais pour un mode « relais ». Pour un retrait, plus
           // rien ici : le repère « stand:<id> » d'avant est remplacé par le
           // lieu choisi, juste dessous.

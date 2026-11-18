@@ -1297,6 +1297,13 @@ export interface OrderDetail {
     shippingCity?: string | null;
     shippingCountry?: string | null;
     shippingPhone?: string | null;
+    /** L'adresse de facturation figée à la caisse (18/11) ; vide avant. */
+    billingName?: string | null;
+    billingLine1?: string | null;
+    billingLine2?: string | null;
+    billingPostalCode?: string | null;
+    billingCity?: string | null;
+    billingCountry?: string | null;
     relayPointId?: string | null;
     relayPointLabel?: string | null;
     internalNote?: string | null;
