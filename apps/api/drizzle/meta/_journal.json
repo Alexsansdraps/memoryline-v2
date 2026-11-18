@@ -694,6 +694,13 @@
       "when": 1795013818719,
       "tag": "0098_pages_legales_bloc_pour_bloc",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1795014686307,
+      "tag": "0099_fiches_japonais_chinois",
+      "breakpoints": true
     }
   ]
 }
