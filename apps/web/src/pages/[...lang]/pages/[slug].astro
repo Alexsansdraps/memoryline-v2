@@ -453,6 +453,88 @@ const descriptionPage =
                 b.type === "titre" ||
                 (b.type === "texte" && /<h2[\s>]/i.test(String(b.html ?? ""))),
             );
+          /*
+           * Sur la tablette, toute grille a sa recherche (18/11, Alexandra :
+           * « t'as oublié la recherche par nom ») : une page de stand faite
+           * d'une collection entière, et non d'affiches choisies une à une,
+           * avait des dizaines d'affiches et rien pour les trier. Recherche
+           * par nom ou lieu et liste des lieux, avec les filtres de la grille
+           * « affiches » (même script, plus bas). Le lieu se lit au début du
+           * nom, en capitales (« MULHOUSE Place de la Réunion »).
+           */
+          if (enGrand && produits.length > 1) {
+            const avecLieu = (produits as AfficheChoisie[]).map((p) => {
+              const debut = String(p.name ?? "").match(
+                /^((?:[A-ZÀ-ÖØ-Þ][A-ZÀ-ÖØ-Þ'’-]*)(?:\s+[A-ZÀ-ÖØ-Þ][A-ZÀ-ÖØ-Þ'’-]*)*)(?=\s|$)/,
+              );
+              return { ...p, lieu: debut && debut[1].length > 1 ? debut[1] : "" };
+            });
+            const lieux = lieuxDe(avecLieu);
+            const unSeul = new Intl.PluralRules(langue).select(avecLieu.length) === "one";
+            return (
+              <div
+                class="mt-8"
+                data-affiches-page
+                data-compte-un={tr("catalogue.compte_un")}
+                data-compte={tr("catalogue.compte_simple")}
+              >
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-ink/10 py-3">
+                  <input
+                    type="search"
+                    data-filtre-texte
+                    autocomplete="off"
+                    placeholder={tr("page.filtre.chercher")}
+                    aria-label={tr("page.filtre.chercher")}
+                    class="min-w-0 flex-1 basis-72 border border-ink/20 bg-paper px-3 py-2 text-sm"
+                  />
+                  {lieux.length > 1 && (
+                    <label class="flex items-center gap-2 text-sm text-ink-soft">
+                      {tr("catalogue.ville")}
+                      <select
+                        data-filtre-lieu
+                        class="min-w-0 max-w-[min(14rem,60vw)] border border-ink/20 bg-paper px-3 py-2 text-sm text-ink"
+                      >
+                        <option value="">{tr("catalogue.toutes_villes")}</option>
+                        {lieux.map((l) => (
+                          <option value={l.nom}>
+                            {l.nom} ({l.nombre})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    data-filtre-effacer
+                    hidden
+                    class="border border-ink/20 px-3 py-2 text-sm transition-colors hover:border-ink"
+                  >
+                    {tr("page.filtre.effacer")}
+                  </button>
+                  <p data-filtre-compte class="ml-auto text-sm text-ink-soft" aria-live="polite">
+                    {avecLieu.length} {unSeul ? tr("catalogue.compte_un") : tr("catalogue.compte_simple")}
+                  </p>
+                </div>
+                <ul
+                  class="ml-grille-produits mt-6 -mx-2 gap-x-1 gap-y-5 sm:mx-0 sm:gap-x-2 sm:gap-y-8"
+                  style={styleGrille(grilleAffichee)}
+                >
+                  {avecLieu.map((p) => (
+                    <VignetteAffiche
+                      affiche={enVignette(p)}
+                      langue={langue}
+                      sizes={sizesVignettes}
+                      titre={intertitreAuDessus ? "h3" : "h2"}
+                      donnees={donneesDuFiltre(p)}
+                    />
+                  ))}
+                </ul>
+                <p data-filtre-vide hidden class="mt-6 text-ink-soft">
+                  {tr("recherche.aucun")}
+                </p>
+              </div>
+            );
+          }
           // Les gouttières des autres grilles du site (affiches.astro), et
           // leur nombre de colonnes : celui des pages du site, réglé au
           // back-office.

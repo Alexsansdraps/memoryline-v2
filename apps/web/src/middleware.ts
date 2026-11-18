@@ -479,6 +479,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const demande = context.url.searchParams.get("stand");
   const stand = demande !== null && demande !== "0";
   context.locals.stand = stand;
+  // Sur la tablette, aucun raccourci du back-office : ni « Back-office » dans
+  // l'en-tête, ni « Modifier cette page ». Si la vendeuse s'est connectée au
+  // BO depuis ce navigateur, un client qui tient la tablette ne doit pas
+  // pouvoir entrer dans sa session (18/11, Alexandra).
+  if (stand) context.locals.admin = null;
 
   /*
    * La tablette n'affiche que la page de SON stand (18/11, Alexandra : « quand
