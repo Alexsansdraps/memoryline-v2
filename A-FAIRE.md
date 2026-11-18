@@ -87,6 +87,13 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 2. Dans le code (Claude)
 
+- **Page /mulhouse de la tablette** (fin du 18/11) : elle montre une collection entière de 80 affiches, pas seulement l'Alsace (Neuschwanstein y est). Elle avait déjà sa grille, donc la 0101 n'y a pas mis les 64 affiches d'Alsace. À décider par Alexandra : soit Margaux remplace la grille dans BO › Pages › mulhouse, soit une migration le fait (la liste de 64 est dans 0101_page_mulhouse.sql).
+- **Bouton « tout traduire » des pages du site** : l'éditeur de page propose encore la traduction langue par langue ; il manque un bouton « dans toutes les langues », comme sur la fiche produit (6 langues) et sur les écrans de traduction communs.
+- **Japonais et chinois, encore à faire** :
+  - les 4 pages légales : l'anglais s'affiche à leur place ;
+  - la recherche dans ces langues ;
+  - les noms des pièces du module (texte des vignettes en attendant l'image), qui n'ont pas de traduction au BO ;
+  - un texte japonais ou chinois tapé sur l'affiche : les polices d'impression n'ont pas ces caractères.
 - **Chargements** : il reste une passe « 4G lente » sur tout le site. L'écran d'accueil peut coûter quelques points de performance à PageSpeed (indice de vitesse), sans toucher au SEO.
 - **PageSpeed** : à relancer après le changement d'image de l'accueil. Alexandra remplace elle-même cette image : ne pas y toucher. Au 17/11 : SEO, accessibilité et bonnes pratiques à 100 ; performance à 78, avec du CSS bloquant et 4 animations non composées.
 - **Import Shopify** : dès qu'Alexandra dépose les deux CSV (procédure plus bas).
