@@ -1775,12 +1775,12 @@ export default function CheckoutIsland(props: {
               retrouver ses adresses (carnet, facturation). Le retour ramène
               à cette page, panier intact. */}
           <div class="space-y-8">
+            {/* Juste le lien, sans phrase (18/11, Alexandra). */}
             <Show when={!props.compte}>
-              <p class="rounded-xl border border-ink/10 bg-paper-deep/40 px-4 py-3 text-sm text-ink-soft">
-                {tr("caisse.invite.texte")}{" "}
+              <p class="text-sm">
                 <a
                   href={`${lien(langue, "/compte/connexion")}?retour=${encodeURIComponent(lien(langue, "/commande"))}`}
-                  class="font-medium text-ink underline underline-offset-2 hover:text-terracotta"
+                  class="font-medium underline underline-offset-2 hover:text-terracotta"
                 >
                   {tr("caisse.connexion.se_connecter")}
                 </a>

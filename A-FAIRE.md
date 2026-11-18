@@ -9,7 +9,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - **Marché de Noël de Mulhouse : du vendredi 20/11 au 27/12** (11:00–12:30 / 13:00–20:00).
 - 18/11 : tous les écrans clients contrôlés en ligne sur tablette (768 × 1024 et 1024 × 768, 16 pages) : rien ne déborde, aucune image cassée.
 - **Mise en ligne seulement sur le feu vert d'Alexandra** (18/11 : « je veux pas perturber Margaux »).
-- **18/11 vers 11 h 45, la prod est le commit `42be3b5`** (commande sans compte), PAS `main`. Alexandra : « go prod tout sauf le truc google ». Le commit Google `15256b4` et ce qui suit attendent. La prochaine mise en ligne de `main` emportera le code Google ; il reste en sommeil tant que les clés ne sont pas posées, mais le dire à Alexandra avant.
+- **Le code « Continuer avec Google » est RANGÉ hors de `main`** (18/11, Alexandra : « go prod tout sauf le truc google »). Il a été écrit dans le commit `15256b4`, puis retiré par le revert `4748977`. `main` reste donc égal à la prod. Pour le remettre le jour venu : `git revert 4748977`.
 - En ligne le 18/11 au matin : écran d'accueil (logo et barre, au premier affichage de la visite, de 0,5 à 2,5 s) ; barre de chargement quand on change de page ; reflet d'attente sur les images ; polices des affiches en `font-display: block`, celles de départ chargées avec le module ; nettoyage de la mise en ligne et journaux Docker limités.
 - **18/11, vers 9 h : Inter servie par le site** (« ML Inter », `apps/web/public/fonts/Inter-*.woff2`, préchargée, `font-display: block`). Avant, le site nommait Inter sans la fournir : dans le Chrome d'Alexandra, Inter arrivait 0,6 s après le reste et le texte passait de Segoe UI à Inter en se remettant en page (vidéo du 18/11 ; Firefox n'avait pas le défaut). Le module de personnalisation suit aussi la police du site.
 - **18/11, vers 10 h 15** :
@@ -58,7 +58,10 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - **« Continuer avec Google » (après le marché)** : Margaux crée l'identifiant client Google (marche à suivre : https://claude.ai/artifact/Nvgds4ofJy18vtSGZhVLZ8). Les adresses lui sont déjà données, il faut les respecter :
   - origine `https://memoryline.fr` ;
   - URI de redirection `https://memoryline.fr/api/compte/google/retour`.
-  L'ID client arrive par message ; le code secret, Alexandra le pose elle-même sur le serveur. À faire côté code : la route de retour, le rattachement au compte qui a le même e-mail, le bouton sur la connexion, l'inscription et la caisse, et une ligne dans la page Confidentialité.
+  L'ID client arrive par message ; le code secret, Alexandra le pose elle-même sur le serveur.
+  - Le code est prêt mais rangé (voir plus haut, `git revert 4748977`) : routes OAuth avec PKCE, bouton sur la connexion et l'inscription, tests.
+  - Pour l'allumer, une fois le code remis : poser `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` dans `~/memoryline/.env`, puis `docker compose -f docker-compose.prod.yml up -d --force-recreate api`.
+  - Margaux ajoute la phrase sur Google à la page Confidentialité (elle est dans son document).
 - **Petits défauts de la recette du 16-17/11**, non corrigés :
   - sur 360 px avec un cadre choisi, la barre du bas déborde (les cadres sont éteints sur le site) ;
   - la bulle « Plus bas » couvre deux vignettes de personnages sur petit téléphone, jusqu'au premier défilement ;
