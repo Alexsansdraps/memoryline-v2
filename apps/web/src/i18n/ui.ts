@@ -52,7 +52,6 @@ export const ui = {
   fr: {
     "nav.accueil": "Memory Line — accueil",
     "nav.menu": "Menu",
-    "stand.mode": "Mode stand",
     "stand.ferme": "Stand fermé : aucune vente ne peut être validée.",
     "stand.sans_page.titre": "Oups !",
     "stand.sans_page.texte": "Aucune page n'est attribuée à ce stand.",
@@ -885,7 +884,6 @@ export const ui = {
   en: {
     "nav.accueil": "Memory Line — home",
     "nav.menu": "Menu",
-    "stand.mode": "Stand mode",
     "stand.ferme": "Stand closed: no sale can be confirmed.",
     "stand.sans_page.titre": "Oops!",
     "stand.sans_page.texte": "No page has been assigned to this stand.",
@@ -1661,7 +1659,6 @@ export const ui = {
   de: {
     "nav.accueil": "Memory Line — Startseite",
     "nav.menu": "Menü",
-    "stand.mode": "Messestand-Modus",
     "stand.ferme": "Stand geschlossen: Es kann kein Verkauf bestätigt werden.",
     "stand.sans_page.titre": "Hoppla!",
     "stand.sans_page.texte": "Diesem Stand ist keine Seite zugewiesen.",
@@ -2446,7 +2443,6 @@ export const ui = {
   it: {
     "nav.accueil": "Memory Line — home",
     "nav.menu": "Menu",
-    "stand.mode": "Modalità stand",
     "stand.ferme": "Stand chiuso: nessuna vendita può essere convalidata.",
     "stand.sans_page.titre": "Ops!",
     "stand.sans_page.texte": "A questo stand non è assegnata nessuna pagina.",
@@ -3223,7 +3219,6 @@ export const ui = {
   es: {
     "nav.accueil": "Memory Line — inicio",
     "nav.menu": "Menú",
-    "stand.mode": "Modo stand",
     "stand.ferme": "Puesto cerrado: no se puede validar ninguna venta.",
     "stand.sans_page.titre": "¡Uy!",
     "stand.sans_page.texte": "No hay ninguna página asignada a este puesto.",
@@ -3999,7 +3994,6 @@ export const ui = {
   ja: {
     "nav.accueil": "Memory Line — ホーム",
     "nav.menu": "メニュー",
-    "stand.mode": "スタンドモード",
     "stand.ferme": "スタンドは閉まっています。販売を確定できません。",
     "stand.sans_page.titre": "おっと！",
     "stand.sans_page.texte": "このスタンドにはページが割り当てられていません。",
@@ -4647,7 +4641,6 @@ export const ui = {
   zh: {
     "nav.accueil": "Memory Line — 首页",
     "nav.menu": "菜单",
-    "stand.mode": "摊位模式",
     "stand.ferme": "摊位已关闭：暂时无法确认任何订单。",
     "stand.sans_page.titre": "哎呀！",
     "stand.sans_page.texte": "此摊位尚未指定页面。",

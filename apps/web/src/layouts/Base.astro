@@ -753,21 +753,9 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
     {/* En-tête calquée sur memoryline.fr : logo à gauche, navigation au
         centre, actions à droite, sur 1200 px de large. */}
     <header class="border-b border-ink/10 bg-paper sticky top-0 z-10">
-      {/* LE MODE STAND SE VOIT (Alexandra, 13/11 : « qu'on voie visuellement
-          qu'on est en mode stand, dans le menu au milieu »). Une bande au
-          centre, en haut de l'en-tête, qui le suit quand on défile : sur la
-          tablette, la vendeuse sait d'un coup d'œil qu'elle n'est pas sur le
-          site des clients (prix cachés, pages du stand, liens du stand). */}
-      {Astro.locals.stand && (
-        <p
-          class="bg-terracotta py-1 text-center text-xs font-semibold uppercase tracking-[0.2em] text-paper"
-          role="status"
-        >
-          <span aria-hidden="true">●</span> {tr("stand.mode")}
-        </p>
-      )}
-      {/* Stand fermé : dit juste sous la bande, et seulement dans ce cas
-          (lib/stand-etat.ts). Stand ouvert : rien. */}
+      {/* Plus de bande « ● Mode stand » (19/11, Alexandra : « enlève ● Mode
+          stand ») : la tablette est le site, sans prix. Seul « Stand fermé »
+          se dit encore, et seulement dans ce cas (lib/stand-etat.ts). */}
       {Astro.locals.stand && (
         <p
           id="ml-stand-ferme"
