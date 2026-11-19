@@ -475,7 +475,16 @@ export function ConfirmationStand(props: {
     // Une entrée d'historique à nous : la flèche retour de la tablette
     // revient à la commande au lieu de quitter la page sur un panier vide.
     history.pushState({ mlVenteStand: true }, "");
-    const surRetour = () => void revenir();
+    // La flèche retour ne rouvre plus d'office (19/11) : la vente est payée
+    // et remise dès la validation, et un autre client tient peut-être déjà la
+    // tablette. On demande ; sinon, l'entrée d'historique est remise.
+    const surRetour = () => {
+      if (!window.confirm(`${tr("stand.revenir")} ?`)) {
+        history.pushState({ mlVenteStand: true }, "");
+        return;
+      }
+      void revenir();
+    };
     window.addEventListener("popstate", surRetour);
     // Le navigateur peut garder cette page en mémoire et la RESSERVIR telle
     // quelle par la flèche retour, confirmation comprise. Qui tient alors la

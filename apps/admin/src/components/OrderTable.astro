@@ -744,7 +744,7 @@ const filtreActif =
                 )}
                 {/* Une vente du stand (19/11) : Margaux l'annule si le client
                     ne paie pas, ou la supprime (essais), sans ouvrir la fiche. */}
-                {estProprietaire && channel === "salon" && o.etapeTraitement !== "annulee" && o.etapeTraitement !== "panier" && (
+                {estProprietaire && channel === "salon" && !o.number?.startsWith("SHOP-") && o.etapeTraitement !== "annulee" && o.etapeTraitement !== "panier" && (
                   <details class="mt-1">
                     <summary class="w-fit cursor-pointer rounded border border-bo-border px-2 py-0.5 text-xs text-bo-muted hover:bg-bo-bg">
                       Annuler…
@@ -768,7 +768,7 @@ const filtreActif =
                     </form>
                   </details>
                 )}
-                {estProprietaire && channel === "salon" && o.etapeTraitement !== "panier" && (
+                {estProprietaire && channel === "salon" && !o.number?.startsWith("SHOP-") && o.etapeTraitement !== "panier" && (
                   <form
                     method="POST"
                     class="mt-1"

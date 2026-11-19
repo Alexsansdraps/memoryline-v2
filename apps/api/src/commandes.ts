@@ -252,6 +252,24 @@ export interface EtatCommandeASupprimer {
    * une commande du site, sous la règle de la loi.
    */
   channel?: string | null;
+  /**
+   * Reprise de Shopify (SHOP-…, `legacyId`) : une vraie vente encaissée chez
+   * Shopify, même rangée au stand. Elle ne profite jamais de l'exception du
+   * stand.
+   */
+  reprise?: boolean;
+  /**
+   * Étiquettes SendCloud VIVANTES et réelles (achetée ou en cours, pas
+   * d'essai) : seules elles retiennent une vente du stand. Une étiquette
+   * annulée, en échec ou d'essai ne coûte rien.
+   */
+  bordereauxVivants?: number;
+  /**
+   * Paiements Stripe ou PayPal ouverts depuis moins de 48 h, pas encore
+   * aboutis : la cliente est peut-être en train de payer (3-D Secure,
+   * PayPal). Supprimer la commande perdrait la trace de cet argent.
+   */
+  paiementsEnCours?: number;
   invoiceNumber: string | null;
   /** Lignes de `refund`. */
   remboursements: number;
@@ -305,13 +323,15 @@ export interface EtatCommandeASupprimer {
  */
 export function motifCommandeAGarder(e: EtatCommandeASupprimer): string | null {
   const suite = "Elle est gardée.";
-  if (e.channel === "salon") {
+  if (e.channel === "salon" && !e.reprise) {
     if (e.invoiceNumber)
       return `Cette vente a une facture (n° ${e.invoiceNumber}) : la suite des numéros de facture ne doit pas avoir de trou. ${suite}`;
-    if (e.bordereaux > 0)
-      return `Une étiquette SendCloud a été demandée pour cette vente : annulez-la d'abord (bloc « Bordereau transporteur »). ${suite}`;
+    if ((e.bordereauxVivants ?? e.bordereaux) > 0)
+      return `Une étiquette SendCloud est active pour cette vente : annulez-la d'abord (bloc « Bordereau transporteur »). ${suite}`;
     return null;
   }
+  if ((e.paiementsEnCours ?? 0) > 0)
+    return `Un paiement Stripe ou PayPal a été ouvert pour cette commande il y a moins de 48 h : la cliente est peut-être en train de payer. Annulez-la plutôt, et supprimez-la plus tard. ${suite}`;
   if (e.invoiceNumber)
     return `Cette commande a une facture (n° ${e.invoiceNumber}) : factures et pièces comptables se gardent dix ans, et la suite des numéros de facture ne doit pas avoir de trou. ${suite}`;
   if (e.remboursements > 0)
@@ -1299,6 +1319,7 @@ export function mountOrderRoutes(app: Hono): void {
               number: schema.orders.number,
               status: schema.orders.status,
               channel: schema.orders.channel,
+              legacyId: schema.orders.legacyId,
               invoiceNumber: schema.orders.invoiceNumber,
               giftCardCents: schema.orders.giftCardCents,
               archivedAt: schema.orders.archivedAt,
@@ -1314,8 +1335,16 @@ export function mountOrderRoutes(app: Hono): void {
         const nombre = async (requete: Promise<{ n: number }[]>) =>
           Number((await requete)[0]?.n ?? 0);
         const n = raw<number>`count(*)::int`;
-        const [remboursements, mouvements, paiementsAboutis, expeditions, bordereaux, cartes] =
-          await Promise.all([
+        const [
+          remboursements,
+          mouvements,
+          paiementsAboutis,
+          expeditions,
+          bordereaux,
+          cartes,
+          bordereauxVivants,
+          paiementsEnCours,
+        ] = await Promise.all([
             nombre(db.select({ n }).from(schema.refunds).where(eq(schema.refunds.orderId, o.id))),
             nombre(
               db
@@ -1359,6 +1388,31 @@ export function mountOrderRoutes(app: Hono): void {
                 .from(schema.giftCardTransactions)
                 .where(eq(schema.giftCardTransactions.orderId, o.id)),
             ),
+            nombre(
+              db
+                .select({ n })
+                .from(schema.bordereaux)
+                .where(
+                  and(
+                    eq(schema.bordereaux.orderId, o.id),
+                    inArray(schema.bordereaux.statut, ["achete", "en_cours"]),
+                    eq(schema.bordereaux.essai, false),
+                  ),
+                ),
+            ),
+            nombre(
+              db
+                .select({ n })
+                .from(schema.payments)
+                .where(
+                  and(
+                    eq(schema.payments.orderId, o.id),
+                    inArray(schema.payments.provider, ["stripe", "paypal"]),
+                    eq(schema.payments.status, "pending"),
+                    gte(schema.payments.createdAt, new Date(Date.now() - 48 * 3600_000)),
+                  ),
+                ),
+            ),
           ]);
         // Le plus haut numéro de sa série ? Même lecture que le compteur
         // (numeros-commande.ts) : tous canaux confondus, par préfixe.
@@ -1376,6 +1430,9 @@ export function mountOrderRoutes(app: Hono): void {
         return motifCommandeAGarder({
           status: o.status,
           channel: o.channel,
+          reprise: o.legacyId != null,
+          bordereauxVivants,
+          paiementsEnCours,
           invoiceNumber: o.invoiceNumber,
           remboursements,
           mouvements,
@@ -1395,9 +1452,12 @@ export function mountOrderRoutes(app: Hono): void {
             .where(eq(schema.orderItems.orderId, o.id));
           const idsLignes = lignes.map((l) => l.id);
           if (idsLignes.length) {
+            // Une vente du stand supprimée (19/11) avait donné sa date de
+            // paiement aux affiches tirées d'une photo : sans elle, la purge
+            // des photos de visiteurs les reprend, comme celles d'un panier.
             await tx
               .update(schema.aiGenerations)
-              .set({ orderItemId: null })
+              .set({ orderItemId: null, paidAt: null })
               .where(inArray(schema.aiGenerations.orderItemId, idsLignes));
             await tx
               .delete(schema.printFiles)

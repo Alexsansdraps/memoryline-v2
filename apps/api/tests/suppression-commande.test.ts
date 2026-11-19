@@ -102,3 +102,19 @@ test("une commande du site payée reste gardée (la règle de la loi ne change p
   assert.ok(motifCommandeAGarder({ ...venteDuStand, channel: "web" }));
   assert.ok(motifCommandeAGarder({ ...panier, status: "paid", mouvements: 1 }));
 });
+
+test("une vente de stand reprise de Shopify (SHOP-…) n'est jamais supprimable comme une vente de la tablette", () => {
+  assert.ok(motifCommandeAGarder({ ...venteDuStand, reprise: true }));
+});
+
+test("seule une étiquette SendCloud vivante et réelle retient une vente du stand", () => {
+  // Annulée, en échec ou d'essai : une ligne existe, mais elle ne coûte rien.
+  assert.equal(motifCommandeAGarder({ ...venteDuStand, bordereaux: 2, bordereauxVivants: 0 }), null);
+  assert.match(motifCommandeAGarder({ ...venteDuStand, bordereaux: 1, bordereauxVivants: 1 }) ?? "", /SendCloud/);
+});
+
+test("une commande du site avec un paiement en ligne ouvert depuis moins de 48 h est gardée", () => {
+  const ouverte = { ...panier, status: "pending", paiementsEnCours: 1 };
+  assert.match(motifCommandeAGarder(ouverte) ?? "", /en train de payer/);
+  assert.equal(motifCommandeAGarder({ ...ouverte, paiementsEnCours: 0 }), null);
+});

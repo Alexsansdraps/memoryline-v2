@@ -2429,7 +2429,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               et sa phrase s'affiche en haut de la fiche. */}
           <section class="rounded-lg border border-bo-border bg-bo-surface px-4 py-3">
             <h3 class="mb-2 font-medium">
-              {order.archivedAt ? "Commande archivée" : "Archiver la commande"}
+              {order.archivedAt ? "Commande archivée" : auStand ? "Supprimer la vente" : "Archiver la commande"}
             </h3>
             {order.archivedAt ? (
               <>
@@ -2468,6 +2468,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </>
             ) : (
               <>
+                {!auStand && (
                 <p class="mb-3 text-sm text-bo-muted">
                   Elle quitte la liste et l'export, et se range dans l'onglet
                   « Archivées », d'où elle se restaure ; la recherche
@@ -2477,6 +2478,11 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   vente archivée compte toujours dans vos chiffres. Pour
                   qu'elle cesse d'y compter, annulez-la plutôt.
                 </p>
+                )}
+                {/* Au stand, plus d'archivage (19/11) : l'onglet « Archivées »
+                    n'y est plus affiché, la vente deviendrait introuvable. On
+                    l'annule, ou on la supprime. */}
+                {!auStand && (
                 <form
                   method="POST"
                   onsubmit="return confirm('Archiver cette commande ? Elle quitte la liste et se range dans « Archivées », d\'où vous pourrez la restaurer. Rien n\'est supprimé.')"
@@ -2487,6 +2493,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                     Archiver {order.number}
                   </button>
                 </form>
+                )}
                 {/* Supprimer pour de bon, sans passer par les archivées
                     (19/11). Une vente du stand part même payée ; une commande
                     du site payée, facturée ou remboursée est gardée, et la

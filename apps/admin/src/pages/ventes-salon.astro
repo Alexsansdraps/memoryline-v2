@@ -648,8 +648,8 @@ const classeBouton =
                     {formatPrice(stand.cents)}
                   </p>
                   <p class="text-sm text-bo-muted">
-                    {pluriel(stand.commandes, "commande")}, paniers en cours
-                    exclus.
+                    {pluriel(stand.commandes, "commande")}, paniers en cours et
+                    ventes annulées exclus.
                   </p>
                   <a
                     href={lienStand(stand.id)}
@@ -1061,11 +1061,11 @@ const classeBouton =
             {/* Supprimer : en rouge, avec un avertissement au clic. Un stand
                 qui a vendu ne se supprime pas (ses ventes ne sauraient plus
                 où elles ont été faites) : on le dit, et rien ne part. */}
-            {stand.commandes > 0 ? (
+            {(stand.rattachees ?? stand.commandes) > 0 ? (
               <button
                 type="button"
                 class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
-                onclick={`alert(${JSON.stringify(`« ${stand.nom} » a ${stand.commandes} commande(s) : il ne peut pas être supprimé, ses ventes ne sauraient plus où elles ont été faites. Archivez-le à la place.`)})`}
+                onclick={`alert(${JSON.stringify(`« ${stand.nom} » a ${stand.rattachees ?? stand.commandes} commande(s) : il ne peut pas être supprimé, ses ventes ne sauraient plus où elles ont été faites. Archivez-le à la place.`)})`}
               >
                 Supprimer
               </button>

@@ -498,10 +498,12 @@ export interface StandBo {
     status: string;
     archivee: boolean;
   } | null;
-  /** Commandes prises sur ce stand, paniers en cours exclus. */
+  /** Ventes prises sur ce stand, paniers en cours et ventes annulées exclus. */
   commandes: number;
   /** Ce qu'elles totalisent, en centimes. */
   cents: number;
+  /** Tout ce qui n'est pas un panier, annulées comprises : empêche de supprimer le stand. */
+  rattachees?: number;
 }
 
 /**

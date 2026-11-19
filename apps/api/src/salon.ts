@@ -153,6 +153,10 @@ export function mountSalonRoutes(app: Hono): void {
   app.post("/salon/commandes/rouvrir", async (c) => {
     const stand = await standDuCode(codeFourni(c));
     if (!stand) return c.json({ error: "Code du stand incorrect." }, 403);
+    // Stand fermé : la revalidation serait refusée (« Le stand est fermé »),
+    // et la vente, payée, resterait un panier invisible.
+    if (!stand.ouvert)
+      return c.json({ error: "Le stand est fermé : corrigez la vente au back-office." }, 409);
     const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
     const cartId = String(body.cartId ?? "");
     const numero = String(body.numero ?? "");
@@ -211,8 +215,11 @@ export function mountSalonRoutes(app: Hono): void {
           .limit(1);
         valideeLe = prise?.le ?? null;
       }
-      if (valideeLe && Date.now() - valideeLe.getTime() > 2 * 3600_000)
-        return { erreur: "Validée il y a plus de deux heures : corrigez-la au back-office.", statut: 409 as const };
+      // Un quart d'heure (19/11) : la vente naît payée et remise, son affiche
+      // part vite à l'impression. Au-delà, un autre client tient sans doute
+      // la tablette : la correction se fait au back-office.
+      if (valideeLe && Date.now() - valideeLe.getTime() > 15 * 60_000)
+        return { erreur: "Validée il y a plus d'un quart d'heure : corrigez-la au back-office.", statut: 409 as const };
 
       await tx
         .update(schema.orderTransactions)
@@ -485,11 +492,17 @@ export function mountSalonRoutes(app: Hono): void {
 
     // Les ventes, comptées d'un coup : une requête par stand serait une
     // requête de trop dès la troisième année de salons.
+    // Les ventes annulées ne comptent plus (19/11) : l'annulation est le geste
+    // pour un client qui ne paie pas, et l'accueil, les statistiques et la page
+    // Finances les retirent déjà (HORS_VENTES). `rattachees`, lui, compte
+    // tout ce qui n'est pas un panier : c'est lui qui interdit de supprimer
+    // un stand dont des ventes portent le nom.
     const ventes = await db
       .select({
         standId: schema.orders.standId,
-        commandes: count(),
-        cents: raw<number>`coalesce(sum(${schema.orders.totalCents}), 0)::int`,
+        rattachees: count(),
+        commandes: raw<number>`(count(*) filter (where ${schema.orders.status} not in ('cancelled', 'voided')))::int`,
+        cents: raw<number>`coalesce(sum(${schema.orders.totalCents}) filter (where ${schema.orders.status} not in ('cancelled', 'voided')), 0)::int`,
       })
       .from(schema.orders)
       .where(
@@ -502,7 +515,7 @@ export function mountSalonRoutes(app: Hono): void {
     const parStand = new Map(
       ventes.map((v) => [
         v.standId,
-        { commandes: Number(v.commandes), cents: Number(v.cents) },
+        { commandes: Number(v.commandes), cents: Number(v.cents), rattachees: Number(v.rattachees) },
       ]),
     );
 
