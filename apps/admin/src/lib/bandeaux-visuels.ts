@@ -13,6 +13,7 @@
 import {
   PAGE_ACCUEIL,
   PAGE_BOUTIQUE,
+  PAGE_PARTOUT,
   PAGE_TOUS_LES_RAYONS,
   REGLAGE_BANDEAUX_VISUELS,
   bandeauDepuisEncart,
@@ -107,6 +108,11 @@ export interface GroupePages {
 
 /** Les pages qui existent toujours, quelle que soit la boutique. */
 const PAGES_FIXES: ChoixPage[] = [
+  {
+    cle: PAGE_PARTOUT,
+    libelle: "Toutes les pages du site",
+    detail: "accueil, catalogue, fiches des affiches, pages, recherche… sauf la caisse",
+  },
   { cle: PAGE_ACCUEIL, libelle: "Accueil", detail: "/" },
   { cle: PAGE_BOUTIQUE, libelle: "Toutes les affiches", detail: "/affiches" },
   {

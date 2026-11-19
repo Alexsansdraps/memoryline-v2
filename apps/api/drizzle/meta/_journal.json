@@ -715,6 +715,20 @@
       "when": 1795016195057,
       "tag": "0101_page_mulhouse",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1795109400000,
+      "tag": "0102_titre_page_alsace",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1795109400001,
+      "tag": "0103_bandeau_partout",
+      "breakpoints": true
     }
   ]
 }

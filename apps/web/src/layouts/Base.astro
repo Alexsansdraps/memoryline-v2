@@ -3,6 +3,7 @@ import { apiInterne } from "../lib/api-interne.ts";
 import "../styles/global.css";
 import Seo from "../components/Seo.astro";
 import AnnouncementBanner from "../components/AnnouncementBanner.astro";
+import BandeauxVisuels from "../components/BandeauxVisuels.astro";
 import CookieBanner from "../components/CookieBanner.astro";
 import CartBadge from "../islands/CartBadge.tsx";
 import {
@@ -73,6 +74,12 @@ interface Props {
    */
   precedente?: string | null;
   suivante?: string | null;
+  /**
+   * La page pose ses bandeaux visuels elle-même, à sa place (accueil,
+   * catalogue, pages libres). Sinon, ceux de « Toutes les pages du site »
+   * s'affichent ici, sous l'en-tête (19/11).
+   */
+  bandeauxDansLaPage?: boolean;
 }
 const {
   langue = LANGUE_DEFAUT,
@@ -87,7 +94,16 @@ const {
   jsonLd,
   precedente,
   suivante,
+  bandeauxDansLaPage = false,
 } = Astro.props;
+
+/**
+ * Les bandeaux de « Toutes les pages du site » (19/11), sur les pages qui
+ * n'en posent pas elles-mêmes — sauf la caisse (panier et paiement) : on n'y
+ * détourne pas un client qui est en train de payer.
+ */
+const pageDeCaisse = /^\/(?:[a-z]{2}\/)?(?:panier|commande)(?:\/|$)/.test(Astro.url.pathname);
+const bandeauxPartout = !bandeauxDansLaPage && !pageDeCaisse;
 
 const tr = t(langue);
 
@@ -1300,6 +1316,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
     </script>
 
     <main class="flex-1">
+      {bandeauxPartout && <BandeauxVisuels pages={[]} langue={langue} />}
       <slot />
     </main>
 

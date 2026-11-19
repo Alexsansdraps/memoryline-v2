@@ -254,7 +254,7 @@ const donneesStructurees =
   langue === LANGUE_DEFAUT ? [organisationLd, siteLd] : [organisationLd];
 ---
 
-<Base langue={langue} path={lien(langue, "/")} jsonLd={donneesStructurees}>
+<Base langue={langue} path={lien(langue, "/")} jsonLd={donneesStructurees} bandeauxDansLaPage>
   {/* ---------------- Bandeaux visuels ----------------
       Tout en haut, sous l'en-tête et AVANT les affiches — et surtout HORS de
       la condition de la vitrine : à l'intérieur, ils disparaîtraient le jour

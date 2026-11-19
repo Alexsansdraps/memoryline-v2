@@ -154,6 +154,10 @@ export interface BandeauVisuel {
  *   rayons                     TOUS les rayons, y compris ceux créés plus tard
  *   rayon:<adresse>            un rayon (une collection) précis
  *   page:<adresse>             une page libre (/pages/<adresse>)
+ *   partout                    TOUTES les pages du site (19/11) : accueil,
+ *                              catalogue, fiches des affiches, pages,
+ *                              recherche, carte cadeau, compte… sauf la
+ *                              caisse (panier et paiement)
  *
  * Une clé plutôt qu'un numéro : l'adresse d'un rayon est ce que la page
  * connaît, et c'est elle qu'on lit dans l'URL.
@@ -164,6 +168,13 @@ export const PAGE_TOUS_LES_RAYONS = "rayons";
 export const pageGenre = (genre: string) => `genre:${genre}`;
 export const pageRayon = (adresse: string) => `rayon:${adresse}`;
 export const pageLibre = (adresse: string) => `page:${adresse}`;
+/**
+ * Toutes les pages du site (19/11, Alexandra : « la bannière doit être
+ * affichée sur chaque page »). Une page qui pose ses bandeaux elle-même
+ * (accueil, catalogue, pages libres) les montre à sa place habituelle ; les
+ * autres, sous l'en-tête (Base.astro). La caisse n'en montre aucun.
+ */
+export const PAGE_PARTOUT = "partout";
 
 /**
  * Les clés de la page « /affiches », selon ce qu'elle montre.
@@ -426,7 +437,7 @@ export function bandeauxDeLaPage(
   return liste.filter(
     (b) =>
       etatBandeau(b, maintenant) === "en-ligne" &&
-      b.pages.some((p) => voulues.has(p)),
+      (b.pages.includes(PAGE_PARTOUT) || b.pages.some((p) => voulues.has(p))),
   );
 }
 
