@@ -160,10 +160,36 @@ export async function lieuPourLaCommande(
   // garde, et la cliente doit avoir coché qu'elle viendra avant.
   const [stand] = lieu.standId
     ? await lecteur
-        .select({ dateDebut: schema.stands.dateDebut, dateFin: schema.stands.dateFin, horaires: schema.stands.horaires })
+        .select({
+          dateDebut: schema.stands.dateDebut,
+          dateFin: schema.stands.dateFin,
+          horaires: schema.stands.horaires,
+          ouvert: schema.stands.ouvert,
+          pilotage: schema.stands.pilotage,
+          actif: schema.stands.actif,
+          archivedAt: schema.stands.archivedAt,
+        })
         .from(schema.stands)
         .where(eq(schema.stands.id, lieu.standId))
     : [];
+  // Le stand s'est terminé depuis que la cliente a ouvert la caisse : le
+  // retrait n'y est plus possible (19/11).
+  if (
+    stand &&
+    !retraitProposable(
+      {
+        ouvert: stand.ouvert,
+        pilotage: stand.pilotage,
+        dateDebut: stand.dateDebut ?? null,
+        dateFin: stand.dateFin ?? null,
+        horaires: stand.horaires ?? null,
+        archivedAt: stand.archivedAt,
+        actif: stand.actif,
+      },
+      new Date(),
+    )
+  )
+    return null;
   const dernier = stand
     ? dernierMomentDeRetrait({ dateDebut: stand.dateDebut ?? null, dateFin: stand.dateFin ?? null, horaires: stand.horaires ?? null })
     : null;
@@ -212,12 +238,35 @@ export async function lieuxRetraitPublics(langue: string): Promise<
       dateFin: schema.stands.dateFin,
       horaires: schema.stands.horaires,
       standOuvert: schema.stands.ouvert,
+      standPilotage: schema.stands.pilotage,
+      standActif: schema.stands.actif,
+      standArchive: schema.stands.archivedAt,
     })
     .from(schema.pickupPoints)
     .leftJoin(schema.stands, eq(schema.stands.id, schema.pickupPoints.standId))
     .where(and(eq(schema.pickupPoints.active, true), isNull(schema.pickupPoints.archivedAt)))
     .orderBy(asc(schema.pickupPoints.position), asc(schema.pickupPoints.id));
-  return rangs.map(({ l, dateDebut, dateFin, horaires, standOuvert }) => {
+  // Un stand TERMINÉ n'est jamais proposé (19/11, Alexandra : « les stands
+  // proposés, s'ils sont terminés mais qu'ils existent encore, ils doivent pas
+  // être proposés ») : le passage de la minute désactive déjà son lieu
+  // (synchroniserLieuDuStand), mais la caisse ne compte pas sur lui.
+  const proposables = rangs.filter(
+    ({ l, dateDebut, dateFin, horaires, standOuvert, standPilotage, standActif, standArchive }) =>
+      l.standId == null ||
+      retraitProposable(
+        {
+          ouvert: !!standOuvert,
+          pilotage: standPilotage ?? "manuel",
+          dateDebut: dateDebut ?? null,
+          dateFin: dateFin ?? null,
+          horaires: horaires ?? null,
+          archivedAt: standArchive ?? null,
+          actif: standActif ?? true,
+        },
+        maintenant,
+      ),
+  );
+  return proposables.map(({ l, dateDebut, dateFin, horaires, standOuvert }) => {
     // Le dernier moment pour venir : le dernier jour OUVERT, à l'heure où il ferme.
     const cal = { dateDebut: dateDebut ?? null, dateFin: dateFin ?? null, horaires: horaires ?? null };
     const dernier = l.standId != null ? dernierMomentDeRetrait(cal) : null;
