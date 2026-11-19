@@ -78,6 +78,11 @@ test("cheminRameneALaPageDuStand : seul l'accueil mène à la page du stand", ()
     assert.equal(cheminRameneALaPageDuStand(chemin), true, chemin);
 });
 
+test("cheminRameneALaPageDuStand : l'accueil demandé exprès (logo, accueil=1) reste l'accueil", () => {
+  for (const chemin of ["/", "", "/?x=1"])
+    assert.equal(cheminRameneALaPageDuStand(chemin, true), false, chemin);
+});
+
 test("cheminRameneALaPageDuStand : tout le site reste ouvert à la tablette (19/11)", () => {
   const ouverts = [
     "/pages/mulhouse",

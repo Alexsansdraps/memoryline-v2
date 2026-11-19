@@ -56,6 +56,11 @@ export function avecStand(adresse: string): string {
     // La valeur de la page (le numéro du stand, 18/11), pas toujours « 1 » :
     // la tablette reste sur SON stand et sa page (Base.astro).
     u.searchParams.set("stand", document.documentElement.dataset.standValeur || "1");
+    // L'accueil demandé mène à l'accueil du site, pas à la page du stand
+    // (19/11, même règle que les liens : Base.astro, middleware ; le nom du
+    // paramètre est PARAMETRE_ACCUEIL de @memoryline/types, recopié ici :
+    // ce fichier n'importe rien). « / » ou un préfixe de langue seul (« /en »).
+    if (/^\/(?:[a-z]{2}\/?)?$/.test(u.pathname)) u.searchParams.set("accueil", "1");
     return u.pathname + u.search + u.hash;
   } catch {
     return adresse;

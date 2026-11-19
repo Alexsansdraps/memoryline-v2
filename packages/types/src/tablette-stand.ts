@@ -44,16 +44,27 @@ export interface PageDeLaTablette {
 }
 
 /**
+ * Le paramètre qui dit « l'accueil du site, pour de bon » sur la tablette
+ * (19/11, Alexandra : « quand on clique sur le logo, on arrive sur la page
+ * d'accueil avec la bannière etc., rester en mode stand »). Le logo et tout
+ * lien vers l'accueil le portent (Base.astro) ; l'adresse de la tablette
+ * (« /?stand=1 », celle du BO et de l'application de Margaux, qui la recharge
+ * toutes les dix minutes) ne le porte pas, et mène à la page du stand.
+ */
+export const PARAMETRE_ACCUEIL = "accueil";
+
+/**
  * L'adresse mène-t-elle à la page du stand plutôt qu'à elle-même ?
  *
  * 19/11, Margaux (par Alexandra) : « sur tous les stands ils doivent voir
  * toutes les pages du site du menu ». La tablette n'est plus enfermée dans la
  * page de son stand : le menu, la recherche, le catalogue, les autres pages
- * restent ouverts, toujours sans prix. Seul l'ACCUEIL (« / ») mène à la page
- * du stand : c'est là que la tablette arrive en ouvrant son lien, et là que
- * ramène le logo.
+ * restent ouverts, toujours sans prix. Seul l'ACCUEIL (« / ») ouvert SANS
+ * `accueil=1` mène à la page du stand : c'est là que la tablette arrive en
+ * ouvrant son lien. Le logo, lui, demande l'accueil (`accueilDemande`).
  */
-export function cheminRameneALaPageDuStand(chemin: string): boolean {
+export function cheminRameneALaPageDuStand(chemin: string, accueilDemande = false): boolean {
+  if (accueilDemande) return false;
   const propre = (chemin.split(/[?#]/)[0] ?? "").replace(/\/+$/, "") || "/";
   return propre === "/";
 }

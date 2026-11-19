@@ -47,7 +47,12 @@ import {
   type Destination,
 } from "./lib/anciennes-adresses.ts";
 import { planDuSite } from "./lib/referencement.ts";
-import { cheminRameneALaPageDuStand, numeroDuStand, valeurDuStand } from "@memoryline/types";
+import {
+  PARAMETRE_ACCUEIL,
+  cheminRameneALaPageDuStand,
+  numeroDuStand,
+  valeurDuStand,
+} from "@memoryline/types";
 
 /**
  * La page de la tablette d'un stand (18/11, `stand.page_id`, BO › Ventes
@@ -509,7 +514,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
    * stand n° 1, celui de Mulhouse. La tablette se range d'elle-même sur le
    * stand de son code (lib/stand-etat.ts).
    *
-   * Un stand qui a une page : l'ACCUEIL de la tablette y mène. Le reste du
+   * Un stand qui a une page : l'ACCUEIL de la tablette y mène, sauf demandé
+   * exprès (`accueil=1` : le logo et les liens vers l'accueil). Le reste du
    * site reste ouvert (19/11, Margaux : « sur tous les stands ils doivent
    * voir toutes les pages du site du menu ») : menu, recherche, catalogue,
    * autres pages, toujours sans prix (tablette-stand.ts). Le code éventuel
@@ -521,7 +527,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const langueTablette = prefixe ? prefixe.slice(1) : "fr";
     const page = await pageDeLaTablette(valeurStand, langueTablette);
     context.locals.pageDuStand = page;
-    if (page && lecture && cheminRameneALaPageDuStand(sansLangue)) {
+    const accueilDemande = context.url.searchParams.get(PARAMETRE_ACCUEIL) === "1";
+    if (page && lecture && cheminRameneALaPageDuStand(sansLangue, accueilDemande)) {
       const suite = new URLSearchParams({ stand: valeurStand });
       const code = context.url.searchParams.get("code");
       if (code) suite.set("code", code);

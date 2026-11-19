@@ -6,6 +6,7 @@ import AnnouncementBanner from "../components/AnnouncementBanner.astro";
 import CookieBanner from "../components/CookieBanner.astro";
 import CartBadge from "../islands/CartBadge.tsx";
 import {
+  LANGUES,
   LANGUE_DEFAUT,
   autresVersions,
   cheminSansLangue,
@@ -643,17 +644,30 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         qui dit déjà « stand=0 » pour en sortir, ne change pas. */}
     {
       Astro.locals.stand && (
-        <script is:inline>
+        <script
+          is:inline
+          define:vars={{ prefixesLangue: LANGUES.filter((l) => l !== LANGUE_DEFAUT) }}
+        >
           (function () {
             // La valeur de l'adresse (le numéro du stand, 18/11) : la
             // tablette reste sur SON stand, donc sur sa page.
             var valeur = document.documentElement.getAttribute("data-stand-valeur") || "1";
+            // Un lien vers l'accueil (« / », « /en »…) mène à l'accueil du
+            // site, pas à la page du stand (19/11) : il prend `accueil=1`.
+            function versLAccueil(chemin) {
+              var morceaux = chemin.split("/").filter(Boolean);
+              return (
+                morceaux.length === 0 ||
+                (morceaux.length === 1 && prefixesLangue.indexOf(morceaux[0]) !== -1)
+              );
+            }
             function garder(adresse) {
               try {
                 var u = new URL(adresse, window.location.href);
                 if (u.origin !== window.location.origin) return null;
                 if (u.searchParams.has("stand")) return null;
                 u.searchParams.set("stand", valeur);
+                if (versLAccueil(u.pathname)) u.searchParams.set("accueil", "1");
                 return u.href;
               } catch (e) {
                 return null;
@@ -899,10 +913,15 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             </nav>
           </details>
 
+          {/* Le logo mène à l'accueil du site, au stand aussi (19/11) : en
+              mode stand, avec `accueil=1`, sans quoi l'accueil de la tablette
+              ramènerait à la page du stand (middleware). */}
           <a
-            href={lien(langue, pageDuStand ? `/pages/${pageDuStand.slug}` : "/")}
+            href={Astro.locals.stand
+              ? `${lien(langue, "/")}?stand=${encodeURIComponent(Astro.locals.standValeur ?? "1")}&accueil=1`
+              : lien(langue, "/")}
             class="inline-flex shrink-0 items-center"
-            aria-label={pageDuStand ? pageDuStand.titre : tr("nav.accueil")}
+            aria-label={tr("nav.accueil")}
           >
             <img
               src={logoEnTete.src}
