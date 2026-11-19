@@ -58,6 +58,11 @@ import { cheminPermisALaTablette, numeroDuStand, valeurDuStand } from "@memoryli
  */
 const PAGE_TABLETTE_MS = 5 * 1000;
 const pagesDesTablettes = new Map<string, { a: number; page: App.Locals["pageDuStand"] }>();
+/**
+ * Les stands dont l'API a RÉPONDU qu'ils n'ont pas de page en ligne (19/11) :
+ * leur tablette affiche l'écran « Oups ». Une API muette n'en ajoute aucun.
+ */
+const standsSansPage = new Set<string>();
 
 async function pageDeLaTablette(valeur: string, langue: string): Promise<App.Locals["pageDuStand"]> {
   if (numeroDuStand(valeur) === null) return null;
@@ -75,6 +80,8 @@ async function pageDeLaTablette(valeur: string, langue: string): Promise<App.Loc
       page: { slug: string; titre: string } | null;
       affiches?: string[];
     };
+    if (r.page?.slug) standsSansPage.delete(cle);
+    else standsSansPage.add(cle);
     if (r.page?.slug)
       page = {
         slug: r.page.slug,
@@ -504,7 +511,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const valeurStand = stand ? valeurDuStand(demande) : null;
   context.locals.standValeur = valeurStand;
   if (valeurStand) {
-    const page = await pageDeLaTablette(valeurStand, prefixe ? prefixe.slice(1) : "fr");
+    const langueTablette = prefixe ? prefixe.slice(1) : "fr";
+    const page = await pageDeLaTablette(valeurStand, langueTablette);
     context.locals.pageDuStand = page;
     if (page && lecture && !cheminPermisALaTablette(sansLangue, page)) {
       const suite = new URLSearchParams({ stand: valeurStand });
@@ -515,6 +523,25 @@ export const onRequest = defineMiddleware(async (context, next) => {
         302,
       );
     }
+    /*
+     * Un stand sans page (19/11, Alexandra : « si on regarde un stand qui n'a
+     * pas de page ça doit afficher genre oups y'a pas de page attitrée ») :
+     * toute adresse de sa tablette mène à l'écran « Oups », en grand. Pas de
+     * page choisie dans BO › Ventes stand, ou une page pas en ligne. Il faut
+     * que l'API ait répondu : muette, elle laisse le catalogue, pour ne
+     * jamais bloquer une vente en plein marché.
+     */
+    const ecranOups = "/stand-sans-page";
+    if (
+      !page &&
+      lecture &&
+      standsSansPage.has(`${valeurStand}|${langueTablette}`) &&
+      (sansLangue.replace(/\/+$/, "") || "/") !== ecranOups
+    )
+      return context.redirect(
+        `${prefixe}${ecranOups}?stand=${encodeURIComponent(valeurStand)}`,
+        302,
+      );
   }
 
   let reponse = await next();

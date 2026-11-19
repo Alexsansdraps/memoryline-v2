@@ -1,0 +1,31 @@
+---
+/**
+ * La tablette d'un stand qui n'a pas de page (19/11, Alexandra : « si on
+ * regarde un stand qui n'a pas de page ça doit afficher genre oups y'a pas de
+ * page attitrée en gros »). Le middleware y mène toute adresse de la tablette
+ * tant que BO › Ventes stand ne lui a pas choisi de page en ligne.
+ */
+import Base from "../../layouts/Base.astro";
+import { estLangue, langueDepuisParam, lien, t, type Langue } from "../../i18n/utils.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+---
+
+<Base
+  langue={langue}
+  title={tr("stand.sans_page.titre")}
+  description={tr("stand.sans_page.texte")}
+  path={lien(langue, "/stand-sans-page")}
+  noindex
+>
+  <section class="mx-auto flex min-h-[65vh] max-w-[1000px] flex-col items-center justify-center px-6 py-16 text-center">
+    <h1 class="text-6xl font-medium sm:text-8xl">{tr("stand.sans_page.titre")}</h1>
+    <p class="mt-8 text-2xl sm:text-4xl">{tr("stand.sans_page.texte")}</p>
+    <p class="mt-10 max-w-[640px] text-base text-ink-soft sm:text-lg">{tr("stand.sans_page.aide")}</p>
+  </section>
+</Base>
