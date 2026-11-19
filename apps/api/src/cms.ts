@@ -1843,7 +1843,19 @@ export function mountCms(app: Hono): void {
   app.get("/stand/page-de-la-tablette", async (c) => {
     const numero = numeroDuStand(c.req.query("stand"));
     const page = numero ? await pageDeLaTablette(numero, langueDemandee(c)) : null;
-    return c.json(page ? { page: { slug: page.slug, titre: page.titre }, affiches: page.affiches } : { page: null, affiches: [] });
+    if (page)
+      return c.json({ existe: true, page: { slug: page.slug, titre: page.titre }, affiches: page.affiches });
+    // Le stand existe-t-il (19/11) ? Sans page, sa tablette affiche « Oups » ;
+    // un stand inconnu ou archivé, une page 404 (« ça doit faire juste un
+    // 404 et pas une redir », Alexandra).
+    const [stand] = numero
+      ? await db
+          .select({ id: schema.stands.id })
+          .from(schema.stands)
+          .where(and(eq(schema.stands.id, numero), isNull(schema.stands.archivedAt)))
+          .limit(1)
+      : [];
+    return c.json({ existe: !!stand, page: null, affiches: [] });
   });
 
   /* ---------------------------------------------------------------------- */

@@ -63,6 +63,8 @@ const pagesDesTablettes = new Map<string, { a: number; page: App.Locals["pageDuS
  * leur tablette affiche l'écran « Oups ». Une API muette n'en ajoute aucun.
  */
 const standsSansPage = new Set<string>();
+/** Et ceux dont l'API a répondu qu'ils n'existent pas (ou plus) : une 404. */
+const standsInconnus = new Set<string>();
 
 async function pageDeLaTablette(valeur: string, langue: string): Promise<App.Locals["pageDuStand"]> {
   if (numeroDuStand(valeur) === null) return null;
@@ -79,9 +81,12 @@ async function pageDeLaTablette(valeur: string, langue: string): Promise<App.Loc
     const r = (await res.json()) as {
       page: { slug: string; titre: string } | null;
       affiches?: string[];
+      /** Absent d'une API d'avant le 19/11 : le stand est alors supposé exister. */
+      existe?: boolean;
     };
-    if (r.page?.slug) standsSansPage.delete(cle);
-    else standsSansPage.add(cle);
+    standsSansPage.delete(cle);
+    standsInconnus.delete(cle);
+    if (!r.page?.slug) (r.existe === false ? standsInconnus : standsSansPage).add(cle);
     if (r.page?.slug)
       page = {
         slug: r.page.slug,
@@ -531,17 +536,21 @@ export const onRequest = defineMiddleware(async (context, next) => {
      * que l'API ait répondu : muette, elle laisse le catalogue, pour ne
      * jamais bloquer une vente en plein marché.
      */
+    //
+    // Un stand qui n'existe pas (19/11, Alexandra : « ça doit faire juste un
+    // 404 et pas une redir ») : la page 404 du site, à la même adresse. Un
+    // numéro inconnu ou archivé (l'API le dit), ou un mot (« ?stand=abc »)
+    // qui ne désigne aucun stand ; seul « apercu » (l'aperçu depuis le BO)
+    // n'en est pas un. L'écran « Oups », lui aussi, s'affiche sur place.
     const ecranOups = "/stand-sans-page";
-    if (
-      !page &&
-      lecture &&
-      standsSansPage.has(`${valeurStand}|${langueTablette}`) &&
-      (sansLangue.replace(/\/+$/, "") || "/") !== ecranOups
-    )
-      return context.redirect(
-        `${prefixe}${ecranOups}?stand=${encodeURIComponent(valeurStand)}`,
-        302,
-      );
+    const cleStand = `${valeurStand}|${langueTablette}`;
+    const inconnu =
+      (numeroDuStand(valeurStand) === null && valeurStand !== "apercu") ||
+      standsInconnus.has(cleStand);
+    if (!page && lecture && (sansLangue.replace(/\/+$/, "") || "/") !== ecranOups) {
+      if (inconnu) return next("/404");
+      if (standsSansPage.has(cleStand)) return next(`${prefixe}${ecranOups}`);
+    }
   }
 
   let reponse = await next();
