@@ -27,7 +27,7 @@ import {
   lireSections,
 } from "../src/cms.js";
 import {
-  cheminPermisALaTablette,
+  cheminRameneALaPageDuStand,
   numeroDuStand,
   valeurDuStand,
 } from "../../../packages/types/src/index.ts";
@@ -73,38 +73,26 @@ const pageMulhouse = {
   ],
 };
 
-test("cheminPermisALaTablette : la page du stand, ses affiches, le panier, la caisse", () => {
-  const ouverts = [
-    "/pages/mulhouse",
-    "/pages/mulhouse/",
-    "/pages/MULHOUSE",
-    "/affiches/mulhouse-hotel-de-ville-affiche-personnalisee",
-    "/affiches/NOEL-ALSACIEN-affiche-personnalisee",
-    "/panier",
-    "/commande",
-    "/404",
-  ];
-  for (const chemin of ouverts)
-    assert.equal(cheminPermisALaTablette(chemin, pageMulhouse), true, chemin);
+test("cheminRameneALaPageDuStand : seul l'accueil mène à la page du stand", () => {
+  for (const chemin of ["/", "", "/?x=1"])
+    assert.equal(cheminRameneALaPageDuStand(chemin), true, chemin);
 });
 
-test("cheminPermisALaTablette : tout le reste ramène à la page", () => {
-  const fermes = [
-    "/",
+test("cheminRameneALaPageDuStand : tout le site reste ouvert à la tablette (19/11)", () => {
+  const ouverts = [
+    "/pages/mulhouse",
     "/affiches",
     "/affiches/paris-tour-eiffel-affiche-personnalisee",
-    "/affiches/mulhouse-hotel-de-ville-affiche-personnalisee/autre",
     "/pages/autre-page",
-    "/pages/mulhouse/autre",
     "/recherche",
     "/carte-cadeau",
     "/contact",
     "/compte",
-    "/compte/connexion",
-    "/affiches/%E2%28",
+    "/panier",
+    "/commande",
   ];
-  for (const chemin of fermes)
-    assert.equal(cheminPermisALaTablette(chemin, pageMulhouse), false, chemin);
+  for (const chemin of ouverts)
+    assert.equal(cheminRameneALaPageDuStand(chemin), false, chemin);
 });
 
 /* -------------------------------------------------------------------------- */

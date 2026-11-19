@@ -33,7 +33,9 @@ export function numeroDuStand(brut: string | null | undefined): number | null {
   return Number(v);
 }
 
-/** Ce que la tablette a le droit d'ouvrir : sa page, et les affiches de sa page. */
+/**
+ * La page de la tablette : son adresse, et les affiches qu'elle montre.
+ */
 export interface PageDeLaTablette {
   /** L'adresse de la page (« mulhouse » pour /pages/mulhouse). */
   slug: string;
@@ -42,39 +44,16 @@ export interface PageDeLaTablette {
 }
 
 /**
- * Les adresses qui servent à VENDRE depuis la page, en plus d'elle et de ses
- * affiches : le panier de la tablette (sa dernière étape), la caisse (qui y
- * ramène au stand) et la page d'erreur.
- */
-const ADRESSES_DE_LA_VENTE = ["/panier", "/commande", "/404"];
-
-/** Un morceau d'adresse lisible : décodé, en minuscules ; null s'il ne se décode pas. */
-function segment(brut: string): string | null {
-  try {
-    return decodeURIComponent(brut).trim().toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Une adresse du site (sans préfixe de langue ni requête) reste-t-elle
- * ouverte sur une tablette qui n'affiche que sa page ?
+ * L'adresse mène-t-elle à la page du stand plutôt qu'à elle-même ?
  *
- * Oui pour la page elle-même, la fiche d'une affiche de la page (le module
- * de personnalisation y vit), le panier et la caisse. Non pour tout le reste
- * — l'accueil, le catalogue, les rayons, la recherche, les autres pages, le
- * compte, la carte cadeau : le middleware y ramène vers la page.
+ * 19/11, Margaux (par Alexandra) : « sur tous les stands ils doivent voir
+ * toutes les pages du site du menu ». La tablette n'est plus enfermée dans la
+ * page de son stand : le menu, la recherche, le catalogue, les autres pages
+ * restent ouverts, toujours sans prix. Seul l'ACCUEIL (« / ») mène à la page
+ * du stand : c'est là que la tablette arrive en ouvrant son lien, et là que
+ * ramène le logo.
  */
-export function cheminPermisALaTablette(chemin: string, page: PageDeLaTablette): boolean {
+export function cheminRameneALaPageDuStand(chemin: string): boolean {
   const propre = (chemin.split(/[?#]/)[0] ?? "").replace(/\/+$/, "") || "/";
-  if (ADRESSES_DE_LA_VENTE.includes(propre.toLowerCase())) return true;
-  const morceaux = propre.split("/").filter(Boolean);
-  if (morceaux.length !== 2) return false;
-  const [rubrique, brut] = morceaux as [string, string];
-  const nom = segment(brut);
-  if (!nom) return false;
-  if (rubrique === "pages") return nom === page.slug.toLowerCase();
-  if (rubrique === "affiches") return page.affiches.some((a) => a.toLowerCase() === nom);
-  return false;
+  return propre === "/";
 }

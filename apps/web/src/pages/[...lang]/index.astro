@@ -5,7 +5,7 @@ import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
 /** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
  *  celles de l'accueil s'il en a, le réglage général sinon. */
-const grille = await grilleProduits("accueil");
+const grille = await grilleProduits("accueil", { stand: Astro.locals.stand });
 import Newsletter from "../../islands/Newsletter.tsx";
 import {
   api,

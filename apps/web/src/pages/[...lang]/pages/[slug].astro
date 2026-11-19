@@ -28,15 +28,21 @@ import {
 } from "../../../lib/grille.ts";
 /** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
  *  celles des pages du site s'il y en a, le réglage général sinon. */
-const grille = await grilleProduits("pages");
+const grille = await grilleProduits("pages", { stand: Astro.locals.stand });
 /**
  * La page d'un stand, sur sa tablette (18/11 : « les pages stands doivent être
- * en grand ») : toute la largeur de l'écran et de grandes vignettes, deux par
- * ligne sur une tablette tenue en hauteur, trois en largeur. Hors du stand, la
- * page garde sa colonne de lecture et les colonnes réglées au back-office.
+ * en grand ») : toute la largeur de l'écran, quatre affiches par ligne sur
+ * tablette (19/11). Hors du stand, la page garde sa colonne de lecture et les
+ * colonnes réglées au back-office.
  */
-const enGrand = !!Astro.locals.stand;
-const grilleAffichee = enGrand ? { mobile: 2, tablette: 2, ordinateur: 3 } : grille;
+// Seulement la page DU stand (19/11) : la tablette voit désormais tout le site,
+// et les autres pages s'y affichent comme sur le site.
+const enGrand =
+  !!Astro.locals.stand &&
+  !!Astro.locals.pageDuStand &&
+  (Astro.params.slug ?? "").toLowerCase() === Astro.locals.pageDuStand.slug.toLowerCase();
+// Quatre par ligne sur la tablette (19/11), comme toutes les grilles du stand.
+const grilleAffichee = enGrand ? { mobile: 2, tablette: 4, ordinateur: 4 } : grille;
 const sizesVignettes = enGrand ? sizesGrille(grilleAffichee) : sizesGrilleColonne(grille);
 import { htmlSur } from "../../../lib/html-sur.ts";
 import { languesDuContenu } from "../../../lib/referencement.ts";

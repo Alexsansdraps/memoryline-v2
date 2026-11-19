@@ -18,7 +18,7 @@ import { titreDePage } from "../../lib/textes-seo.ts";
 import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
 /** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
  *  celles de la recherche s'il y en a, le réglage général sinon. */
-const grille = await grilleProduits("recherche");
+const grille = await grilleProduits("recherche", { stand: Astro.locals.stand });
 import {
   estLangue,
   langueDepuisParam,

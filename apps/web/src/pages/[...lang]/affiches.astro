@@ -19,7 +19,7 @@ import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
 /** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
  *  celles de la boutique s'il y en a — tous les rayons et collections —, le
  *  réglage général sinon. */
-const grille = await grilleProduits("boutique");
+const grille = await grilleProduits("boutique", { stand: Astro.locals.stand });
 import {
   LOCALE_COMPLETE,
   estLangue,

@@ -162,16 +162,19 @@ let entreesMenu: EntreeMenuPublique[] = MENU_DE_SECOURS;
 if (reponseMenu?.entrees.length) entreesMenu = reponseMenu.entrees;
 
 /**
- * La tablette d'un stand qui a sa page (18/11, BO › Ventes stand) n'affiche
- * qu'elle : le menu ne propose plus qu'elle, le logo y mène, et ni la
- * recherche ni les colonnes du pied de page n'ouvrent le reste du catalogue
- * (le middleware y ramènerait de toute façon).
+ * La tablette d'un stand qui a sa page (BO › Ventes stand) : le logo y mène,
+ * et elle vient EN TÊTE du menu. Le reste du menu, la recherche et le pied de
+ * page restent ceux du site (19/11, Margaux : « sur tous les stands ils
+ * doivent voir toutes les pages du site du menu »).
  */
 const pageDuStand = Astro.locals.pageDuStand;
-if (pageDuStand)
+if (pageDuStand) {
+  const adresseDuStand = `/pages/${pageDuStand.slug}`;
   entreesMenu = [
-    { id: 0, label: pageDuStand.titre, href: `/pages/${pageDuStand.slug}`, enfants: [] },
+    { id: 0, label: pageDuStand.titre, href: adresseDuStand, enfants: [] },
+    ...entreesMenu.filter((e) => e.href !== adresseDuStand),
   ];
+}
 
 /**
  * Une adresse de menu, prête à être cliquée.
@@ -335,11 +338,7 @@ const colonnesDuBo: ColonnePied[] = (
   }))
   .filter((c) => c.liens.length > 0 || c.href !== "")
   .slice(0, COLONNES_PIED_MAX);
-const colonnesPied: ColonnePied[] = pageDuStand
-  ? []
-  : colonnesDuBo.length
-    ? colonnesDuBo
-    : PIED_DE_SECOURS;
+const colonnesPied: ColonnePied[] = colonnesDuBo.length ? colonnesDuBo : PIED_DE_SECOURS;
 
 /**
  * La grille du pied de page : le logo, les colonnes, puis « Compte », soit
@@ -747,10 +746,10 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
       if (window.mlAccueilPret) window.mlAccueilPret();
     </script>
     <div id="ml-navigation" aria-hidden="true"></div>
-    {/* Pas de bandeau au stand : il annonce une offre chiffrée — « 3 achetées,
-        1 offerte » — et la vendeuse a ses propres tarifs de salon. Une remise
-        affichée qui ne s'applique pas ici la contredirait devant le client. */}
-    {!Astro.locals.stand && <AnnouncementBanner langue={langue} />}
+    {/* Le bandeau d'annonce, au stand AUSSI (19/11, Alexandra : « il faut
+        même la bannière, sur toutes les pages » ; la tablette est le site,
+        sauf les prix et la caisse). */}
+    <AnnouncementBanner langue={langue} />
     {/* En-tête calquée sur memoryline.fr : logo à gauche, navigation au
         centre, actions à droite, sur 1200 px de large. */}
     <header class="border-b border-ink/10 bg-paper sticky top-0 z-10">
@@ -1000,7 +999,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
             sont dans global.css (`ml-recherche`), partagés avec le champ de
             la page de recherche. */}
         <div
-          class={pageDuStand ? "hidden" : "relative hidden w-[clamp(230px,18vw,360px)] lg:block"}
+          class="relative hidden w-[clamp(230px,18vw,360px)] lg:block"
         >
           {/* La recherche instantanée (lib/recherche-instantanee.ts) : les
               affiches trouvées s'affichent ici, en grandes vignettes, à
@@ -1064,9 +1063,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           <a
             id="ml-q-loupe"
             href={lien(langue, "/recherche")}
-            class={pageDuStand
-              ? "hidden"
-              : "inline-flex items-center hover:text-terracotta transition-colors lg:hidden"}
+            class="inline-flex items-center hover:text-terracotta transition-colors lg:hidden"
             aria-label={tr("recherche.titre")}
             aria-controls="ml-q-ecran"
           >

@@ -41,7 +41,15 @@ export interface Grille {
  * Les quatre lectures ne coûtent qu'un aller-retour : `setting()` lit la
  * table des réglages une fois par page (cache de deux secondes, api.ts).
  */
-export async function grilleProduits(page?: PageGrille): Promise<Grille> {
+export async function grilleProduits(
+  page?: PageGrille,
+  /**
+   * La tablette d'un stand (19/11, Alexandra : « tablettes lignes de 4
+   * affiches ») : quatre affiches par ligne dès 768 px, en hauteur comme en
+   * largeur, sur toutes les grilles. Le téléphone garde son réglage.
+   */
+  options: { stand?: boolean } = {},
+): Promise<Grille> {
   const [ordi, mobile, ordiPage, mobilePage] = await Promise.all([
     setting(cleColonnes(), String(COLONNES_ORDINATEUR.defaut)),
     setting(cleColonnesTelephone(), String(COLONNES_TELEPHONE.defaut)),
@@ -60,6 +68,7 @@ export async function grilleProduits(page?: PageGrille): Promise<Grille> {
   );
   const ordinateur = colonnesLues(ordiPage, COLONNES_ORDINATEUR, ordinateurGeneral);
   const telephone = colonnesLues(mobilePage, COLONNES_TELEPHONE, telephoneGeneral);
+  if (options.stand) return { mobile: telephone, tablette: 4, ordinateur: 4 };
   return {
     mobile: telephone,
     tablette: Math.max(telephone, Math.min(ordinateur - 1, 3)),
