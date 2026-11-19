@@ -9,8 +9,11 @@
  *   - AUCUN PRIX n'est montré. Le tarif du stand n'est pas celui du site (pas
  *     de frais de port, remises de salon, lots), et c'est la vendeuse qui
  *     l'annonce. Un prix affiché à l'écran la contredirait devant le client.
- *   - AUCUN PAIEMENT en ligne. L'argent se règle sur place ; la commande part
- *     en « à préparer » et la vendeuse la marque encaissée au back-office.
+ *   - AUCUN PAIEMENT en ligne. L'argent se règle sur place. Depuis le 19/11
+ *     (Alexandra : « on considère que c'est payé et terminé dès que la
+ *     personne a fini son affiche »), la vente naît PAYÉE et TERMINÉE : son
+ *     PDF se télécharge aussitôt. Si le client ne paie pas, Margaux l'annule
+ *     (fiche ou liste des ventes du stand), ou la supprime.
  *   - LE NOM ET L'ADRESSE E-MAIL suffisent à valider. On ne demande pas
  *     d'adresse postale : le client repart avec son affiche, ou vient la
  *     chercher. L'adresse e-mail, elle, sert à le prévenir quand c'est prêt —
@@ -142,8 +145,10 @@ export function mountSalonRoutes(app: Hono): void {
    * ni doublon —, et le journal de la commande raconte ce qui s'est passé.
    *
    * Garde-fous : seule la tablette qui l'a validée (même panier), au même
-   * stand, dans les deux heures, et tant que l'affiche n'a été ni remise ni
-   * remboursée. Au-delà, c'est une correction de back-office, pas de stand.
+   * stand, dans les deux heures, et tant qu'elle n'a pas été remboursée.
+   * Au-delà, c'est une correction de back-office, pas de stand. Depuis le
+   * 19/11, la vente naît remise (« Terminée ») : cette remise s'annule avec
+   * elle, et la revalidation en écrit une nouvelle.
    */
   app.post("/salon/commandes/rouvrir", async (c) => {
     const stand = await standDuCode(codeFourni(c));
@@ -167,23 +172,11 @@ export function mountSalonRoutes(app: Hono): void {
         .for("no key update");
       if (!commande) return { erreur: "Commande introuvable.", statut: 404 as const };
       if (commande.status === "draft") return { ok: true as const };
-      // « pending » : une vente validée depuis le 17/11, à encaisser par
-      // Margaux au BO. « paid » : une vente d'avant, encaissée à la validation.
+      // « paid » : une vente du stand, encaissée à la validation (avant le
+      // 17/11, et de nouveau depuis le 19/11). « pending » : une vente du
+      // 17 au 19/11, restée « à encaisser ».
       if ((commande.status !== "pending" && commande.status !== "paid") || commande.cancelledAt)
         return { erreur: "Cette commande ne peut plus être modifiée ici.", statut: 409 as const };
-
-      const [remise] = await tx
-        .select({ id: schema.fulfillments.id })
-        .from(schema.fulfillments)
-        .where(
-          and(
-            eq(schema.fulfillments.orderId, commande.id),
-            eq(schema.fulfillments.status, "success"),
-          ),
-        )
-        .limit(1);
-      if (remise)
-        return { erreur: "L'affiche a déjà été remise : corrigez la commande au back-office.", statut: 409 as const };
 
       const ecritures = await tx
         .select()
@@ -232,9 +225,19 @@ export function mountSalonRoutes(app: Hono): void {
             eq(schema.orderTransactions.status, "success"),
           ),
         );
+      // La remise faite à la validation (19/11) tombe avec elle.
+      await tx
+        .update(schema.fulfillments)
+        .set({ status: "cancelled", cancelledAt: new Date() })
+        .where(
+          and(
+            eq(schema.fulfillments.orderId, commande.id),
+            eq(schema.fulfillments.status, "success"),
+          ),
+        );
       await tx
         .update(schema.orders)
-        .set({ status: "draft", lastActivityAt: new Date() })
+        .set({ status: "draft", lastActivityAt: new Date(), fulfilledAt: null })
         .where(eq(schema.orders.id, commande.id));
       // Les noms des fichiers d'impression tombent avec la vente : le client
       // revient justement pour corriger, et un nom déjà retenu ne change plus
@@ -357,12 +360,15 @@ export function mountSalonRoutes(app: Hono): void {
           number: /^SAL-\d+$/.test(verrouille.number)
             ? verrouille.number
             : await prochainNumeroDeCommande(tx, "SAL-"),
-          // À ENCAISSER (17/11, Alexandra : « une commande stand n'est pas
-          // payée d'avance, ça doit être une étape que Margaux met »). La
-          // tablette enregistre la commande ; Margaux la marque réglée au BO
-          // (« Encaisser · réglé sur place ») quand le client a payé. C'est
-          // ce geste qui écrit l'encaissement au grand livre (markOrderPaid).
-          status: "pending",
+          // PAYÉE dès la validation (19/11, Alexandra : « enlève la manip de
+          // payer […] on considère que c'est payé et terminé dès que la
+          // personne a fini son affiche »). Un client qui ne paie pas, Margaux
+          // annule sa vente au BO (commandes.ts, annulation d'une vente du
+          // stand) : elle sort des chiffres et du grand livre.
+          status: "paid",
+          // TERMINÉE aussi : l'affiche est imprimée et remise sur place, il
+          // n'y a pas d'étape « À imprimer » à cocher (traitement.ts).
+          fulfilledAt: new Date(),
           customerId: client.id,
           totalCents: total,
           shippingCents: 0,
@@ -379,13 +385,39 @@ export function mountSalonRoutes(app: Hono): void {
         .where(eq(schema.orders.id, panier.id))
         .returning();
 
-      // Pas d'encaissement ici : il s'écrit quand Margaux marque la commande
-      // réglée au BO (route /admin/orders/:id/encaisser, moyen « sur place »).
+      // Le grand livre reçoit l'encaissement, comme avant le 17/11 : c'est
+      // lui qui fait foi pour une vente (page Finances), sous le moyen
+      // « Réglé sur place ». L'annulation le retire (commandes.ts).
+      await tx.insert(schema.orderTransactions).values({
+        orderId: panier.id,
+        kind: "sale",
+        status: "success",
+        amountCents: total,
+        gateway: "stand",
+        externalRef: null,
+      });
+      // Et la remise : une expédition pour chaque affiche, sans transporteur
+      // — la fiche la lit « Remise au client ». C'est elle qui fait l'étape
+      // « Terminée » (traitement.ts) et ouvre le téléchargement du PDF.
+      const aRemettre = lignes.filter((l) => !l.giftCard && l.quantity > 0);
+      if (aRemettre.length) {
+        const [remise] = await tx
+          .insert(schema.fulfillments)
+          .values({ orderId: panier.id, status: "success" })
+          .returning();
+        await tx.insert(schema.fulfillmentItems).values(
+          aRemettre.map((l) => ({
+            fulfillmentId: remise!.id,
+            orderItemId: l.id,
+            quantity: l.quantity,
+          })),
+        );
+      }
       await tx.insert(schema.orderEvents).values({
         orderId: panier.id,
         kind: "event",
         message:
-          `Commande prise au stand${evenement ? ` (${evenement})` : ""}, à encaisser sur place.`,
+          `Commande prise au stand${evenement ? ` (${evenement})` : ""}, réglée sur place et remise : terminée.`,
       });
       return { lignes, commande: commande! };
     });

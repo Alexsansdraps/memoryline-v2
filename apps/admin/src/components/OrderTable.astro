@@ -51,7 +51,25 @@ if (Astro.request.method === "POST" && estProprietaire) {
   const f = await Astro.request.formData();
   const action = f.get("_action");
   try {
-    if (action === "etape") {
+    if (action === "annuler-vente") {
+      // Une vente du stand que le client n'a pas payée, ou autre (19/11) :
+      // annulée d'ici, sans ouvrir la fiche. Aucun courriel, rien à rendre :
+      // son encaissement sur place sort du grand livre (commandes.ts).
+      const r = await api.annulerCommande(Number(f.get("id")), {
+        motif: String(f.get("motif") ?? "impaye"),
+        motifLibre: "",
+        rembourser: false,
+        author: Astro.locals.user?.email ?? undefined,
+      });
+      flash = `Vente ${r.numero} annulée : elle ne compte plus dans vos chiffres.`;
+    } else if (action === "supprimer-vente") {
+      // Pour les essais (19/11, Alexandra : « faut qu'on puisse supprimer
+      // malgré la loi les commandes […] et pas devoir passer par
+      // archivées ») : une vente du stand part pour de bon, d'un clic.
+      const numero = String(f.get("numero") ?? "");
+      await api.supprimerCommande(Number(f.get("id")));
+      flash = `Vente ${numero} supprimée définitivement, avec ses lignes et son journal.`;
+    } else if (action === "etape") {
       // L'étape suivante, d'un clic dans la liste (17/11) : la même règle que
       // la frise de la fiche (courriel compris).
       const r = await api.changerEtape(Number(f.get("id")), {
@@ -122,9 +140,7 @@ if (Astro.request.method === "POST" && estProprietaire) {
         const uniques = raisons.filter((v, i, t) => t.indexOf(v) === i);
         flash =
           `${supprimees} commande(s) supprimée(s) définitivement, avec leurs lignes et leur journal.` +
-          (raisons.length
-            ? ` ${raisons.length} gardée(s), toujours archivée(s) : ${uniques.join(" ")}`
-            : "");
+          (raisons.length ? ` ${raisons.length} gardée(s) : ${uniques.join(" ")}` : "");
       }
     }
   } catch (e) {
@@ -148,9 +164,10 @@ const ONGLETS: {
   // Un seul statut, en étapes (17/11) : les onglets suivent les étapes.
   ...(channel === "salon"
     ? [
-        { cle: "a-encaisser", label: "À encaisser", filtres: { etape: "a_encaisser" } },
-        { cle: "a-imprimer", label: "À imprimer", filtres: { etape: "a_imprimer,en_partie" } },
-        { cle: "terminees", label: "Terminées", filtres: { etape: "terminee" } },
+        // Une vente du stand naît payée et terminée (19/11) : il ne reste
+        // qu'à voir celles qu'on a annulées (Alexandra : « laisse toutes et
+        // annulées »).
+        { cle: "annulees", label: "Annulées", filtres: { etape: "annulee" } },
       ]
     : [
         {
@@ -370,7 +387,11 @@ const filtreActif =
 <section class="rounded-lg border border-bo-border bg-bo-surface">
   {/* Onglets : un clic = une question courante. */}
   <div class="flex flex-wrap items-center gap-1 border-b border-bo-border px-3 pt-3">
-    {ONGLETS.map((o) => (
+    {ONGLETS.filter(
+      // Au stand, l'onglet « Archivées » ne s'affiche plus (19/11) : les
+      // ventes se suppriment sans être archivées. Son adresse marche encore.
+      (o) => !(channel === "salon" && o.cle === "archivees" && onglet.cle !== "archivees"),
+    ).map((o) => (
       <a
         href={lienAvec({
           onglet: o.cle === "toutes" ? null : o.cle,
@@ -558,14 +579,32 @@ const filtreActif =
           </button>
         </>
       ) : (
+        <>
+        {/* Supprimer sans archiver d'abord (19/11). L'API garde ce qui doit
+            l'être (commandes du site payées, facturées, remboursées…) et le
+            message dit pourquoi ; une vente du stand part, même payée. */}
+        <button
+          type="button"
+          data-bulk="supprimer"
+          data-confirme={channel === "salon"
+            ? "Supprimer DÉFINITIVEMENT les ventes cochées ? C'est sans retour : elles partent avec leurs lignes, leur journal et leurs fichiers d'impression."
+            : "Supprimer DÉFINITIVEMENT les commandes cochées ? C'est sans retour. Seuls les paniers et les commandes jamais payées partent : une commande payée en ligne, facturée, remboursée ou expédiée est gardée, et le message vous le dira."}
+          class="ml-auto rounded border border-red-300 bg-bo-surface px-3 py-1.5 text-red-700 hover:bg-red-50"
+        >
+          Supprimer définitivement
+        </button>
+        {/* Au stand, plus d'archivage (19/11) : on annule, ou on supprime. */}
+        {channel !== "salon" && (
         <button
           type="button"
           data-bulk="archiver"
           data-confirme="Archiver les commandes sélectionnées ? Elles quittent cette liste et l'export, et se rangent dans l'onglet « Archivées », d'où elles se restaurent. La recherche continue de les trouver, marquées « Archivée ». Rien n'est effacé, et leur statut ne change pas : une vente archivée compte toujours dans vos chiffres. Pour qu'elle cesse d'y compter, annulez-la plutôt."
-          class="ml-auto rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+          class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
         >
           Archiver
         </button>
+        )}
+        </>
       )}
     </div>
   </form>
@@ -700,6 +739,46 @@ const filtreActif =
                     >
                       → {statut.suivante.libelle}
                       {statut.suivante.courrier ? " ✉" : ""}
+                    </button>
+                  </form>
+                )}
+                {/* Une vente du stand (19/11) : Margaux l'annule si le client
+                    ne paie pas, ou la supprime (essais), sans ouvrir la fiche. */}
+                {estProprietaire && channel === "salon" && o.etapeTraitement !== "annulee" && o.etapeTraitement !== "panier" && (
+                  <details class="mt-1">
+                    <summary class="w-fit cursor-pointer rounded border border-bo-border px-2 py-0.5 text-xs text-bo-muted hover:bg-bo-bg">
+                      Annuler…
+                    </summary>
+                    <form
+                      method="POST"
+                      class="mt-1 flex flex-wrap items-center gap-1"
+                      data-confirmer={`Annuler la vente ${o.number} ? Elle reste lisible mais ne compte plus dans vos chiffres. Aucun courriel n'est envoyé.`}
+                    >
+                      <input type="hidden" name="_action" value="annuler-vente" />
+                      <input type="hidden" name="id" value={o.id} />
+                      <select name="motif" class="rounded border border-bo-border px-1 py-0.5 text-xs">
+                        <option value="impaye">Pas payée</option>
+                        <option value="saisie">Erreur de saisie</option>
+                        <option value="cliente">Le client a renoncé</option>
+                        <option value="autre">Autre</option>
+                      </select>
+                      <button class="rounded border border-amber-400 px-2 py-0.5 text-xs text-amber-900 hover:bg-amber-50">
+                        Annuler la vente
+                      </button>
+                    </form>
+                  </details>
+                )}
+                {estProprietaire && channel === "salon" && o.etapeTraitement !== "panier" && (
+                  <form
+                    method="POST"
+                    class="mt-1"
+                    data-confirmer={`Supprimer DÉFINITIVEMENT la vente ${o.number} ? C'est sans retour : elle part avec ses lignes, son journal et son fichier d'impression.`}
+                  >
+                    <input type="hidden" name="_action" value="supprimer-vente" />
+                    <input type="hidden" name="id" value={o.id} />
+                    <input type="hidden" name="numero" value={o.number} />
+                    <button class="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50">
+                      Supprimer
                     </button>
                   </form>
                 )}

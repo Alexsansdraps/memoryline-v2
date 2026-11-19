@@ -22,6 +22,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  ne,
   or,
   sql as raw,
 } from "drizzle-orm";
@@ -246,6 +247,11 @@ const PREFIXES_NUMERO: readonly PrefixeNumero[] = ["WEB-", "SAL-"];
  */
 export interface EtatCommandeASupprimer {
   status: string;
+  /**
+   * « salon » : une vente du stand, supprimable même payée (19/11). Absent :
+   * une commande du site, sous la règle de la loi.
+   */
+  channel?: string | null;
   invoiceNumber: string | null;
   /** Lignes de `refund`. */
   remboursements: number;
@@ -288,11 +294,24 @@ export interface EtatCommandeASupprimer {
  *
  * Le doute retient : le moindre mouvement au grand livre suffit, même un
  * échec, parce que le grand livre est justement ce qu'on ne réécrit pas.
- * Les ventes du stand naissent « paid » avec leur encaissement écrit
- * (salon.ts) : elles tombent sous la même règle, sans cas à part.
+ *
+ * SAUF une vente du STAND (19/11, Alexandra : « on va faire plein de tests,
+ * donc faut qu'on puisse supprimer malgré la loi les commandes, et ceux qui
+ * paient pas »). Elle naît payée et terminée (salon.ts), sans argent passé
+ * par un prestataire : elle se supprime, payée, annulée ou non. Deux
+ * choses la retiennent encore, parce qu'elles vivent hors d'ici : une
+ * facture numérotée (la suite des numéros de facture), et une étiquette
+ * SendCloud (un achat réel chez le transporteur).
  */
 export function motifCommandeAGarder(e: EtatCommandeASupprimer): string | null {
-  const suite = "Elle reste archivée.";
+  const suite = "Elle est gardée.";
+  if (e.channel === "salon") {
+    if (e.invoiceNumber)
+      return `Cette vente a une facture (n° ${e.invoiceNumber}) : la suite des numéros de facture ne doit pas avoir de trou. ${suite}`;
+    if (e.bordereaux > 0)
+      return `Une étiquette SendCloud a été demandée pour cette vente : annulez-la d'abord (bloc « Bordereau transporteur »). ${suite}`;
+    return null;
+  }
   if (e.invoiceNumber)
     return `Cette commande a une facture (n° ${e.invoiceNumber}) : factures et pièces comptables se gardent dix ans, et la suite des numéros de facture ne doit pas avoir de trou. ${suite}`;
   if (e.remboursements > 0)
@@ -1279,6 +1298,7 @@ export function mountOrderRoutes(app: Hono): void {
               id: schema.orders.id,
               number: schema.orders.number,
               status: schema.orders.status,
+              channel: schema.orders.channel,
               invoiceNumber: schema.orders.invoiceNumber,
               giftCardCents: schema.orders.giftCardCents,
               archivedAt: schema.orders.archivedAt,
@@ -1286,7 +1306,10 @@ export function mountOrderRoutes(app: Hono): void {
             .from(schema.orders)
             .where(eq(schema.orders.id, id))
         )[0] ?? null,
-      estArchive: (o) => o.archivedAt != null,
+      // Plus besoin de l'archiver d'abord (19/11, Alexandra : « et pas devoir
+      // passer par archivées ») : la règle qui garde ce qui doit l'être,
+      // c'est motifCommandeAGarder.
+      estArchive: () => true,
       empeche: async (o) => {
         const nombre = async (requete: Promise<{ n: number }[]>) =>
           Number((await requete)[0]?.n ?? 0);
@@ -1298,7 +1321,16 @@ export function mountOrderRoutes(app: Hono): void {
               db
                 .select({ n })
                 .from(schema.orderTransactions)
-                .where(eq(schema.orderTransactions.orderId, o.id)),
+                .where(
+                  and(
+                    eq(schema.orderTransactions.orderId, o.id),
+                    // L'écriture d'annulation d'une commande jamais payée
+                    // (« void ») dit que l'argent n'arrivera pas : ce n'est
+                    // pas de l'argent. Une commande qui n'a jamais payé puis
+                    // a été annulée se supprime donc (19/11).
+                    ne(schema.orderTransactions.kind, "void"),
+                  ),
+                ),
             ),
             nombre(
               db
@@ -1343,6 +1375,7 @@ export function mountOrderRoutes(app: Hono): void {
         }
         return motifCommandeAGarder({
           status: o.status,
+          channel: o.channel,
           invoiceNumber: o.invoiceNumber,
           remboursements,
           mouvements,
@@ -2374,11 +2407,16 @@ export function mountOrderRoutes(app: Hono): void {
       );
 
     const resume = (await resumeCommandes([id])).get(id)!;
+    const auStand = order.channel === "salon";
 
     // Ce qui est PARTI ne se rattrape pas par une annulation. On le dit avec
     // les chiffres sous les yeux, et on dit quoi faire à la place : sans cela,
     // le refus ressemble à une panne.
-    if (resume.expedies > 0)
+    //
+    // Une vente du STAND naît remise (« Terminée », 19/11) : elle s'annule
+    // quand même — le client n'a pas payé, ou autre (Alexandra : « si elle
+    // paie pas ou autre, faut que Margaux puisse annuler »).
+    if (resume.expedies > 0 && !auStand)
       return c.json(
         {
           error:
@@ -2391,7 +2429,6 @@ export function mountOrderRoutes(app: Hono): void {
 
     const motif = motifDAnnulation(b.motif, b.motifLibre);
     const auteur = String(b.author ?? "").trim() || null;
-    const auStand = order.channel === "salon";
     const etaitPayee = order.status === "paid";
 
     const lignes = await db
@@ -2432,7 +2469,10 @@ export function mountOrderRoutes(app: Hono): void {
     /* --- 1. L'argent, s'il faut le rendre ----------------------------- */
 
     let rembourseCents = 0;
-    if (b.rembourser === true) {
+    // Au stand, l'argent se règle de la main à la main : rien ne se rembourse
+    // d'ici (17/11). L'annulation retire l'encaissement du grand livre (plus
+    // bas, 3).
+    if (b.rembourser === true && !auStand) {
       if (!etaitPayee)
         return c.json(
           {
@@ -2497,6 +2537,23 @@ export function mountOrderRoutes(app: Hono): void {
     await annulerExpeditions([id]);
 
     /* --- 3. Le grand livre -------------------------------------------- */
+
+    // Une vente du stand annulée n'a pas été payée — ou l'argent a été rendu
+    // de la main à la main : son encaissement sur place sort du grand livre,
+    // comme quand la tablette rouvre une vente (salon.ts). L'écriture
+    // d'annulation, plus bas, dit alors que cet argent n'arrivera pas.
+    if (auStand)
+      await db
+        .update(schema.orderTransactions)
+        .set({ status: "annule" })
+        .where(
+          and(
+            eq(schema.orderTransactions.orderId, id),
+            eq(schema.orderTransactions.kind, "sale"),
+            eq(schema.orderTransactions.status, "success"),
+            inArray(schema.orderTransactions.gateway, ["stand", "manuel"]),
+          ),
+        );
 
     // Ce qui n'a jamais été encaissé doit quand même se lire quelque part.
     // Une commande qui disparaît des chiffres sans un mot laisse la page
@@ -2570,9 +2627,11 @@ export function mountOrderRoutes(app: Hono): void {
      * remboursée en entier ne doit plus rien, et annoncer le contraire
      * enverrait la boutique rendre une seconde fois le même argent.
      */
-    const resteADevoir = etaitPayee
-      ? Math.max(0, order.totalCents - resume.rembourseCents - rembourseCents - rendueALaCarte)
-      : 0;
+    // Au stand, rien n'est dû : l'encaissement sur place vient d'être retiré.
+    const resteADevoir =
+      etaitPayee && !auStand
+        ? Math.max(0, order.totalCents - resume.rembourseCents - rembourseCents - rendueALaCarte)
+        : 0;
 
     await db.insert(schema.orderEvents).values({
       orderId: id,

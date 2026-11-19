@@ -71,3 +71,34 @@ test("la dernière de sa série attend : son numéro resservirait", () => {
   const motif = motifCommandeAGarder({ ...panier, status: "pending", dernierDeSaSerie: true });
   assert.match(motif ?? "", /dernière commande numérotée/);
 });
+
+/*
+ * 19/11 : une vente du STAND se supprime, même payée (Alexandra : « on va
+ * faire plein de tests, donc faut qu'on puisse supprimer malgré la loi les
+ * commandes, et ceux qui paient pas »). Seules une facture numérotée et une
+ * étiquette SendCloud la retiennent encore.
+ */
+const venteDuStand: EtatCommandeASupprimer = {
+  ...panier,
+  channel: "salon",
+  status: "paid",
+  mouvements: 1,
+  expeditions: 1,
+  dernierDeSaSerie: true,
+};
+
+test("une vente du stand part, payée, remise, annulée ou la dernière de sa série", () => {
+  assert.equal(motifCommandeAGarder(venteDuStand), null);
+  assert.equal(motifCommandeAGarder({ ...venteDuStand, status: "cancelled", mouvements: 2 }), null);
+  assert.equal(motifCommandeAGarder({ ...venteDuStand, status: "pending", mouvements: 0 }), null);
+});
+
+test("une vente du stand facturée ou étiquetée chez SendCloud est gardée", () => {
+  assert.match(motifCommandeAGarder({ ...venteDuStand, invoiceNumber: "F2026-0003" }) ?? "", /facture/);
+  assert.match(motifCommandeAGarder({ ...venteDuStand, bordereaux: 1 }) ?? "", /SendCloud/);
+});
+
+test("une commande du site payée reste gardée (la règle de la loi ne change pas)", () => {
+  assert.ok(motifCommandeAGarder({ ...venteDuStand, channel: "web" }));
+  assert.ok(motifCommandeAGarder({ ...panier, status: "paid", mouvements: 1 }));
+});
