@@ -4,6 +4,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 1. Où on en est
 
+- **19/11, vers 18 h 15 : la tablette des stands est le site entier** (`745eb10`, en ligne). Elle affiche le menu complet avec la page du stand en tête, la recherche, le pied de page, la bannière d'annonce et les bandeaux visuels. **Seules différences : pas de prix, la caisse du stand, et les cadres toujours proposés.** L'accueil de la tablette (`/?stand=1`) mène à la page du stand : c'est là que revient l'application de Margaux, qui recharge la page toutes les 10 minutes. Sur tablette, il y a 4 affiches par ligne dans toutes les grilles. Le compte client et la vente de cartes cadeaux restent absents au stand (ils dépendent de la caisse du site). Remplace le verrou « la tablette n'affiche que sa page » du 18/11.
 - **memoryline.fr est servi par le VPS** (OVH, `debian@51.255.34.187`) depuis la bascule du 17/11. www, http et l'ancien nom `vps-5c917e9d.vps.ovh.net` redirigent vers https://memoryline.fr.
 - **La boutique encaisse pour de vrai depuis le 16/11 à 22 h 29.** Stripe live (compte « Vestiairesauvage »), PayPal live, vrais courriels par Resend (`commandes@memoryline.fr`), bordereaux SendCloud facturés. **Aucune commande d'essai sur le VPS : c'est de l'argent réel.**
 - **Marché de Noël de Mulhouse : du vendredi 20/11 au 27/12** (11:00–12:30 / 13:00–20:00).
