@@ -64,15 +64,24 @@ const REGLES: sanitizeHtml.IOptions = {
     // seul bloc. Ce sont des paragraphes : ils le redeviennent.
     h5: "p",
     h6: "p",
-    // Un lien vers l'extérieur ne doit pas pouvoir piloter l'onglet de la
-    // boutique qu'il a ouvert.
+    // Un lien vers un autre site s'ouvre dans un nouvel onglet (19/11,
+    // Alexandra : « les liens des mentions légales sur des sites externes
+    // doivent être en _blank »), et ne doit pas pouvoir piloter l'onglet de
+    // la boutique qu'il a ouvert. Une adresse memoryline.fr écrite en entier
+    // reste un lien du site, dans le même onglet.
     a: (nom, attributs) => {
       const href = attributs.href ?? "";
-      const externe = /^https?:\/\//i.test(href);
+      let externe = false;
+      try {
+        externe =
+          /^https?:\/\//i.test(href) && !/(^|\.)memoryline\.fr$/i.test(new URL(href).hostname);
+      } catch {
+        externe = false;
+      }
       return {
         tagName: nom,
         attribs: externe
-          ? { ...attributs, rel: "noopener noreferrer" }
+          ? { ...attributs, target: "_blank", rel: "noopener noreferrer" }
           : attributs,
       };
     },
