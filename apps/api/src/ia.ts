@@ -649,11 +649,52 @@ export async function rattacherGenerationsAuPanier(
       retenues.add(candidate.id);
       rattachees++;
     }
+    // La photo d'origine des affiches vendues part tout de suite (20/11) : à
+    // part, pour qu'un disque récalcitrant ne fasse pas croire le
+    // rattachement manqué. La purge horaire rattrape ce qui reste.
+    try {
+      await effacerPhotosDOrigine(
+        generations.filter((g) => retenues.has(g.id)).map((g) => nomDansIa(g.sourcePath)),
+      );
+    } catch (e) {
+      console.error("Photos d'origine non effacées (commande " + orderId + ") :", e);
+    }
     return rattachees;
   } catch (e) {
     console.error("Rattachement des générations IA échoué (commande " + orderId + ") :", e);
     return 0;
   }
+}
+
+/**
+ * Efface la photo d'origine d'affiches VENDUES (20/11, Alexandra : « une fois
+ * la commande validée elle doit être supprimée du server (celle d'origine)
+ * […] on va pas tout stocker »).
+ *
+ * Elle n'a servi qu'à fabriquer l'affiche : l'impression part de la pleine
+ * définition (fabriquerFichierImpression), et rien d'autre ne la relit — son
+ * chemin ne vit que dans la page ouverte (AfficheIA.tsx), que la vente
+ * referme. Elle quitte donc toutes les générations qui la partagent (les
+ * autres styles essayés avec elle) ; leurs aperçus, pleines définitions et
+ * fichiers d'impression restent. La base d'abord, le disque ensuite : un
+ * fichier qui résisterait finit en photo orpheline, que la purge efface.
+ * Rend le nombre de photos effacées (ou, en simulation, qui le seraient).
+ */
+async function effacerPhotosDOrigine(
+  noms: Iterable<string | null>,
+  simulation = false,
+): Promise<number> {
+  let effacees = 0;
+  for (const nom of new Set(noms)) {
+    if (!nom) continue;
+    if (!simulation)
+      await db
+        .update(schema.aiGenerations)
+        .set({ sourcePath: null })
+        .where(eq(schema.aiGenerations.sourcePath, `ia/${nom}`));
+    if (await effacerDansIa(nom, simulation)) effacees++;
+  }
+  return effacees;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -739,6 +780,8 @@ export interface BilanPurgeIa {
   orphelins: number;
   /** Photos du relais téléphone → tablette restées sur le disque. */
   relais: number;
+  /** Photos d'origine d'affiches vendues encore là (20/11 : elles partent à la vente). */
+  originalesVendues: number;
   /** L'âge, en heures, à partir duquel une photo inutilisée est effacée. */
   heuresPhotosInutilisees: number;
   /** Pourquoi la purge n'a rien fait, quand elle n'a rien fait exprès. */
@@ -889,6 +932,7 @@ export async function purgerPhotosVisiteurs(
     fichiers: 0,
     orphelins: 0,
     relais: 0,
+    originalesVendues: 0,
     heuresPhotosInutilisees: DELAI_PHOTO_INUTILISEE_MS / 3_600_000,
     motif: null,
   };
@@ -909,6 +953,20 @@ export async function purgerPhotosVisiteurs(
       ),
     );
     const g = schema.aiGenerations;
+
+    // 0. La photo d'origine des affiches vendues (20/11) : elle part à la
+    // vente (rattacherGenerationsAuPanier) ; ici, celles d'avant cette règle
+    // et celles qu'une erreur aurait laissées. AVANT de lire les listes
+    // ci-dessous, pour qu'elles ne la désignent plus.
+    const vendues = await db
+      .select({ sourcePath: g.sourcePath })
+      .from(g)
+      .where(and(isNotNull(g.paidAt), isNotNull(g.sourcePath)));
+    bilan.originalesVendues = await effacerPhotosDOrigine(
+      vendues.map((l) => nomDansIa(l.sourcePath)),
+      simulation,
+    );
+
     const [perimees, gardees] = await Promise.all([
       db
         .select({
@@ -1061,7 +1119,8 @@ export async function passageDePurgeIa(): Promise<void> {
     console.log(
       `[purge ia] ${b.lignes} génération(s) non achetée(s) de plus de ${jours} j vidée(s) ` +
         `(${b.fichiers} fichier(s)), ${b.orphelins} photo(s) inutilisée(s) de plus de ` +
-        `${b.heuresPhotosInutilisees} h, ${b.relais} reste(s) du relais` +
+        `${b.heuresPhotosInutilisees} h, ${b.relais} reste(s) du relais, ` +
+        `${b.originalesVendues} photo(s) d'origine d'affiche(s) vendue(s)` +
         (b.motif ? ` — ${b.motif}` : ""),
     );
   } catch (e) {
