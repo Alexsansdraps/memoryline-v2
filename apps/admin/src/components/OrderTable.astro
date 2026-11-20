@@ -478,18 +478,18 @@ const filtreActif =
       <span id="bo-compte" class="font-medium"></span>
       {estProprietaire && (
         <>
-          <button
-            type="button"
-            data-bulk="etape-suivante"
-            data-confirme={
-              channel === "salon"
-                ? "Passer les ventes cochées à l'étape suivante ? Aucun courriel ne part : le client est sur place."
-                : "Passer les commandes cochées à l'étape suivante ? Celles qui passent à « Envoyée » ou « Prête à retirer » préviennent leur client par courriel (sans numéro de suivi : pour un colis suivi, passez par sa fiche)."
-            }
-            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
-          >
-            Étape suivante
-          </button>
+          {/* Pas d'« Étape suivante » au stand (20/11, Alexandra : « enlève
+              étape suivante ») : une vente y naît payée et terminée. */}
+          {channel !== "salon" && (
+            <button
+              type="button"
+              data-bulk="etape-suivante"
+              data-confirme="Passer les commandes cochées à l'étape suivante ? Celles qui passent à « Envoyée » ou « Prête à retirer » préviennent leur client par courriel (sans numéro de suivi : pour un colis suivi, passez par sa fiche)."
+              class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+            >
+              Étape suivante
+            </button>
+          )}
           <button type="button" data-bulk="tag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
             Ajouter une étiquette
           </button>
@@ -513,14 +513,31 @@ const filtreActif =
               title="Des ventes d'essai : annulées sans courriel, hors des chiffres, rangées dans l'onglet « Test »."
               class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
             >
-              Mettre en test
+              Ces commandes sont des tests
             </button>
           )}
         </>
       )}
-      <button type="button" id="bo-bons" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
-        Bons de livraison
-      </button>
+      {/* Au stand, les FACTURES des ventes cochées, en ZIP, à la place des
+          bons de livraison (20/11, Alexandra : « change bons de livraisons en
+          facture ») : rien ne s'y livre. La propriétaire seule, comme la
+          facture de la fiche. */}
+      {channel === "salon" ? (
+        estProprietaire && (
+          <button
+            type="button"
+            id="bo-factures"
+            data-message="Télécharger les factures des ventes cochées ? Une vente qui n'a pas encore de facture reçoit son numéro maintenant."
+            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+          >
+            Factures
+          </button>
+        )
+      ) : (
+        <button type="button" id="bo-bons" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
+          Bons de livraison
+        </button>
+      )}
       <button type="button" id="bo-export" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
         Exporter la sélection
       </button>
@@ -910,7 +927,7 @@ const filtreActif =
 {/* La vignette en grand, au survol ou au clavier : cf. ApercuFlottant. */}
 <ApercuFlottant />
 
-<script is:inline define:vars={{ exportBase: lienExport, bonsBase: url("/commandes/bons") }}>
+<script is:inline define:vars={{ exportBase: lienExport, bonsBase: url("/commandes/bons"), facturesBase: apiUrl("/admin/factures.zip") }}>
   // Sélection multiple : la barre d'actions n'existe que quand elle sert.
   const tout = document.getElementById("bo-tout");
   const cases = () => [...document.querySelectorAll(".bo-coche")];
@@ -975,6 +992,13 @@ const filtreActif =
     window.location.href = `${exportBase}&ids=${ids.join(",")}`;
   });
 
+  document.getElementById("bo-factures")?.addEventListener("click", (e) => {
+    const ids = selection();
+    if (!ids.length) return;
+    const message = e.currentTarget.dataset.message;
+    if (message && !window.confirm(message)) return;
+    window.location.href = `${facturesBase}?ids=${ids.join(",")}`;
+  });
   document.getElementById("bo-bons")?.addEventListener("click", () => {
     const ids = selection();
     if (!ids.length) return;

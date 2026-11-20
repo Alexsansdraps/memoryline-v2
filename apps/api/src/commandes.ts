@@ -10,6 +10,7 @@
  * TOUJOURS recalculés à partir de ces lignes. Il n'y a donc aucun moyen que la
  * fiche raconte autre chose que ce qui s'est réellement passé.
  */
+import { archiveZip, type FichierArchive } from "./archive-zip.js";
 import type { Context, Hono } from "hono";
 import type { SQL } from "drizzle-orm";
 import {
@@ -3468,6 +3469,57 @@ export function mountOrderRoutes(app: Hono): void {
    * légale autant qu'une commodité — la cliente qui réclame « sa » facture
    * doit recevoir celle qu'elle a déjà, pas une nouvelle.
    */
+  /**
+   * Les factures de plusieurs commandes d'un coup, en ZIP (20/11, Alexandra,
+   * barre de sélection de Ventes stand : « change bons de livraisons en
+   * facture »). Chaque facture est celle du bouton de la fiche
+   * (composerLaFacture) : la première édition lui donne son numéro. Réservée
+   * à la propriétaire, comme la facture seule. Hors de « /admin/orders » :
+   * l'adresse ne doit pas se lire comme l'identifiant d'une commande.
+   */
+  app.get("/admin/factures.zip", async (c) => {
+    const user = c.get("utilisateur");
+    if (user && user.role !== "owner")
+      return c.json({ error: "Les factures sont réservées à la propriétaire." }, 403);
+    const ids = [
+      ...new Set(
+        String(c.req.query("ids") ?? "")
+          .split(",")
+          .map((s) => Number(s.trim()))
+          .filter((n) => Number.isInteger(n) && n > 0),
+      ),
+    ].slice(0, 200);
+    if (!ids.length) return c.json({ error: "Aucune commande choisie." }, 400);
+    const fichiers: FichierArchive[] = [];
+    const refusees: string[] = [];
+    for (const id of ids) {
+      const facture = await composerLaFacture(id, langueLue(c.req.query("langue")));
+      if ("erreur" in facture) refusees.push(`commande ${id} : ${facture.erreur}`);
+      else fichiers.push({ nom: facture.nomFichier, contenu: new Uint8Array(facture.pdf) });
+    }
+    if (!fichiers.length)
+      return c.json({ error: `Aucune facture n'a pu être faite (${refusees.join(" ; ")}).` }, 400);
+    if (refusees.length)
+      fichiers.push({
+        nom: "factures-non-faites.txt",
+        contenu: new TextEncoder().encode(`Factures non faites :\n${refusees.join("\n")}\n`),
+      });
+    const morceaux = archiveZip(fichiers);
+    const taille = morceaux.reduce((n, m) => n + m.length, 0);
+    const flux = new ReadableStream<Uint8Array>({
+      pull(controleur) {
+        const morceau = morceaux.shift();
+        if (morceau) controleur.enqueue(morceau);
+        else controleur.close();
+      },
+    });
+    return c.body(flux, 200, {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="factures.zip"`,
+      "Content-Length": String(taille),
+    });
+  });
+
   app.get("/admin/orders/:id/facture.pdf", async (c) => {
     // Réservée à la propriétaire, et vérifiée ICI. Le garde-fou général du
     // serveur laisse passer les LECTURES d'un vendeur sous « /admin/orders »,
