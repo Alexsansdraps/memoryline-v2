@@ -1169,10 +1169,19 @@ function peauDe(
   lib: Bibliotheque,
 ): { groupe: GroupeCouleur; palette: readonly string[] } | null {
   if (Object.keys(c.baseColorZones ?? {}).length === 0) return null;
-  const groupe = groupesProposesDeLaBase(c)[0];
-  if (!groupe) return null;
+  // LA PEAU, et pas le premier groupe venu (20/11, Alexandra : « la peau est
+  // grise ») : le premier groupe proposé d'un dessin peut être un vêtement,
+  // dont le nuancier (gris compris) teignait alors la peau. On prend le
+  // groupe réglé sur le nuancier « peau » ; à défaut, le premier groupe du
+  // dessin s'il n'a pas de nuancier réglé (le module lui donne celui de la
+  // peau). Sinon, aucune teinte tirée : la peau dessinée au BO reste.
+  const proposes = groupesProposesDeLaBase(c);
   const premier = groupesDuDessin(c.baseColorZones, c.baseGroupesCouleurs)[0];
-  const repliPeau: NuancierBase = groupe.zone === premier?.zone ? "peau" : "vetements";
+  const groupe =
+    proposes.find((g) => g.nuancier === "peau") ??
+    proposes.find((g) => !g.nuancier && g.zone === premier?.zone);
+  if (!groupe) return null;
+  const repliPeau: NuancierBase = "peau";
   const palette = couleursDuNuancier(groupe.nuancier, repliPeau, lib.nuanciersBase, lib.pieceCategories);
   return palette.length > 0 ? { groupe, palette } : null;
 }
