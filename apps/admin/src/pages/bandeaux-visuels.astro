@@ -30,6 +30,7 @@ import {
   ecrireBandeaux,
   libellePage,
   lireBandeaux,
+  languesDuBandeau,
   nomDuBandeau,
   nouvelId,
   periode,
@@ -257,7 +258,10 @@ const pagesDe = (b: BandeauVisuel) =>
                       : "Bannière pleine largeur"}
                   </span>
                 </td>
-                <td class="max-w-[16rem] px-4 py-2 text-xs">{pagesDe(b)}</td>
+                <td class="max-w-[16rem] px-4 py-2 text-xs">
+                  {pagesDe(b)}
+                  <span class="block text-bo-muted">{languesDuBandeau(b)}</span>
+                </td>
                 <td class="px-4 py-2 text-xs text-bo-muted">{periode(b)}</td>
                 <td class="px-4 py-2">
                   <span
@@ -363,7 +367,7 @@ const pagesDe = (b: BandeauVisuel) =>
                 <tr class="border-t border-bo-border first:border-t-0">
                   <td class="px-4 py-2">
                     <span class="font-medium">{nomDuBandeau(b)}</span>
-                    <span class="block text-xs text-bo-muted">{pagesDe(b)}</span>
+                    <span class="block text-xs text-bo-muted">{pagesDe(b)} · {languesDuBandeau(b)}</span>
                   </td>
                   <td class="px-4 py-2 text-xs text-bo-muted">{periode(b)}</td>
                   <td class="px-4 py-2 text-right">

@@ -15,6 +15,7 @@ import {
   PAGE_BOUTIQUE,
   PAGE_PARTOUT,
   PAGE_TOUS_LES_RAYONS,
+  LANGUES_BANDEAU,
   REGLAGE_BANDEAUX_VISUELS,
   bandeauDepuisEncart,
   lireBandeauxVisuels,
@@ -277,4 +278,15 @@ export function periode(b: BandeauVisuel): string {
 /** Ce qui désigne un bandeau dans la liste : son nom, sinon son premier texte. */
 export function nomDuBandeau(b: BandeauVisuel): string {
   return b.nom || b.titre || b.texte || b.bouton || b.alt || "Bandeau sans texte";
+}
+
+/**
+ * Les langues d'un bandeau, en clair : « Toutes les langues (par défaut) »
+ * quand aucune n'est cochée, sinon leurs noms (« Anglais, Allemand »).
+ */
+export function languesDuBandeau(b: BandeauVisuel): string {
+  if (!b.langues.length) return "Toutes les langues (par défaut)";
+  return LANGUES_BANDEAU.filter((l) => b.langues.includes(l.code))
+    .map((l) => l.nom)
+    .join(", ");
 }

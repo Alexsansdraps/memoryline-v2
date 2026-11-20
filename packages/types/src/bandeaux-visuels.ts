@@ -27,6 +27,14 @@
  *    rendu : le site et le back-office n'ont pas toujours la même version, et
  *    un « javascript: » n'a rien à faire sous une image cliquable.
  *
+ * 4. LE PLUS PRÉCIS L'EMPORTE (20/11, Alexandra : « une bannière par langue et
+ *    par page ; si on décide rien, c'est la bannière par défaut qui prime »).
+ *    Un bandeau peut se réserver à des langues ; sans langue cochée, il vaut
+ *    pour toutes : c'est le bandeau par défaut. Sur une page, un bandeau
+ *    réservé à sa langue remplace ceux de toutes les langues, puis un bandeau
+ *    qui vise la page même remplace ceux de « Toutes les pages du site » (voir
+ *    bandeauxDeLaPage). Tant que personne ne réserve rien, rien ne change.
+ *
  * Fonctions PURES : ni DOM ni fetch. Elles servent au rendu des pages du
  * site, à la route publique des réglages, et au back-office — jusque dans
  * son aperçu, qui calcule les mêmes classes que la boutique.
@@ -134,6 +142,12 @@ export interface BandeauVisuel {
   hauteur: HauteurBandeau;
   /** Les clés des pages où il s'affiche (voir PAGE_ACCUEIL et la suite). */
   pages: string[];
+  /**
+   * Les langues où il s'affiche (« en », « ja »… voir LANGUES_BANDEAU). Vide :
+   * toutes — le bandeau par défaut, qu'un bandeau réservé à la langue de la
+   * page remplace dans cette langue (bandeauxDeLaPage).
+   */
+  langues: string[];
   /** Dates ISO. Nulles : pas de limite de ce côté-là. */
   debut: string | null;
   fin: string | null;
@@ -188,6 +202,27 @@ export function clesPageAffiches(genre: string, collection: string): string[] {
   if (genre) return [pageGenre(genre)];
   return [PAGE_BOUTIQUE];
 }
+
+/* ------------------------------------------------------------------------ */
+/* Les langues                                                              */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * Les langues du site, dans l'ordre du back-office, avec leur nom en
+ * français. Un bandeau s'y réserve en les cochant (`langues`) ; aucune case
+ * cochée, il vaut pour toutes.
+ */
+export const LANGUES_BANDEAU = [
+  { code: "fr", nom: "Français" },
+  { code: "en", nom: "Anglais" },
+  { code: "de", nom: "Allemand" },
+  { code: "it", nom: "Italien" },
+  { code: "es", nom: "Espagnol" },
+  { code: "ja", nom: "Japonais" },
+  { code: "zh", nom: "Chinois" },
+] as const;
+
+const CODES_LANGUE_BANDEAU: readonly string[] = LANGUES_BANDEAU.map((l) => l.code);
 
 /* ------------------------------------------------------------------------ */
 /* Lecture tolérante                                                        */
@@ -281,6 +316,7 @@ export function nouveauBandeau(id: string): BandeauVisuel {
     style: "etiquette",
     hauteur: "moyenne",
     pages: [PAGE_ACCUEIL],
+    langues: [],
     debut: null,
     fin: null,
     translations: null,
@@ -308,6 +344,12 @@ export function normaliserBandeau(brut: unknown): BandeauVisuel | null {
         ),
       ]
     : d.pages;
+  // Une langue que le site ne connaît pas est oubliée : le bandeau ne doit
+  // pas se croire réservé à une langue qui ne s'affichera jamais. Toutes
+  // cochées, c'est « toutes les langues », sans nuance.
+  const langues = Array.isArray(o.langues)
+    ? CODES_LANGUE_BANDEAU.filter((c) => (o.langues as unknown[]).includes(c))
+    : [];
   return {
     id,
     nom: chaine(o.nom, LONGUEUR.nom),
@@ -334,6 +376,7 @@ export function normaliserBandeau(brut: unknown): BandeauVisuel | null {
     style: parmi(o.style, STYLES_TEXTE_BANDEAU, d.style),
     hauteur: parmi(o.hauteur, HAUTEURS_BANDEAU, d.hauteur),
     pages,
+    langues: langues.length === CODES_LANGUE_BANDEAU.length ? [] : langues,
     debut: dateIso(o.debut),
     fin: dateIso(o.fin),
     translations: traductions(o.translations),
@@ -426,19 +469,43 @@ export function etatBandeau(
 
 /**
  * Les bandeaux d'une page, dans l'ordre de la liste : ceux qui sont en ligne
- * maintenant ET qui désignent l'une des clés de la page.
+ * maintenant, qui désignent l'une des clés de la page (ou « partout ») et qui
+ * parlent sa langue — puis, parmi eux, LES PLUS PRÉCIS (règle 4, 20/11) :
+ *
+ *   1. la langue d'abord : un bandeau réservé à la langue de la page remplace
+ *      ceux de toutes les langues. L'image de Noël écrite en français reste
+ *      celle de toutes les langues, sauf de celle qui a reçu la sienne ;
+ *   2. puis la page : la clé la plus précise de la page (`cles` va de la plus
+ *      précise à la plus large : un rayon, puis « tous les rayons ») passe
+ *      avant « Toutes les pages du site ».
+ *
+ * Des bandeaux aussi précis l'un que l'autre s'affichent tous, dans l'ordre
+ * de la liste, comme avant. Sans aucun bandeau réservé, rien ne change : ceux
+ * de toutes les langues s'affichent là où ils s'affichaient.
  */
 export function bandeauxDeLaPage(
   liste: readonly BandeauVisuel[],
   cles: readonly string[],
   maintenant: Date = new Date(),
+  langue = "fr",
 ): BandeauVisuel[] {
-  const voulues = new Set(cles);
-  return liste.filter(
-    (b) =>
-      etatBandeau(b, maintenant) === "en-ligne" &&
-      (b.pages.includes(PAGE_PARTOUT) || b.pages.some((p) => voulues.has(p))),
-  );
+  // Le rang de la page : 0 pour sa clé la plus précise, et « partout » après
+  // toutes ses clés. -1 : la page n'est pas visée.
+  const rangPage = (b: BandeauVisuel): number => {
+    const i = cles.findIndex((c) => b.pages.includes(c));
+    if (i >= 0) return i;
+    return b.pages.includes(PAGE_PARTOUT) ? cles.length : -1;
+  };
+  const candidats = liste
+    .filter((b) => etatBandeau(b, maintenant) === "en-ligne")
+    .filter((b) => b.langues.length === 0 || b.langues.includes(langue))
+    .map((b) => ({ b, page: rangPage(b), toutesLangues: b.langues.length === 0 }))
+    .filter((c) => c.page >= 0);
+  if (!candidats.length) return [];
+  const reserves = candidats.filter((c) => !c.toutesLangues);
+  const memeLangue = reserves.length ? reserves : candidats;
+  const plusPrecise = Math.min(...memeLangue.map((c) => c.page));
+  return memeLangue.filter((c) => c.page === plusPrecise).map((c) => c.b);
 }
 
 /**

@@ -821,7 +821,9 @@ export async function bandeauxVisuels(
       const encart = bandeauDepuisEncart((cle) => chaine(dansLaLangue[cle]));
       liste = encart ? [encart] : [];
     }
-    return bandeauxDeLaPage(liste, pages, new Date());
+    // La langue de la page compte (20/11) : un bandeau réservé à une langue y
+    // remplace celui de toutes les langues (bandeauxDeLaPage).
+    return bandeauxDeLaPage(liste, pages, new Date(), langue);
   } catch {
     return [];
   }
