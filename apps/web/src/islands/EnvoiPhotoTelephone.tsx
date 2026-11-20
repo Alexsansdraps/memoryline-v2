@@ -185,12 +185,14 @@ export default function EnvoiPhotoTelephone(props: {
           </p>
         </Show>
 
-        {/* UN bouton, grand, en bas de l'écran sous le pouce. `image/*` sans
-            `capture` : le téléphone propose lui-même l'appareil photo OU la
-            galerie — la photo à mettre en affiche est le plus souvent déjà
-            prise, pendant les vacances. */}
+        {/* UN bouton, grand, JUSTE SOUS LE TEXTE (20/11, Alexandra : « le
+            bouton est trop bas, il faut le mettre juste en dessous du
+            texte ») : tout en bas de l'écran, sous le pouce, on le cherchait.
+            `image/*` sans `capture` : le téléphone propose lui-même l'appareil
+            photo OU la galerie — la photo à mettre en affiche est le plus
+            souvent déjà prise, pendant les vacances. */}
         <Show when={choixPossible()}>
-          <div class="mt-auto pt-8">
+          <div class="mt-6">
             <label
               class={`flex w-full cursor-pointer items-center justify-center gap-3 px-6 py-5 text-center text-lg font-medium transition-colors ${
                 etat() === "envoye"
