@@ -513,15 +513,21 @@ const badgeRemboursement =
     ? BADGE_PAIEMENT[detail.statutFinancier]!
     : null;
 /** Les étapes de la frise, avec ce que demanderait chacune depuis l'étape actuelle. */
-const etapesFrise = traitement
-  ? ETAPES_DU_PARCOURS[parcoursT].map((e) => ({
-      etape: e,
-      libelle: libelleEtape(e, parcoursT),
-      rang: rangEtape(parcoursT, e)!,
-      passage: passageEtape(parcoursT, etapeT, e, { bordereauReel: traitement.bordereauReel }),
-    }))
-  : [];
 const rangActuel = traitement ? rangEtape(parcoursT, etapeT) : null;
+const etapesFrise = traitement
+  ? ETAPES_DU_PARCOURS[parcoursT]
+      // Au stand, « À imprimer » n'existe plus (20/11, Alexandra : « cet état
+      // n'existe plus en ventes stand ») : la vente naît payée et remise
+      // (salon.ts). Plus de « Revenir à « À imprimer » » sous une vente
+      // terminée ; une vente d'avant qui y serait encore la garde affichée.
+      .filter((e) => !(parcoursT === "stand" && e === "a_imprimer" && etapeT !== "a_imprimer"))
+      .map((e) => ({
+        etape: e,
+        libelle: libelleEtape(e, parcoursT),
+        rang: rangEtape(parcoursT, e)!,
+        passage: passageEtape(parcoursT, etapeT, e, { bordereauReel: traitement.bordereauReel }),
+      }))
+  : [];
 
 /**
  * Payée avec les clés d'ESSAI alors que la boutique encaisse pour de vrai
