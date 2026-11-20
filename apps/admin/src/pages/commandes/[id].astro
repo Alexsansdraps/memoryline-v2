@@ -1318,7 +1318,10 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                         </span>
                       </span>
                       {f.status !== "cancelled" && (
-                        <form method="POST">
+                        <form
+                          method="POST"
+                          data-confirmer="Annuler cette expédition ? Elle est marquée annulée dans la commande."
+                        >
                           <input type="hidden" name="_action" value="annuler-expedition" />
                           <input type="hidden" name="fulfillmentId" value={f.id} />
                           <button class="text-xs text-bo-accent hover:underline">
@@ -2357,7 +2360,11 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 <summary class="cursor-pointer text-sm text-bo-accent">
                   Annuler {order.number}
                 </summary>
-                <form method="POST" class="mt-2 space-y-2 text-sm">
+                <form
+                  method="POST"
+                  class="mt-2 space-y-2 text-sm"
+                  data-confirmer={`Annuler la commande ${order.number} ? Elle sort de vos chiffres et ne peut plus rien expédier.`}
+                >
                   <input type="hidden" name="_action" value="annuler" />
                   <label class="block">
                     <span class="mb-1 block text-xs text-bo-muted">Motif</span>
