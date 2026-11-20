@@ -59,7 +59,6 @@ export {
   avecStand,
   getCartId,
   nouveauCartId,
-  reprendreCartId,
   versLePanier,
 } from "./api-navigateur.ts";
 
@@ -1222,7 +1221,7 @@ export const browserApi = {
 };
 
 /*
- * L'identifiant du panier (getCartId, nouveauCartId, reprendreCartId) est
+ * L'identifiant du panier (getCartId, nouveauCartId) est
  * dans api-navigateur.ts, réexporté en tête de ce fichier.
  */
 
@@ -1304,9 +1303,6 @@ export const salonApi = {
     code: string | null,
     corps: { cartId: string; name: string; email: string },
   ) => salonFetch<CommandeSalon>("/salon/commandes", code, corps),
-  /** Rouvre une vente tout juste validée : elle redevient le panier de la tablette. */
-  rouvrir: (code: string | null, corps: { cartId: string; numero: string }) =>
-    salonFetch<{ ok: true }>("/salon/commandes/rouvrir", code, corps),
 };
 
 /**

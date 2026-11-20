@@ -1,14 +1,7 @@
 /// <reference lib="dom" />
 import { createSignal, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { lien, t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
-import {
-  avecStand,
-  ErreurSalon,
-  getCartId,
-  nouveauCartId,
-  reprendreCartId,
-  salonApi,
-} from "../lib/api.ts";
+import { avecStand, ErreurSalon, getCartId, nouveauCartId, salonApi } from "../lib/api.ts";
 import { codeMemorise, oublierCode, retenirCode } from "../lib/code-stand.ts";
 
 /**
@@ -38,29 +31,21 @@ import { codeMemorise, oublierCode, retenirCode } from "../lib/code-stand.ts";
 /** Une adresse e-mail plausible : la même règle que l'API (salon.ts). */
 const COURRIEL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Ce que l'écran de confirmation a besoin de savoir de la vente. */
+/**
+ * Ce que l'écran de confirmation a besoin de savoir de la vente : son numéro,
+ * rien d'autre. Une vente validée est DÉFINITIVE (20/11, Alexandra : « une
+ * fois validé c'est finito ») : « Revenir à ma commande », qui la rouvrait
+ * pour la corriger, n'existe plus, et l'écran ne garde ni le nom ni l'adresse
+ * du client qu'il servait à lui rendre. Une erreur se corrige au back-office.
+ */
 export interface VenteStand {
   numero: string;
-  /** Le nom tapé par le client : « Revenir à ma commande » le lui rend. */
-  nom: string;
-  email: string;
-  /** Le panier de la vente, pour pouvoir la ROUVRIR (« Revenir à ma commande »). */
-  cartId: string;
-  /** Le code du stand qui l'a validée. */
-  code: string | null;
 }
 
 /**
- * Le nom et l'adresse d'une vente qu'on rouvre, le temps du rechargement.
- *
- * « Revenir à ma commande » recharge la page sur le panier rouvert : le
- * client devait retaper son nom et son adresse pour corriger une affiche
- * (recette du 6/10). Ils passent par la session de l'onglet, liés au panier
- * qu'ils accompagnent. Ils RESTENT tant que ce panier est celui de la
- * tablette (recette du 17/11 : « Modifier » une affiche quitte le panier
- * pour la fiche, et au retour ils avaient déjà été effacés) ; ils partent dès
- * qu'un autre panier se présente — « Client suivant » en ouvre un neuf : le
- * client suivant ne les trouvera pas.
+ * Le nom et l'adresse qu'une vente rouverte confiait à la session de
+ * l'onglet, le temps du rechargement (jusqu'au 20/11). Plus personne ne les
+ * lit : on les efface, pour qu'ils ne restent pas sur la tablette.
  */
 const CLE_CLIENT_ROUVERT = "ml_stand_client_rouvert";
 
@@ -183,21 +168,10 @@ export default function CommandeStand(props: {
     if (retenu) void verifierCode(retenu, true);
     else demanderCode();
 
-    // Une vente rouverte : on rend au client le nom et l'adresse qu'il avait
-    // tapés, s'ils accompagnent bien le panier qui revient.
     try {
-      const brut = sessionStorage.getItem(CLE_CLIENT_ROUVERT);
-      const client = brut
-        ? (JSON.parse(brut) as { cartId?: string; nom?: string; email?: string })
-        : null;
-      if (client && client.cartId === getCartId()) {
-        setNom(client.nom ?? "");
-        setCourriel(client.email ?? "");
-      } else if (brut) {
-        sessionStorage.removeItem(CLE_CLIENT_ROUVERT);
-      }
+      sessionStorage.removeItem(CLE_CLIENT_ROUVERT);
     } catch {
-      // Session refusée ou illisible : les champs restent vides, comme avant.
+      // Session refusée : il n'y a rien à effacer.
     }
   });
 
@@ -249,17 +223,11 @@ export default function CommandeStand(props: {
         name: n,
         email: m,
       });
-      // Le panier servi est clos : la tablette repart d'un panier neuf tout de
-      // suite, même si personne ne touche « Client suivant ». On retient
-      // l'ancien : « Revenir à ma commande » le rouvre.
+      // Le panier servi est clos, et pour de bon : la tablette repart d'un
+      // panier neuf tout de suite, même si personne ne touche « Client
+      // suivant ».
       nouveauCartId();
-      props.onEnregistree({
-        numero: commande.number,
-        nom: n,
-        email: m,
-        cartId: panierServi,
-        code: valable,
-      });
+      props.onEnregistree({ numero: commande.number });
     } catch (err) {
       if (err instanceof ErreurSalon && err.statut === 403) {
         // Stand refermé ou code changé en plein salon : le panier, le nom et
@@ -430,72 +398,24 @@ export function ConfirmationStand(props: {
 }): JSX.Element {
   const langue = props.langue ?? LANGUE_DEFAUT;
   const tr = t(langue);
-  const [retour, setRetour] = createSignal<"repos" | "encours" | "erreur">("repos");
-  const [raison, setRaison] = createSignal("");
-
-  /*
-   * « Revenir à ma commande » — le bouton, ET la flèche retour de la
-   * tablette. Le client voit une erreur après avoir validé : la vente est
-   * rouverte côté serveur (salon.ts, /salon/commandes/rouvrir), son panier
-   * rendu à la tablette, et la page se recharge dessus, prête à corriger.
-   */
-  async function revenir() {
-    if (retour() === "encours") return;
-    setRetour("encours");
-    try {
-      await salonApi.rouvrir(props.vente.code ?? codeMemorise(), {
-        cartId: props.vente.cartId,
-        numero: props.vente.numero,
-      });
-      reprendreCartId(props.vente.cartId);
-      try {
-        sessionStorage.setItem(
-          CLE_CLIENT_ROUVERT,
-          JSON.stringify({
-            cartId: props.vente.cartId,
-            nom: props.vente.nom,
-            email: props.vente.email,
-          }),
-        );
-      } catch {
-        // Sans session, le client retapera son nom : la vente est rouverte.
-      }
-      window.dispatchEvent(new Event("ml:panier"));
-      window.location.reload();
-    } catch (e) {
-      setRaison(e instanceof ErreurSalon && e.message ? e.message : "");
-      setRetour("erreur");
-      // La flèche retour a déjà consommé l'entrée d'historique : on la
-      // remet, pour qu'un second appui retente.
-      history.pushState({ mlVenteStand: true }, "");
-    }
-  }
 
   onMount(() => {
-    // Une entrée d'historique à nous : la flèche retour de la tablette
-    // revient à la commande au lieu de quitter la page sur un panier vide.
+    // Une entrée d'historique à nous : la flèche retour de la tablette reste
+    // sur la confirmation au lieu de quitter la page sur un panier vide. Elle
+    // ne rouvre plus rien (20/11) : la vente est payée et remise dès la
+    // validation, et c'est définitif. On remet simplement l'entrée.
     history.pushState({ mlVenteStand: true }, "");
-    // La flèche retour ne rouvre plus d'office (19/11) : la vente est payée
-    // et remise dès la validation, et un autre client tient peut-être déjà la
-    // tablette. On demande ; sinon, l'entrée d'historique est remise.
     const surRetour = () => {
-      if (!window.confirm(`${tr("stand.revenir")} ?`)) {
-        history.pushState({ mlVenteStand: true }, "");
-        return;
-      }
-      void revenir();
+      history.pushState({ mlVenteStand: true }, "");
     };
     window.addEventListener("popstate", surRetour);
     // Le navigateur peut garder cette page en mémoire et la RESSERVIR telle
-    // quelle par la flèche retour, confirmation comprise. Qui tient alors la
-    // tablette, on n'en sait rien : peut-être déjà le client suivant, et
-    // « Revenir à ma commande » lui rendrait le nom et l'adresse e-mail du
-    // précédent. Une page resservie se recharge donc TOUJOURS, sur le panier
-    // neuf (il l'est depuis l'enregistrement). Ne la recharger qu'après
-    // « Client suivant » laissait le trou ouvert : la tablette pouvait
-    // quitter la confirmation par l'en-tête (logo, menu, panier), qui reste
-    // affiché au stand. La flèche retour depuis la confirmation elle-même
-    // n'est pas concernée : elle reste dans la page (`popstate` ci-dessus).
+    // quelle par la flèche retour, confirmation comprise, au client suivant
+    // peut-être. Une page resservie se recharge donc TOUJOURS, sur le panier
+    // neuf (il l'est depuis l'enregistrement) : la tablette peut quitter la
+    // confirmation par l'en-tête (logo, menu, panier), qui reste affiché au
+    // stand. La flèche retour depuis la confirmation elle-même n'est pas
+    // concernée : elle reste dans la page (`popstate` ci-dessus).
     const surPageResservie = (e: PageTransitionEvent) => {
       if (e.persisted) window.location.reload();
     };
@@ -517,23 +437,8 @@ export function ConfirmationStand(props: {
       <p class="mt-1 text-5xl font-medium tabular-nums sm:text-6xl">
         {props.vente.numero}
       </p>
-      <Show when={retour() === "erreur"}>
-        <p class="mt-6 text-terracotta-deep">{raison() || tr("stand.revenir_erreur")}</p>
-      </Show>
-      {/* Les deux boutons dans une rangée à eux, séparés : collés l'un à
-          l'autre (le `inline-flex` de PRINCIPAL l'emportait sur le `flex` qui
-          devait les empiler), ils se lisaient comme un seul bouton bicolore,
-          décalé de deux pixels. Côte à côte et de même hauteur dès la
-          tablette, l'un sous l'autre sur un téléphone. */}
+      {/* Un seul geste après la validation : « Client suivant ». */}
       <div class="mt-10 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:justify-center">
-        <button
-          type="button"
-          onClick={() => void revenir()}
-          disabled={retour() === "encours"}
-          class="inline-flex items-center justify-center border-2 border-ink px-8 py-4 text-lg font-medium transition-colors hover:bg-ink hover:text-paper disabled:opacity-50"
-        >
-          ← {tr("stand.revenir")}
-        </button>
         <a
           href={avecStand(lien(langue, "/affiches"))}
           class={`${PRINCIPAL} px-10`}
