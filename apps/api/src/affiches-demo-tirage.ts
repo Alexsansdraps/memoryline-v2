@@ -1332,6 +1332,63 @@ function controler(
   return null;
 }
 
+/** La 2e ligne : une phrase qui va avec qui pose sur l'affiche (20/11). */
+const PHRASES_DE_SCENE: Record<SceneDemo, readonly string[]> = {
+  couple: ["Escapade en amoureux", "Notre week-end à deux", "Rien que nous deux", "Nos plus beaux souvenirs", "Main dans la main", "Notre première année", "Un amour de week-end", "Toi et moi, toujours", "Nos vacances à deux", "Le jour où tout a commencé", "Notre coin de paradis", "Pour toujours", "Un dimanche à deux", "Nos petits bonheurs", "La vie à deux", "Notre voyage de noces"],
+  famille: ["Week-end chill en famille", "Nos vacances en famille", "Souvenirs de famille", "La tribu en balade", "Tous ensemble", "Notre petite tribu", "Le bonheur en famille", "Dimanche en famille", "Nos plus belles vacances", "Une journée parfaite", "La famille au complet", "Nos aventures en famille", "Un été en famille", "Les vacances de nos rêves", "Notre plus beau voyage", "Ensemble, c'est tout"],
+  famille_animal: ["Week-end chill en famille", "Toute la tribu au complet", "En balade avec toute la famille", "Nos vacances en famille", "La famille et son toutou", "Personne ne manque à l'appel", "Notre joyeuse tribu", "Balade du dimanche", "Toute la bande en vacances", "Le bonheur à quatre pattes", "Nos plus belles balades", "Tous ensemble, même le chien"],
+  avec_animal: ["Balade avec mon meilleur ami", "Nos belles promenades", "Inséparables", "Toujours ensemble", "Mon fidèle compagnon", "Nos balades du dimanche", "Le meilleur des copains", "Un amour à quatre pattes", "Partenaires d'aventure", "Mon complice", "Nos sorties préférées", "Rien que nous deux"],
+  amis: ["Entre amis", "Les copains d'abord", "Notre week-end entre amis", "La bande au complet", "Amis pour la vie", "Nos folles virées", "La team au complet", "Les meilleurs souvenirs", "Un week-end entre potes", "Nos retrouvailles", "Toujours partants", "La bande des copains"],
+  hasard: ["Nos plus beaux souvenirs", "Un jour inoubliable", "Souvenir de balade", "Tous ensemble", "Une journée parfaite", "Nos petits bonheurs", "Le souvenir d'un beau jour", "Ensemble, c'est mieux", "Un moment à nous", "Nos belles rencontres"],
+};
+
+/** Les prénoms de la 3e ligne, selon qui pose : courts, pour tenir sur une ligne. */
+const PRENOMS = {
+  femme: ["Julie", "Camille", "Sophie", "Léa", "Emma", "Claire", "Marie", "Laura", "Anaïs", "Pauline", "Elodie", "Céline", "Manon", "Sarah", "Lucie", "Charlotte", "Mathilde", "Aurélie", "Margaux", "Elise", "Nina", "Clara", "Agathe", "Hélène"],
+  homme: ["Thomas", "Nicolas", "Julien", "Antoine", "Paul", "Hugo", "Lucas", "Pierre", "Maxime", "Louis", "Mathieu", "Romain", "Vincent", "Alexandre", "Benoît", "Guillaume", "Florian", "Adrien", "Simon", "Victor", "Martin", "Yann", "Olivier", "Baptiste"],
+  fille: ["Jade", "Louise", "Alice", "Lina", "Rose", "Chloé", "Inès", "Zoé", "Mila", "Anna", "Juliette", "Lola", "Léonie", "Ambre", "Iris", "Romane", "Lou", "Eva", "Margot", "Capucine"],
+  garcon: ["Léo", "Gabriel", "Raphaël", "Arthur", "Jules", "Adam", "Noah", "Tom", "Sacha", "Nathan", "Ethan", "Timothée", "Paul", "Victor", "Oscar", "Lucien", "Aaron", "Marius", "Robin", "Côme"],
+  bebe: ["Lou", "Noé", "Mia", "Eden", "Lya", "Timéo", "Lenny", "Alba", "Milo", "Nour", "Gaspard", "Elia"],
+  animal: ["Caramel", "Pepper", "Rex", "Filou", "Moka", "Nala", "Oscar", "Simba", "Pistache", "Ruby", "Biscuit", "Choupette", "Câlin", "Gribouille", "Praline", "Snoopy", "Loulou", "Cookie", "Tigrou", "Pompon"],
+} as const;
+
+/** Le prénom d'un personnage : par son rôle, et pour un enfant ou un ado par sa catégorie (fille, garçon). */
+function listeDePrenoms(c: Candidat): readonly string[] {
+  const categorie = String(c.perso.category ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  switch (c.role) {
+    case "adulte_f":
+      return PRENOMS.femme;
+    case "adulte_h":
+      return PRENOMS.homme;
+    case "bebe":
+      return PRENOMS.bebe;
+    case "animal":
+      return PRENOMS.animal;
+    default:
+      if (categorie.includes("fille")) return PRENOMS.fille;
+      if (categorie.includes("garcon")) return PRENOMS.garcon;
+      if (c.role === "autre") return [...PRENOMS.femme, ...PRENOMS.homme];
+      return [...PRENOMS.fille, ...PRENOMS.garcon];
+  }
+}
+
+/** « Julie, Léo, Thomas & Caramel » : un prénom par personnage, jamais deux fois le même. */
+function prenomsDe(persos: readonly Candidat[], hasard: () => number): string {
+  const pris = new Set<string>();
+  const prenoms = persos.map((c) => {
+    const libres = listeDePrenoms(c).filter((p) => !pris.has(p));
+    const p = libres.length ? auHasard(libres, hasard) : auHasard(listeDePrenoms(c), hasard);
+    pris.add(p);
+    return p;
+  });
+  return prenoms.length > 1
+    ? `${prenoms.slice(0, -1).join(", ")} & ${prenoms[prenoms.length - 1]}`
+    : (prenoms[0] ?? "");
+}
+
 /**
  * Tire UN exemplaire d'une affiche : sa configuration complète, prête pour le
  * moteur d'impression, et le résumé que sa carte affiche.
@@ -1387,20 +1444,20 @@ export function tirerAfficheDemo(
   //    liste : rien ne dit alors lequel le module montre (affiches-demo.ts).
   const fond = affiche.fondsParLeNom ? fonds[0]! : auHasard(fonds, hasard);
 
-  // 3. Les textes, rangés comme le module les range (lignesEnregistrees) :
-  //    la 1re ligne est celle de l'affiche, sinon sa ville, sinon son nom, en
-  //    capitales comme la charte le veut (ligneEnMajuscules) ; la 2e un nom
-  //    d'exemple, sinon celle de l'affiche ; la 3e celle de l'affiche.
-  const titre = rempli(affiche.titre) ?? rempli(villeDuNom(affiche.nom)) ?? String(affiche.nom ?? "");
-  const noms = (Array.isArray(options.nomsLigne2) ? options.nomsLigne2 : [])
-    .map((n) => String(n ?? "").trim())
-    .filter((n) => n !== "");
-  const ligne2 = noms.length > 0 ? auHasard(noms, hasard) : (affiche.sousTitre ?? "");
+  // 3. Les textes (20/11, Alexandra : « 1ere ligne on prend la ville, et 2 et
+  //    3 faudrait générer du contenu random en fonction de ce qu'on
+  //    sélectionne […] 2 : week end chill en famille et 3 : les prénoms des
+  //    membres de la famille (animaux inclus s'il y a) ») : la ville, sinon
+  //    la 1re ligne de l'affiche, sinon son nom, en capitales (charte) ; une
+  //    phrase de la scène RÉELLEMENT tirée (dégradée comprise) ; les prénoms
+  //    des personnages, de gauche à droite. Le texte suit chaque exemplaire :
+  //    « Varié » garde donc tout son sens.
+  const titre = rempli(villeDuNom(affiche.nom)) ?? rempli(affiche.titre) ?? String(affiche.nom ?? "");
   const lines = lignesEnregistrees({
     lignes: [
       { value: titre.toLocaleUpperCase("fr-FR"), font: policeDefautLigne(0) },
-      { value: ligne2, font: policeDefautLigne(1) },
-      { value: affiche.ligne3 ?? "", font: policeDefautLigne(2) },
+      { value: auHasard(PHRASES_DE_SCENE[tirage.scene], hasard), font: policeDefautLigne(1) },
+      { value: prenomsDe(tirage.persos, hasard), font: policeDefautLigne(2) },
     ],
     textStyle: {
       color: couleurTexteParValeur(options.couleurTexte)?.hex ?? COULEUR_TEXTE_DEFAUT,

@@ -676,24 +676,30 @@ test("5. places : celles de la composition automatique, dans l'ordre de la liste
   }
 });
 
-test("6. textes : 1re ligne en capitales (sinon la ville), polices permises, trois lignes au plus, sans trou", () => {
-  const face = tirer(FACE, options("couple"), 1).config.texts.lines!;
-  assert.deepEqual(face.map((l) => l.value), ["MULHOUSE", "Famille Muller", "Noël 2026"]);
-  // La ligne 1 de l'affiche passe en capitales ; sans 2e ligne, la 3e remonte.
-  const dos = tirer({ ...DOS, ligne3: "Été 2026" }, options("couple"), 1).config.texts.lines!;
-  assert.deepEqual(dos.map((l) => l.value), ["COLMAR", "Été 2026"]);
-  // Ni ligne 1 ni ville dans le nom : le nom entier, en capitales.
-  const sansVille = tirer({ ...FACE, nom: "Affiche d'été", sousTitre: null, ligne3: null }, options("couple"), 1).config.texts.lines!;
-  assert.deepEqual(sansVille.map((l) => l.value), ["AFFICHE D'ÉTÉ"]);
-  // Des noms d'exemple : l'un d'eux en 2e ligne.
-  const noms = ["Famille Schmitt", "Léa & Tom"];
-  const vus = new Set<string>();
-  for (let rang = 0; rang < 20; rang++) {
-    const l = tirer(FACE, options("famille", { nomsLigne2: ["", ...noms, "  "] }), graineDemo(2, rang, 0)).config.texts.lines!;
-    assert.ok(noms.includes(l[1]!.value), l[1]!.value);
-    vus.add(l[1]!.value);
+test("6. textes : la ville en capitales, une phrase de la scène, les prénoms de gauche à droite (20/11)", () => {
+  // La 1re ligne : la ville, en capitales — même si l'affiche a sa propre 1re ligne.
+  const face = tirer(FACE, options("couple"), 1);
+  const lf = face.config.texts.lines!;
+  assert.equal(lf[0]!.value, "MULHOUSE");
+  assert.equal(lf.length, 3);
+  // La 3e ligne : un prénom par personnage, « A & B » pour un couple.
+  assert.equal(lf[2]!.value.split(/, | & /).length, face.config.characters.length);
+  // Ni ville dans le nom : la 1re ligne de l'affiche, sinon le nom entier.
+  const sansVille = tirer({ ...FACE, nom: "Affiche d'été", titre: null }, options("couple"), 1).config.texts.lines!;
+  assert.equal(sansVille[0]!.value, "AFFICHE D'ÉTÉ");
+  // Chaque graine son texte : sur 30 exemplaires, des phrases et des prénoms variés.
+  const phrases = new Set<string>();
+  const prenoms = new Set<string>();
+  for (let rang = 0; rang < 30; rang++) {
+    const t = tirer(FACE, options("famille"), graineDemo(2, rang, 0));
+    const l = t.config.texts.lines!;
+    phrases.add(l[1]!.value);
+    prenoms.add(l[2]!.value);
+    assert.equal(l[2]!.value.split(/, | & /).length, t.config.characters.length, l[2]!.value);
+    assert.equal(new Set(l[2]!.value.split(/, | & /)).size, t.config.characters.length, "prénom en double");
   }
-  assert.equal(vus.size, 2);
+  assert.ok(phrases.size >= 8, `phrases : ${phrases.size}`);
+  assert.ok(prenoms.size >= 25, `prénoms : ${prenoms.size}`);
   for (const { tire } of TIRAGES) {
     const lignes = tire.config.texts.lines!;
     assert.ok(lignes.length >= 1 && lignes.length <= 3);

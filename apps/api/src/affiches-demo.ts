@@ -535,8 +535,13 @@ function tirerUnExemplaire(
   premierEssai: number,
   present: (url: string) => boolean,
   eviter?: string,
+  textesPris?: Set<string>,
 ): { config: PosterConfig; resume: ResumeDemo } | { refus: string } {
   let refus = "aucun tirage n'a abouti.";
+  // Un texte déjà pris dans le lot (20/11, Alexandra : « pour chaque
+  // exemplaire ça doit être différent ») : on retire ; si tous les essais
+  // retombent sur des textes pris, le dernier tirage valable sert quand même.
+  let deSecours: { config: PosterConfig; resume: ResumeDemo } | null = null;
   for (let k = 0; k < ESSAIS_PAR_TIRAGE; k++) {
     try {
       const tire = tirerAfficheDemo(
@@ -558,13 +563,25 @@ function tirerUnExemplaire(
         continue;
       }
       if (eviter !== undefined && canonique(valide.data) === eviter) continue;
+      const cle = cleDesTextes(valide.data);
+      if (textesPris?.has(cle)) {
+        deSecours = { config: valide.data, resume: tire.resume };
+        continue;
+      }
+      textesPris?.add(cle);
       return { config: valide.data, resume: tire.resume };
     } catch (e) {
       console.error(`[affiches démo] tirage de « ${affiche.nom} » :`, e);
       refus = "le tirage a échoué.";
     }
   }
+  if (deSecours) return deSecours;
   return { refus };
+}
+
+/** Les 2e et 3e lignes d'une affiche tirée : ce qui doit changer d'un exemplaire à l'autre. */
+function cleDesTextes(config: PosterConfig): string {
+  return (config.texts?.lines ?? []).slice(1).map((l) => l.value).join("|");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1352,6 +1369,7 @@ export function mountAffichesDemo(app: Hono): void {
 
         const lignes: (typeof schema.affichesDemo.$inferInsert)[] = [];
         const present = fichierPresentMemorise();
+        const textesDuLot = new Set<string>();
         for (const { affiche, exemplaires } of aTirer) {
           let refusees = 0;
           let refus = "";
@@ -1373,6 +1391,8 @@ export function mountAffichesDemo(app: Hono): void {
               rang,
               0,
               present,
+              undefined,
+              textesDuLot,
             );
             if ("refus" in tire) {
               refusees++;
