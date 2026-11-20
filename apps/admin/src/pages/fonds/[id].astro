@@ -7,8 +7,9 @@
  * résultat est pas top top pour une / des images ! ». Margaux écrit ce qui ne
  * va pas (« la cathédrale est coupée, recule un peu »), ou choisit une
  * retouche toute faite ; une nouvelle image est dessinée à partir de la
- * version courante, avec le style, les règles des fonds et tout le fil des
- * demandes précédentes. Le fil est gardé en base : on peut fermer la page et
+ * version courante, avec le style, les règles des fonds et les demandes qui
+ * ont mené à cette version (pas celles d'une version abandonnée par « Revenir
+ * à celle-ci »). Le fil est gardé en base : on peut fermer la page et
  * revenir. On revient à une version précédente, ou on la garde comme décor.
  *
  * Chaque geste est un formulaire traité ici, puis la page se recharge (303) :
@@ -96,6 +97,15 @@ const quand = (iso: string) => {
 const courante = fond?.versionCourante ?? null;
 const cout = catalogue?.reglages.coutParVersionCents ?? 0;
 const bouchon = !!catalogue?.bouchon;
+/**
+ * Ce qu'il reste pour les fonds ce mois-ci : leur plafond est à part de celui
+ * des affiches des clients (relecture du 20/11). Ajouté au catalogue par
+ * l'API ; null si elle ne le dit pas.
+ */
+const resteFonds =
+  (catalogue as (CatalogueFondsIa & { plafondFonds?: { resteCents: number } }) | null)?.plafondFonds
+    ?.resteCents ?? null;
+const confirmation = confirmationMessage(1, cout, bouchon, resteFonds);
 const enCours = fond?.etat === "en_cours";
 const jetonMessage = nouveauJeton();
 const jetonZero = nouveauJeton();
@@ -275,7 +285,7 @@ const estCourante = (v: VersionFondIa) => v.publicId === courante?.publicId;
           {catalogue && (
             <form
               method="POST"
-              data-confirme={confirmationMessage(1, cout, bouchon)}
+              data-confirme={confirmation}
               class="space-y-3 rounded-lg border border-bo-border bg-bo-surface p-3"
             >
               <input type="hidden" name="action" value="message" />
@@ -310,14 +320,16 @@ const estCourante = (v: VersionFondIa) => v.publicId === courante?.publicId;
               <p class="text-xs text-bo-muted">
                 Chaque message dessine une nouvelle image à partir de la version
                 courante{bouchon ? " (mode d'essai : rien n'est payé)" : `, payée environ ${euros(cout)}`}.
-                Les demandes déjà faites sont rappelées au modèle, pour qu'elles ne se perdent pas.
+                Les demandes qui ont mené à cette version sont rappelées au modèle, pour
+                qu'elles ne se perdent pas ; celles d'une version abandonnée, non.
+                {!bouchon && resteFonds !== null && ` Il reste ${euros(resteFonds)} pour les fonds ce mois-ci.`}
                 {!courante && " Attendez qu'une version soit prête."}
               </p>
             </form>
           )}
 
           {catalogue && (
-            <form method="POST" data-confirme={confirmationMessage(1, cout, bouchon)}>
+            <form method="POST" data-confirme={confirmation}>
               <input type="hidden" name="action" value="zero" />
               <input type="hidden" name="jeton" value={jetonZero} />
               <button class={boutonDiscret}>Recommencer de zéro à partir de la photo</button>

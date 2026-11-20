@@ -32,6 +32,37 @@ function raisonLisible(souci: unknown): string {
   return brut.startsWith("API ") ? "" : brut;
 }
 
+/**
+ * Un montant saisi en euros (« 25 », « 12,50 », « 30 € ») : ses centimes,
+ * « vide » s'il n'y a rien (le réglage repart alors sur la valeur d'origine,
+ * jamais sur 0 — relecture du 20/11 : un coût vidé s'enregistrait à 0, et
+ * plus rien ne comptait dans le plafond), ou une erreur s'il est illisible.
+ */
+function centimesSaisis(brut: FormDataEntryValue | null, libelle: string): number | "vide" {
+  const texte = String(brut ?? "").replace(/[\s€]/g, "").replace(",", ".");
+  if (!texte) return "vide";
+  const n = Number(texte);
+  if (!Number.isFinite(n) || n < 0)
+    throw new Error(`${libelle} : « ${String(brut)} » n'est pas un montant. Écrivez par exemple 25 ou 12,50.`);
+  return Math.round(n * 100);
+}
+
+/**
+ * Le plafond propre aux fonds (relecture du 20/11), tel que l'API l'ajoute
+ * au catalogue : à part de celui des affiches des clients.
+ */
+type PlafondFonds = {
+  plafondCents: number;
+  /** Vrai sans réglage : c'est alors la moitié du plafond des affiches. */
+  parDefaut: boolean;
+  reglageCents: number | null;
+  defautCents: number;
+  /** Versions en cours comprises : leur coût est réservé au lancement. */
+  depenseCents: number;
+  resteCents: number;
+  plafondAffichesCents: number;
+};
+
 let flash: string | null = Astro.url.searchParams.get("reglages") === "1" ? "Réglages enregistrés." : null;
 let flashAlerte = false;
 
@@ -40,6 +71,9 @@ if (Astro.request.method === "POST") {
   const action = String(champs.get("action") ?? "");
   try {
     if (action === "reglages") {
+      // Les montants d'abord : un montant illisible n'enregistre rien du tout.
+      const cout = centimesSaisis(champs.get("coutEuros"), "Coût estimé d'une image");
+      const plafond = centimesSaisis(champs.get("plafondEuros"), "Plafond des fonds");
       const defaut = String(champs.get("consigneDefaut") ?? "");
       const consigne = String(champs.get("consigne") ?? "").replace(/\r\n/g, "\n").trim();
       // Remis au texte d'origine (ou vidé) : on enregistre vide, et c'est le
@@ -48,8 +82,9 @@ if (Astro.request.method === "POST") {
         "ia.fondConsigne",
         champs.get("remettre") === "1" || consigne === defaut.replace(/\r\n/g, "\n").trim() ? "" : consigne,
       );
-      const cout = Math.round(Number(String(champs.get("coutEuros") ?? "").replace(",", ".")) * 100);
-      if (Number.isFinite(cout) && cout >= 0) await api.setSetting("ia.fondCoutParVersionCents", cout);
+      // Vides, ces deux réglages repartent sur leur valeur d'origine.
+      await api.setSetting("ia.fondCoutParVersionCents", cout === "vide" ? "" : cout);
+      await api.setSetting("ia.fondPlafondMensuelCents", plafond === "vide" ? "" : plafond);
       const versions = Math.trunc(Number(champs.get("versionsDefaut")));
       if (versions >= 1) await api.setSetting("ia.fondVersions", versions);
       return Astro.redirect(url("/fonds?reglages=1#reglages"), 303);
@@ -59,7 +94,10 @@ if (Astro.request.method === "POST") {
     for (const cle of ["jeton", "nomLot", "precision", "versions", "styleId"])
       envoi.append(cle, String(champs.get(cle) ?? ""));
     for (const n of champs.getAll("noms")) envoi.append("noms", String(n));
-    for (const e of champs.getAll("exemples")) if (String(e)) envoi.append("exemples", String(e));
+    // « Aucun » dans chaque liste se dit « aucun » : sans rien, l'API
+    // reprendrait les décors d'exemple d'office.
+    const exemples = champs.getAll("exemples").map(String).filter(Boolean);
+    for (const e of exemples.length ? exemples : ["aucun"]) envoi.append("exemples", e);
     for (const f of champs.getAll("photos"))
       if (typeof f !== "string" && f.size > 0) envoi.append("photos", f, f.name);
     const { lot } = await api.creerLotFondsIa(envoi);
@@ -104,6 +142,9 @@ const jeton = nouveauJeton();
 const reg = catalogue?.reglages;
 const cout = reg?.coutParVersionCents ?? 0;
 const bouchon = !!catalogue?.bouchon;
+const plafondFonds =
+  (catalogue as (CatalogueFondsIa & { plafondFonds?: PlafondFonds }) | null)?.plafondFonds ?? null;
+const enEuros = (cents: number) => (cents / 100).toFixed(2).replace(".", ",");
 const champ = "rounded border border-bo-border bg-bo-surface px-2 py-1 text-sm";
 const couleurEtat = (e: string) =>
   e === "echec" ? "text-red-700" : e === "prete" ? "text-green-700" : "text-amber-800";
@@ -206,6 +247,7 @@ const couleurEtat = (e: string) =>
         data-lot
         data-cout={cout}
         data-bouchon={bouchon ? "1" : "0"}
+        data-reste={!bouchon && plafondFonds ? plafondFonds.resteCents : undefined}
         data-max-photos={catalogue.limites.photos}
         class="space-y-4 rounded-lg border border-bo-border bg-bo-surface p-4 md:p-5"
       >
@@ -316,11 +358,20 @@ const couleurEtat = (e: string) =>
           <span class="text-sm" data-resume></span>
           <span class="text-sm text-red-700" data-erreur role="alert"></span>
         </div>
-        <p class="text-xs text-bo-muted">
-          Dépense IA du mois : {euros(catalogue.depenseCents)} sur un plafond de {euros(catalogue.plafondCents)}
-          (affiches et fonds ensemble, réglable dans
-          <a href={url("/ia")} class="text-bo-accent underline">Affiches IA</a>).
-        </p>
+        {plafondFonds ? (
+          <p class="text-xs text-bo-muted">
+            Plafond des fonds ce mois-ci : {euros(plafondFonds.depenseCents)} engagés sur
+            {euros(plafondFonds.plafondCents)}, il reste <strong>{euros(plafondFonds.resteCents)}</strong>
+            (réglable plus bas, dans les réglages des fonds). Il est à part de celui des affiches des
+            clients ({euros(plafondFonds.plafondAffichesCents)} par mois, dans
+            <a href={url("/ia")} class="text-bo-accent underline">Affiches IA</a>) : un lot de fonds
+            ne les bloque jamais.
+          </p>
+        ) : (
+          <p class="text-xs text-bo-muted">
+            Dépense des fonds ce mois-ci : {euros(catalogue.depenseCents)} sur un plafond de {euros(catalogue.plafondCents)}.
+          </p>
+        )}
       </form>
     )}
 
@@ -394,18 +445,33 @@ const couleurEtat = (e: string) =>
             </span>
             <textarea name="consigne" rows="16" class={`mt-1 w-full font-mono text-xs ${champ}`}>{reg.consigne}</textarea>
           </label>
-          <div class="grid gap-4 md:grid-cols-2">
+          <div class="grid gap-4 md:grid-cols-3">
             <label class="block text-sm">
               <span class="font-medium">Coût estimé d'une image (€)</span>
               <input
                 name="coutEuros"
                 inputmode="decimal"
-                value={(cout / 100).toFixed(2).replace(".", ",")}
+                value={enEuros(cout)}
                 class={`mt-1 w-32 ${champ}`}
               />
               <span class="mt-1 block text-xs text-bo-muted">
                 Une estimation, pour la confirmation et le plafond du mois : la
-                facture fait foi chez OpenAI.
+                facture fait foi chez OpenAI. Vide : le coût d'origine.
+              </span>
+            </label>
+            <label class="block text-sm">
+              <span class="font-medium">Plafond des fonds par mois (€)</span>
+              <input
+                name="plafondEuros"
+                inputmode="decimal"
+                value={plafondFonds?.reglageCents != null ? enEuros(plafondFonds.reglageCents) : ""}
+                placeholder={plafondFonds ? enEuros(plafondFonds.defautCents) : ""}
+                class={`mt-1 w-32 ${champ}`}
+              />
+              <span class="mt-1 block text-xs text-bo-muted">
+                Atteint, il arrête les fonds jusqu'au mois suivant. Il est à part
+                de celui des affiches des clients : un lot ne les coupe jamais.
+                Vide : la moitié du plafond des affiches{plafondFonds ? ` (${euros(plafondFonds.defautCents)} aujourd'hui)` : ""}.
               </span>
             </label>
             <label class="block text-sm">

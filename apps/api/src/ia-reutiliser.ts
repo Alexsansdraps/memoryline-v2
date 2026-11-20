@@ -107,12 +107,19 @@ async function prixHabituels(): Promise<{ format: string; priceCents: number }[]
  * ici. Ce que le navigateur envoie comme fond (adresse, identifiant) est
  * écarté : le PDF ne peut porter que l'image de cette génération, jamais un
  * fichier désigné par la page.
+ *
+ * L'avant-plan aussi (relecture du 20/11) : `foregroundUrl` est une ADRESSE
+ * que le moteur du PDF va lire — un fichier de data/assets, voire une page
+ * du réseau. L'atelier n'en envoie jamais (l'image n'est pas une fiche, elle
+ * n'a pas de muret) ; une page qui en enverrait un ferait lire au serveur ce
+ * qu'elle veut. La vue de dos garde son muret officiel, posé par le moteur.
  */
 export function configDeLAtelier(config: PosterConfig, relatif: string): PosterConfig {
   const {
     backgroundId: _id,
     aiPublicId: _ia,
     aiApercuUrl: _apercu,
+    foregroundUrl: _avantPlan,
     // Le cadre ne s'imprime pas (il s'ajoute au colis), et l'image n'est pas
     // un produit : ni l'un ni l'autre n'a de sens ici.
     frameId: _cadre,

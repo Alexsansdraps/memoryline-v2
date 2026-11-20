@@ -693,9 +693,11 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
             va pas (« la cathédrale est coupée, recule un peu ») ou cliquez une
             retouche toute faite (« Changer l'angle », « Retirer les voitures et
             panneaux », « Plus de ciel en haut », « Dégager le bas »). La
-            nouvelle image repart de la version courante, et les demandes déjà
-            faites sont rappelées au modèle. « Revenir à celle-ci » reprend une
-            version précédente ; « Recommencer de zéro » redessine depuis la photo.
+            nouvelle image repart de la version courante, et les demandes qui
+            ont mené à cette version sont rappelées au modèle — pas celles d'une
+            version écartée. « Revenir à celle-ci » reprend une version
+            précédente (les demandes faites après elle ne sont plus rappelées) ;
+            « Recommencer de zéro » redessine depuis la photo.
           </li>
           <li>
             <strong>« Enregistrer comme décor »</strong> range la version
@@ -707,9 +709,13 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
         <p>
           <strong>Le coût</strong> : chaque image dessinée est payée (environ
           0,25 € par défaut, réglable sous « Réglages des fonds »), y compris
-          chaque message de la discussion. Fonds et affiches IA partagent le
-          même plafond de dépense du mois, réglé dans Affiches IA : au-delà,
-          plus rien ne part.
+          chaque message de la discussion. Les fonds ont leur propre plafond de
+          dépense du mois, sous « Réglages des fonds » (laissé vide, il vaut la
+          moitié de celui des affiches IA) : au-delà, plus aucun fond ne part.
+          Il est à part de celui des affiches des clients, réglé dans Affiches
+          IA : un lot de fonds ne peut jamais bloquer les affiches du site ni
+          du stand. Mieux vaut quand même lancer les gros lots hors des heures
+          du marché : fonds et affiches passent par le même compte OpenAI.
         </p>
       </div>
     </details>

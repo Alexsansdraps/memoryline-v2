@@ -181,6 +181,12 @@ export function mountSalonRoutes(app: Hono): void {
       // 17 au 19/11, restée « à encaisser ».
       if ((commande.status !== "pending" && commande.status !== "paid") || commande.cancelledAt)
         return { erreur: "Cette commande ne peut plus être modifiée ici.", statut: 409 as const };
+      // Une facture émise ne change plus (relecture du 20/11) : rouverte puis
+      // revalidée, la même F2026-… se serait rééditée avec d'autres lignes et
+      // un autre total ; rouverte sans être revalidée, elle restait un panier
+      // qui garde son numéro.
+      if (commande.invoiceNumber)
+        return { erreur: "Cette vente a une facture : corrigez-la au back-office.", statut: 409 as const };
 
       const ecritures = await tx
         .select()
@@ -367,11 +373,13 @@ export function mountSalonRoutes(app: Hono): void {
           number: /^SAL-\d+$/.test(verrouille.number)
             ? verrouille.number
             : await prochainNumeroDeCommande(tx, "SAL-"),
-          // La date de la vente est celle de sa validation (20/11 : une vente
-          // faite à 10 h 10 s'affichait « le 18 novembre à 09:58 », l'heure où
-          // la tablette avait ouvert son panier). Une vente rouverte puis
-          // revalidée garde la sienne, comme son numéro.
-          ...(/^SAL-\d+$/.test(verrouille.number) ? {} : { createdAt: new Date() }),
+          // La date de la vente est celle de sa validation, TOUJOURS (20/11,
+          // Alexandra : « il faut prendre la date à laquelle c'est validé ! »).
+          // Une vente rouverte puis revalidée garde son numéro, mais prend
+          // l'heure de sa dernière validation : SAL-0006, validée à 11 h 32,
+          // rouverte, puis revalidée à 20 h 03 pour un autre client,
+          // s'affichait encore à 11 h 32.
+          createdAt: new Date(),
           // PAYÉE dès la validation (19/11, Alexandra : « enlève la manip de
           // payer […] on considère que c'est payé et terminé dès que la
           // personne a fini son affiche »). Un client qui ne paie pas, Margaux

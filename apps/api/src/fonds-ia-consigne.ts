@@ -1,7 +1,8 @@
 /**
  * « Créer un fond » (BO › Atelier, 20/11) : ce qui se calcule sans base ni
- * réseau — la consigne envoyée au modèle, les retouches toutes faites, les
- * bornes, les noms d'un lot et l'état d'un fond. Les routes sont dans
+ * réseau — la consigne envoyée au modèle, le fil de la discussion (la lignée
+ * d'une version), les retouches toutes faites, les bornes, le plafond propre
+ * aux fonds, les noms d'un lot et l'état d'un fond. Les routes sont dans
  * fonds-ia.ts.
  *
  * Le besoin, dans les mots de Margaux : « Si seulement tu pouvais me faire un
@@ -177,6 +178,132 @@ export function lireExemples(brut: unknown): number[] {
 }
 
 /**
+ * Les décors d'exemple DEMANDÉS par le formulaire d'un lot (les valeurs du
+ * champ « exemples »). Trois réponses :
+ *   - des identifiants : ceux-là ;
+ *   - « aucun » : le champ est là, mais « Aucun » est choisi dans chaque
+ *     liste — pas d'exemple, et surtout pas ceux d'office (relecture du
+ *     20/11 : choisir deux fois « Aucun » les reprenait quand même) ;
+ *   - null : le champ n'a pas été envoyé, ou ne dit rien de lisible — les
+ *     exemples d'office.
+ */
+export function exemplesDemandes(bruts: readonly unknown[]): number[] | "aucun" | null {
+  if (!bruts.length) return null;
+  const morceaux = bruts
+    .flatMap((b) => String(b ?? "").split(/[\s,;]+/))
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const ids = lireExemples(morceaux);
+  if (ids.length) return ids;
+  return morceaux.every((m) => m.toLowerCase() === "aucun") ? "aucun" : null;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Plafond du mois                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Le réglage du plafond des FONDS, en centimes par mois (relecture du 20/11).
+ *
+ * Les fonds ont LEUR plafond : un lot payé ne doit jamais couper les affiches
+ * que les CLIENTS font au stand ou sur le site à partir de leur photo
+ * (/ia/generer). Les deux dépenses se comptent donc à part — les affiches
+ * contre « ia.plafondMensuelCents », les fonds contre celui-ci.
+ *
+ * Pas de migration : la table `setting` reçoit la clé quand on l'enregistre
+ * au BO (Créer un fond › Réglages des fonds). Absente ou vide, c'est
+ * `PART_DU_PLAFOND_POUR_LES_FONDS` du plafond des affiches qui s'applique.
+ */
+export const CLE_PLAFOND_FONDS = "ia.fondPlafondMensuelCents";
+
+/** Sans réglage, les fonds ont droit à la moitié du plafond des affiches. */
+export const PART_DU_PLAFOND_POUR_LES_FONDS = 0.5;
+
+/**
+ * Un montant en centimes lu dans un réglage. Vide, illisible ou négatif : le
+ * défaut — jamais 0 par accident (relecture du 20/11 : un coût par image
+ * vidé au BO s'enregistrait à 0, et plus rien ne comptait dans le plafond).
+ */
+export function centimesDuReglage(brut: unknown, defaut: number): number {
+  const texte = typeof brut === "number" || typeof brut === "string" ? String(brut).trim() : "";
+  const n = texte ? Number(texte) : Number.NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : defaut;
+}
+
+/**
+ * Le plafond des fonds ce mois-ci : le réglage s'il est posé (0 compris, qui
+ * arrête les fonds), sinon la moitié du plafond des affiches.
+ */
+export function plafondDesFonds(
+  brut: unknown,
+  plafondAffichesCents: number,
+): { cents: number; parDefaut: boolean; reglageCents: number | null; defautCents: number } {
+  const affiches = Number.isFinite(plafondAffichesCents) ? Math.max(0, plafondAffichesCents) : 0;
+  const defautCents = Math.round(affiches * PART_DU_PLAFOND_POUR_LES_FONDS);
+  const lu = centimesDuReglage(brut, -1);
+  return lu < 0
+    ? { cents: defautCents, parDefaut: true, reglageCents: null, defautCents }
+    : { cents: lu, parDefaut: false, reglageCents: lu, defautCents };
+}
+
+/** Ce qui reste sous un plafond, jamais moins que rien. */
+export function resteSousLePlafond(depenseCents: number, plafondCents: number): number {
+  return Math.max(0, plafondCents - depenseCents);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Le fil de la discussion                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Les demandes rappelées au modèle pour un message de la discussion : celles
+ * de SA LIGNÉE, de la plus ancienne à la plus récente — le message d'où sort
+ * sa version de départ, celui d'où sortait la version de départ de ce
+ * dernier, et ainsi de suite jusqu'à un dessin parti de la photo.
+ *
+ * Pas toutes les demandes du fond (relecture du 20/11) : après « Revenir à
+ * celle-ci », les demandes de la branche abandonnée ne sont PAS dans l'image
+ * de départ ; les rappeler comme « déjà appliquées » les y ferait revenir.
+ *
+ * La précision du lot (« sous la neige ») vaut pour tous les dessins du fond :
+ * c'est la demande du premier message. Une lignée qui part de la photo sans
+ * passer par lui (« Recommencer de zéro ») la reçoit en tête ; le premier
+ * message lui-même la porte déjà comme demande.
+ */
+export function demandesDeLaLignee(
+  message: { id: number; baseVersion: string | null },
+  /** Tous les messages du fond. */
+  messages: readonly { id: number; demande: string; baseVersion: string | null }[],
+  /** L'identifiant d'une version (publicId) → le message d'où elle sort. */
+  messageDeLaVersion: ReadonlyMap<string, number | null | undefined>,
+  precisionDuLot?: string | null,
+): string[] {
+  const parId = new Map(messages.map((m) => [m.id, m]));
+  const premier = messages.reduce<number | null>(
+    (min, m) => (min === null || m.id < min ? m.id : min),
+    null,
+  );
+  const lignee: { id: number; demande: string }[] = [];
+  const vus = new Set<number>([message.id]);
+  let version = message.baseVersion;
+  while (version) {
+    const id = messageDeLaVersion.get(version);
+    const parent = id == null ? undefined : parId.get(id);
+    // Un parent est toujours plus ancien que son message : un lien perdu ou
+    // une boucle arrête la remontée au lieu de tourner sans fin.
+    if (!parent || vus.has(parent.id) || parent.id > message.id) break;
+    vus.add(parent.id);
+    lignee.unshift(parent);
+    version = parent.baseVersion;
+  }
+  const racine = lignee[0] ?? message;
+  const demandes = lignee.map((m) => m.demande);
+  const precision = String(precisionDuLot ?? "").trim();
+  if (precision && racine.id !== premier) demandes.unshift(precision);
+  return demandes;
+}
+
+/**
  * Un message de la discussion : ce qu'on en lit dans le fil (libellés des
  * boutons, puis le texte de Margaux) et ce qui part au modèle (consignes des
  * boutons, puis son texte tel quel). Les clés inconnues sont ignorées.
@@ -215,7 +342,10 @@ export function composerConsigneFond(p: {
   nbExemples: number;
   /** On repart d'une version déjà dessinée : elle est IMAGE 1. */
   depuisVersion?: boolean;
-  /** Les demandes déjà faites pour cette image, de la plus ancienne à la plus récente. */
+  /**
+   * Les demandes déjà faites pour cette image, de la plus ancienne à la plus
+   * récente : celles de sa lignée (`demandesDeLaLignee`), pas tout le fil.
+   */
   historique?: readonly string[];
   /** La demande du moment (précision du lot, ou message de la discussion). */
   demande?: string | null;
@@ -270,8 +400,13 @@ export function composerConsigneFond(p: {
     roles.length ? `IMAGE ROLES\n${roles.map((r) => `- ${r}`).join("\n")}` : "",
     String(p.style ?? "").trim() ? `STYLE\n${String(p.style).trim()}` : "",
     corps,
+    // Repartie d'une version, l'image porte déjà ces demandes : on les garde.
+    // Redessinée depuis la photo (« Recommencer de zéro »), elle ne porte
+    // rien encore : on les demande.
     historique.length
-      ? `REQUESTS ALREADY MADE FOR THIS IMAGE (oldest first) — they are already applied: keep them applied, do not undo them:\n${historique.map((h) => `- ${h}`).join("\n")}`
+      ? p.depuisVersion
+        ? `REQUESTS ALREADY MADE FOR THIS IMAGE (oldest first) — they are already applied: keep them applied, do not undo them:\n${historique.map((h) => `- ${h}`).join("\n")}`
+        : `REQUESTS ALREADY MADE FOR THIS PLACE (oldest first) — apply them too:\n${historique.map((h) => `- ${h}`).join("\n")}`
       : "",
     demande
       ? p.depuisVersion

@@ -50,6 +50,7 @@ import {
   ajouterDemandeClient,
   appliquerVariables,
 } from "./ia-style.js";
+import { CLE_PLAFOND_FONDS, plafondDesFonds } from "./fonds-ia-consigne.js";
 
 /** Mêmes assets que le reste de l'API (cf. ASSETS_DIR dans index.ts). */
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
@@ -303,13 +304,59 @@ function debutDuMois(): Date {
   return debutDuMoisAParis(new Date());
 }
 
-/** Dépense estimée depuis le 1er du mois, en centimes. */
-export async function depenseDuMoisCents(): Promise<number> {
-  const [row] = await db
+/**
+ * Ce que compte une dépense : les affiches que les CLIENTS font à partir de
+ * leur photo, les fonds que la boutique fait dessiner (BO › Atelier › Créer
+ * un fond, lignes à `fond_id`), ou les deux.
+ *
+ * Deux plafonds, deux dépenses (relecture du 20/11) : un lot de fonds ne doit
+ * jamais couper les affiches des clients — au stand du marché de Noël, une
+ * affiche refusée, c'est une vente perdue. Les affiches se comptent contre
+ * « ia.plafondMensuelCents », les fonds contre le leur (fonds-ia.ts).
+ */
+export type PerimetreDepense = "affiches" | "fonds" | "tout";
+
+function filtreDuPerimetre(perimetre: PerimetreDepense): SQL | undefined {
+  if (perimetre === "affiches") return isNull(schema.aiGenerations.fondId);
+  if (perimetre === "fonds") return isNotNull(schema.aiGenerations.fondId);
+  return undefined;
+}
+
+/**
+ * La base, ou une transaction en cours : la dépense des fonds se relit sous
+ * verrou, dans la transaction même qui réserve le coût des versions lancées.
+ */
+export type LecteurDepense = Pick<typeof db, "select">;
+
+/**
+ * Dépense estimée depuis le 1er du mois, en centimes, pour un périmètre.
+ * Une version de fond en cours de dessin y figure déjà : son coût est
+ * réservé dès le lancement (fonds-ia.ts).
+ */
+export async function depenseDuMoisCents(
+  perimetre: PerimetreDepense,
+  lecteur: LecteurDepense = db,
+): Promise<number> {
+  const [row] = await lecteur
     .select({ total: raw<number>`coalesce(sum(${schema.aiGenerations.costCents}), 0)::int` })
     .from(schema.aiGenerations)
-    .where(gte(schema.aiGenerations.createdAt, debutDuMois()));
+    .where(and(gte(schema.aiGenerations.createdAt, debutDuMois()), filtreDuPerimetre(perimetre)));
   return Number(row?.total ?? 0);
+}
+
+/**
+ * Le plafond des fonds ce mois-ci (réglage « ia.fondPlafondMensuelCents »,
+ * sinon la moitié de celui des affiches), pour les écrans qui le montrent à
+ * côté de celui des affiches. Les fonds le relisent avec leurs réglages.
+ */
+export async function plafondDesFondsDuMois(
+  plafondAffichesCents: number,
+): Promise<ReturnType<typeof plafondDesFonds>> {
+  const [ligne] = await db
+    .select({ value: schema.settings.value })
+    .from(schema.settings)
+    .where(eq(schema.settings.key, CLE_PLAFOND_FONDS));
+  return plafondDesFonds(ligne?.value, plafondAffichesCents);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1308,7 +1355,11 @@ export function mountIaRoutes(app: Hono): void {
     // boutique d'un script qui bouclerait la nuit. Contrôlé avant l'appel ; la
     // dépense n'est donc jamais dépassée que du coût d'une image lancée en même
     // temps qu'une autre, ce qu'aucun verrou ne vaudrait la peine d'éviter.
-    const depense = await depenseDuMoisCents();
+    //
+    // Seules les affiches des clients y comptent : les fonds de la boutique
+    // (Créer un fond) ont leur propre plafond, et un lot de fonds ne doit
+    // jamais couper les affiches des clients (relecture du 20/11).
+    const depense = await depenseDuMoisCents("affiches");
     if (depense >= reg["ia.plafondMensuelCents"])
       return c.json(
         {
@@ -1592,10 +1643,16 @@ export function mountIaRoutes(app: Hono): void {
   /*  Back-office — protégé par le garde /admin/* déclaré dans index.ts      */
   /* ---------------------------------------------------------------------- */
 
-  /** Liste filtrable : statut, produit, panier, période, payées ou non. */
+  /**
+   * Liste filtrable : statut, produit, panier, période, payées ou non.
+   *
+   * Les affiches des CLIENTS seulement : les versions des fonds (Créer un
+   * fond, lignes à `fond_id`) n'en sont pas — ni aperçu, ni produit, ni
+   * panier. Elles se voient dans leur fond, et leur coût dans leur plafond.
+   */
   app.get("/admin/ia/generations", async (c) => {
     const q = c.req.query();
-    const conditions: SQL[] = [];
+    const conditions: SQL[] = [isNull(schema.aiGenerations.fondId)];
     if (q.statut) conditions.push(eq(schema.aiGenerations.status, q.statut));
     if (q.productId) conditions.push(eq(schema.aiGenerations.productId, Number(q.productId)));
     if (q.cartId) conditions.push(eq(schema.aiGenerations.cartId, q.cartId));
@@ -1609,7 +1666,7 @@ export function mountIaRoutes(app: Hono): void {
       conditions.push(lt(schema.aiGenerations.createdAt, jusqua));
     if (q.payees === "1") conditions.push(isNotNull(schema.aiGenerations.paidAt));
     if (q.payees === "0") conditions.push(isNull(schema.aiGenerations.paidAt));
-    const filtre = conditions.length ? and(...conditions) : undefined;
+    const filtre = and(...conditions);
 
     const limite = Math.min(200, Math.max(1, Number(q.limite ?? 50)));
     const page = Math.max(0, Number(q.page ?? 0));
@@ -1667,10 +1724,15 @@ export function mountIaRoutes(app: Hono): void {
   /**
    * De quoi répondre « combien ça nous coûte » d'un coup d'œil : dépense du
    * mois face au plafond, essais, échecs.
+   *
+   * Les chiffres sont ceux des affiches des CLIENTS, face à LEUR plafond : les
+   * versions des fonds (Créer un fond) n'y sont ni des aperçus, ni des essais.
+   * Elles ont leur ligne à part, `fonds`, face au plafond des fonds.
    */
   app.get("/admin/ia/stats", async (c) => {
     const reg = await reglages();
     const debut = debutDuMois();
+    const clients = filtreDuPerimetre("affiches");
 
     const [mois] = await db
       .select({
@@ -1681,14 +1743,27 @@ export function mountIaRoutes(app: Hono): void {
         coutCents: raw<number>`coalesce(sum(${schema.aiGenerations.costCents}), 0)::int`,
       })
       .from(schema.aiGenerations)
-      .where(gte(schema.aiGenerations.createdAt, debut));
+      .where(and(gte(schema.aiGenerations.createdAt, debut), clients));
 
     const [tout] = await db
       .select({
         essais: raw<number>`count(*)::int`,
         coutCents: raw<number>`coalesce(sum(${schema.aiGenerations.costCents}), 0)::int`,
       })
-      .from(schema.aiGenerations);
+      .from(schema.aiGenerations)
+      .where(clients);
+
+    // Les fonds du mois : leurs versions dessinées ou en cours, et ce qu'elles
+    // engagent (le coût d'une version en cours est déjà réservé).
+    const [fondsDuMois] = await db
+      .select({
+        versions: raw<number>`count(*) filter (where ${schema.aiGenerations.status} <> 'echec')::int`,
+        coutCents: raw<number>`coalesce(sum(${schema.aiGenerations.costCents}), 0)::int`,
+      })
+      .from(schema.aiGenerations)
+      .where(and(gte(schema.aiGenerations.createdAt, debut), filtreDuPerimetre("fonds")));
+    const plafondFonds = await plafondDesFondsDuMois(reg["ia.plafondMensuelCents"]);
+    const depenseFondsCents = Number(fondsDuMois?.coutCents ?? 0);
 
     const essais = Number(mois?.essais ?? 0);
     const echecs = Number(mois?.echecs ?? 0);
@@ -1702,10 +1777,12 @@ export function mountIaRoutes(app: Hono): void {
     // lisent dans le message d'OpenAI, et appellent une action précise. On les
     // remonte donc telles quelles, sans jamais laisser passer le message brut
     // du prestataire dans une interface.
+    // Le dernier échec d'une affiche de client : celui d'une version de fond
+    // (photo du lieu introuvable, serveur redémarré…) ne dit rien d'elles.
     const [dernierEchec] = await db
       .select({ erreur: schema.aiGenerations.erreur })
       .from(schema.aiGenerations)
-      .where(eq(schema.aiGenerations.status, "echec"))
+      .where(and(eq(schema.aiGenerations.status, "echec"), clients))
       .orderBy(desc(schema.aiGenerations.createdAt))
       .limit(1);
     const brut = String(dernierEchec?.erreur ?? "");
@@ -1756,6 +1833,15 @@ export function mountIaRoutes(app: Hono): void {
       coutParImageCents: reg["ia.coutParImageCents"],
       purgeJours: reg["ia.purgeJours"],
       total: { essais: Number(tout?.essais ?? 0), coutCents: Number(tout?.coutCents ?? 0) },
+      // Les fonds (Créer un fond), à part : leur dépense ne touche pas au
+      // plafond des affiches, et le leur ne coupe que les fonds.
+      fonds: {
+        versions: Number(fondsDuMois?.versions ?? 0),
+        depenseCents: depenseFondsCents,
+        plafondCents: plafondFonds.cents,
+        plafondParDefaut: plafondFonds.parDefaut,
+        resteCents: Math.max(0, plafondFonds.cents - depenseFondsCents),
+      },
     });
   });
 

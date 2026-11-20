@@ -521,14 +521,16 @@ const filtreActif =
       {/* Au stand, les FACTURES des ventes cochées, en ZIP, à la place des
           bons de livraison (20/11, Alexandra : « change bons de livraisons en
           facture ») : rien ne s'y livre. La propriétaire seule, comme la
-          facture de la fiche. */}
+          facture de la fiche. Seules les ventes payées reçoivent un numéro
+          (relecture du 20/11) : l'API écarte les autres et les cite, dans
+          l'archive, ou dans le message quand il n'y a rien à facturer. */}
       {channel === "salon" ? (
         estProprietaire && (
           <button
             type="button"
             id="bo-factures"
-            data-message="Télécharger les factures des ventes cochées ? Une vente qui n'a pas encore de facture reçoit son numéro maintenant."
-            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+            data-message="Télécharger les factures des ventes cochées ? Une vente payée qui n'a pas encore de facture reçoit son numéro maintenant, et le garde pour toujours. Les ventes annulées, de test ou pas encore payées n'en reçoivent pas : elles vous seront citées, avec la raison."
+            class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg disabled:cursor-not-allowed disabled:opacity-60"
           >
             Factures
           </button>
@@ -589,6 +591,11 @@ const filtreActif =
         </>
       )}
     </div>
+    {/* Ce que répond le bouton « Factures » : son refus en clair, ou les
+        ventes restées sans facture. Rempli par le script plus bas. */}
+    {channel === "salon" && estProprietaire && (
+      <p id="bo-factures-message" class="mt-2 hidden rounded border px-3 py-2 text-sm" aria-live="polite"></p>
+    )}
   </form>
 
   {/* Les PDF d'impression, téléchargés depuis la liste (lib/impression-bo.ts).
@@ -992,13 +999,111 @@ const filtreActif =
     window.location.href = `${exportBase}&ids=${ids.join(",")}`;
   });
 
-  document.getElementById("bo-factures")?.addEventListener("click", (e) => {
+  // « Factures » (Ventes stand) : l'archive se télécharge par fetch, et non
+  // en ouvrant son adresse (relecture du 20/11). Le bouton dit
+  // « Préparation… » le temps que les PDF se fassent, et un refus de l'API
+  // s'affiche en phrase sous les boutons, au lieu d'une page de JSON brut.
+  // La session part avec la requête (credentials), comme pour les PDF
+  // d'impression de la liste (lib/impression-bo.ts).
+  const boutonFactures = document.getElementById("bo-factures");
+  const messageFactures = document.getElementById("bo-factures-message");
+
+  function direFactures(texte, erreur) {
+    if (!messageFactures) {
+      if (texte) window.alert(texte);
+      return;
+    }
+    messageFactures.textContent = texte;
+    messageFactures.classList.toggle("hidden", !texte);
+    for (const c of ["border-red-200", "bg-red-50", "text-red-800"])
+      messageFactures.classList.toggle(c, Boolean(texte) && erreur);
+    for (const c of ["border-amber-200", "bg-amber-50", "text-amber-900"])
+      messageFactures.classList.toggle(c, Boolean(texte) && !erreur);
+  }
+
+  /** La phrase d'un refus : celle de l'API quand elle en donne une. */
+  async function raisonDuRefus(reponse) {
+    if (reponse.status === 401)
+      return "Votre session a expiré : reconnectez-vous, puis recommencez. Aucune facture n'a été faite.";
+    const brut = await reponse.text().catch(() => "");
+    try {
+      const lu = JSON.parse(brut);
+      if (lu && typeof lu.error === "string" && lu.error) return lu.error;
+    } catch {
+      /* réponse non JSON (page d'erreur du proxy) : la phrase générique suit */
+    }
+    return `Les factures n'ont pas pu être préparées (erreur ${reponse.status}). Réessayez dans un instant : une vente déjà facturée garde son numéro.`;
+  }
+
+  /** Enregistre le fichier reçu, comme un lien de téléchargement l'aurait fait. */
+  function enregistrer(contenu, nom) {
+    const adresse = URL.createObjectURL(contenu);
+    const a = document.createElement("a");
+    a.href = adresse;
+    a.download = nom;
+    a.hidden = true;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    // Le temps que le navigateur ait pris le fichier.
+    setTimeout(() => URL.revokeObjectURL(adresse), 60000);
+  }
+
+  boutonFactures?.addEventListener("click", async () => {
     const ids = selection();
-    if (!ids.length) return;
-    const message = e.currentTarget.dataset.message;
-    if (message && !window.confirm(message)) return;
-    window.location.href = `${facturesBase}?ids=${ids.join(",")}`;
+    if (!ids.length || boutonFactures.disabled) return;
+    const avertissement = boutonFactures.dataset.message;
+    if (avertissement && !window.confirm(avertissement)) return;
+    const libelle = boutonFactures.textContent;
+    // Toute la barre attend (relecture du 20/11) : « Ces commandes sont des
+    // tests » ou « Annuler » pendant la préparation changeraient les ventes
+    // que le serveur est en train de facturer. Seuls les boutons actifs
+    // sont pris, et rendus tels quels à la fin.
+    const enAttente = [...(barre?.querySelectorAll("button") ?? [])].filter(
+      (b) => b !== boutonFactures && !b.disabled,
+    );
+    for (const b of enAttente) b.disabled = true;
+    boutonFactures.disabled = true;
+    boutonFactures.setAttribute("aria-busy", "true");
+    boutonFactures.textContent = "Préparation…";
+    direFactures("", false);
+    try {
+      const reponse = await fetch(`${facturesBase}?ids=${ids.join(",")}`, {
+        credentials: "include",
+      });
+      if (!reponse.ok) {
+        direFactures(await raisonDuRefus(reponse), true);
+        return;
+      }
+      const contenu = await reponse.blob();
+      const nom =
+        /filename="([^"]+)"/.exec(reponse.headers.get("Content-Disposition") ?? "")?.[1] ||
+        "factures.zip";
+      enregistrer(contenu, nom);
+      // Les ventes cochées restées sans facture (annulées, de test, pas
+      // payées…) : l'API les compte, l'archive les cite.
+      const n = Number(reponse.headers.get("X-Factures-Non-Faites") ?? 0);
+      direFactures(
+        n > 1
+          ? `${n} ventes cochées n'ont pas de facture, et aucun numéro ne leur a été donné : vous trouverez la liste et la raison dans « factures-non-faites.txt », dans l'archive.`
+          : n === 1
+            ? "Une vente cochée n'a pas de facture, et aucun numéro ne lui a été donné : vous trouverez la raison dans « factures-non-faites.txt », dans l'archive."
+            : "",
+        false,
+      );
+    } catch {
+      direFactures(
+        "Le téléchargement n'a pas abouti (connexion interrompue ?). Réessayez : une vente déjà facturée garde son numéro, rien n'est numéroté deux fois.",
+        true,
+      );
+    } finally {
+      for (const b of enAttente) b.disabled = false;
+      boutonFactures.disabled = false;
+      boutonFactures.removeAttribute("aria-busy");
+      boutonFactures.textContent = libelle;
+    }
   });
+
   document.getElementById("bo-bons")?.addEventListener("click", () => {
     const ids = selection();
     if (!ids.length) return;

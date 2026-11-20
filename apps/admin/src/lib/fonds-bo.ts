@@ -13,10 +13,26 @@
  *   - `[data-sondage]` : l'adresse de l'état à redemander ;
  *   - `form[data-confirme]` : la question posée avant d'envoyer ;
  *   - `form[data-lot]` : le formulaire d'un lot, dont la question se calcule
- *     (photos × versions) — `data-cout`, `data-bouchon`, `data-max-photos` ;
+ *     (photos × versions) — `data-cout`, `data-bouchon`, `data-max-photos`,
+ *     et `data-reste` : ce qu'il reste pour les fonds ce mois-ci (leur
+ *     plafond, à part de celui des affiches des clients) ;
  *   - `[data-noms]` : où ranger un champ de nom par photo choisie.
  */
-import { confirmationLot, encoreEnCours, euros, pluriel } from "./fonds-textes.ts";
+import {
+  confirmationLot,
+  encoreEnCours,
+  euros,
+  nouveauJeton,
+  pluriel,
+  refusPlafondLot,
+} from "./fonds-textes.ts";
+
+/** Ce qu'il reste pour les fonds ce mois-ci, ou null si la page ne le dit pas. */
+function resteDuLot(form: HTMLFormElement): number | null {
+  const brut = form.dataset.reste;
+  const n = brut === undefined || brut === "" ? Number.NaN : Number(brut);
+  return Number.isFinite(n) ? n : null;
+}
 
 const PAUSE = 3000;
 const PAUSE_LONGUE = 8000;
@@ -71,12 +87,19 @@ function brancherEnvois(): void {
         return;
       }
       const versions = Number(form.querySelector<HTMLSelectElement>("[name=versions]")?.value) || 1;
-      question = confirmationLot(
-        photos,
-        versions,
-        Number(form.dataset.cout) || 0,
-        form.dataset.bouchon === "1",
-      );
+      const cout = Number(form.dataset.cout) || 0;
+      const bouchon = form.dataset.bouchon === "1";
+      const reste = resteDuLot(form);
+      // Au-delà de ce qu'il reste pour les fonds, l'API refuserait : on le
+      // dit tout de suite, sans envoyer dix photos pour rien.
+      const refus = refusPlafondLot(photos * versions, cout, reste, bouchon);
+      if (refus) {
+        e.preventDefault();
+        if (erreur) erreur.textContent = refus;
+        return;
+      }
+      if (erreur) erreur.textContent = "";
+      question = confirmationLot(photos, versions, cout, bouchon, reste);
     }
     if (question && !window.confirm(question)) {
       e.preventDefault();
@@ -93,12 +116,18 @@ function brancherEnvois(): void {
   });
 
   // Revenu par « Précédent », le navigateur rend la page telle qu'on l'a
-  // quittée : ses boutons doivent redevenir cliquables. Le jeton, lui, reste
-  // celui du premier envoi : renvoyer ne paie pas une seconde fois.
+  // quittée : ses boutons doivent redevenir cliquables, et un formulaire
+  // déjà parti reçoit un NOUVEAU jeton (relecture du 20/11). Avec l'ancien,
+  // d'autres photos — ou un autre message — renvoyées d'ici retombaient sur
+  // le lot déjà fait, et partaient à la poubelle sans un mot. Le double clic,
+  // lui, reste arrêté plus haut (`data-envoye`), et tout nouvel envoi repasse
+  // par la confirmation du coût.
   window.addEventListener("pageshow", (e) => {
     if (!e.persisted) return;
     for (const form of document.querySelectorAll<HTMLFormElement>("form[data-envoye]")) {
       delete form.dataset.envoye;
+      const jeton = form.querySelector<HTMLInputElement>("input[name=jeton]");
+      if (jeton) jeton.value = nouveauJeton();
       for (const b of form.querySelectorAll("button")) {
         b.removeAttribute("aria-disabled");
         b.removeAttribute("aria-busy");
@@ -126,11 +155,13 @@ function brancherNoms(form: HTMLFormElement): void {
     const n = fichiers!.files?.length ?? 0;
     const v = Number(versions?.value) || 1;
     if (!resume) return;
+    const reste = resteDuLot(form);
     resume.textContent = n
       ? `${pluriel(n, "photo")} → ${pluriel(n, "fond")}, ${pluriel(n * v, "image")} à dessiner` +
         (form.dataset.bouchon === "1"
           ? " (mode d'essai : rien n'est payé)."
-          : `, environ ${euros(n * v * (Number(form.dataset.cout) || 0))}.`)
+          : `, environ ${euros(n * v * (Number(form.dataset.cout) || 0))}` +
+            (reste === null ? "." : ` (il reste ${euros(reste)} pour les fonds ce mois-ci).`))
       : "";
   }
 

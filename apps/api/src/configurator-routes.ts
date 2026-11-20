@@ -3510,10 +3510,9 @@ export function mountConfiguratorRoutes(app: Hono) {
         .update(schema.orders)
         .set({
           number,
-          // La date de la commande est celle du passage en caisse, pas celle
-          // où le panier s'est ouvert (20/11, même défaut qu'au stand). Un
-          // nouvel essai du même panier garde la sienne, comme son numéro.
-          ...(/^WEB-\d+$/.test(panier.number) ? {} : { createdAt: new Date() }),
+          // La date de la commande : `createdAt: maintenant`, plus bas, posée
+          // à CHAQUE passage en caisse (un nouvel essai du même panier garde
+          // son numéro, mais prend l'heure de ce dernier passage).
           channel: "web",
           standId: null,
           ...(evenementDuStand !== null

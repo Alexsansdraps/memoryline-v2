@@ -19,9 +19,8 @@
  *   1. POST /admin/fonds-ia/lots — les photos, le nom du lot (et celui de
  *      chaque photo), le style, une précision, le nombre de versions. Une
  *      ligne `fond_ia` par photo, un premier message par fond, une ligne
- *      `ai_generation` par version : c'est là que vit le coût, et le plafond
- *      du mois les compte avec les affiches. Le dessin part en ARRIÈRE-PLAN ;
- *      l'écran sonde l'état.
+ *      `ai_generation` par version : c'est là que vit le coût, réservé dès
+ *      le lancement. Le dessin part en ARRIÈRE-PLAN ; l'écran sonde l'état.
  *   2. POST /admin/fonds-ia/:id/messages — un message de la discussion :
  *      boutons de retouche et/ou texte libre ; ou « de zéro », depuis la photo.
  *      POST …/courante revient à une version précédente.
@@ -29,9 +28,14 @@
  *      bibliothèque (data/assets + ligne `background`), comme un décor
  *      envoyé à la main, rattachée ou non à une affiche.
  *
- * Le coût : chaque version est payée. Plafond du mois vérifié AVANT de
- * lancer (le même que celui des affiches), confirmation dans la page, jetons
- * contre le double clic, et pas plus de trois appels au modèle à la fois.
+ * Le coût : chaque version est payée. Les fonds ont LEUR plafond du mois
+ * (réglage « ia.fondPlafondMensuelCents », sinon la moitié de celui des
+ * affiches), À PART de celui des affiches des clients : un lot ne coupe
+ * jamais une cliente du stand (relecture du 20/11). Le plafond est relu SOUS
+ * VERROU dans la transaction qui réserve le coût des versions lancées ; ce
+ * coût revient à 0 si le dessin échoue ou s'interrompt. Confirmation dans la
+ * page, jetons contre le double clic, et pas plus de trois appels au modèle
+ * à la fois.
  *
  * LE BOUCHON. Le modèle n'est jamais appelé en essai : un faux dessinateur
  * (`dessinBouchon`) le remplace quand la variable d'environnement
@@ -40,10 +44,19 @@
  * essais automatiques passent par `remplacerDessinateur`.
  */
 import type { Context, Hono } from "hono";
-import { and, asc, desc, eq, inArray, isNull, lt, sql as raw } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  sql as raw,
+} from "drizzle-orm";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { db, schema } from "./db/client.js";
@@ -57,8 +70,10 @@ import {
   normaliserPhoto,
   reglages,
   type ImageEnvoyee,
+  type LecteurDepense,
 } from "./ia.js";
 import {
+  CLE_PLAFOND_FONDS,
   CONSIGNE_FOND_DEFAUT,
   DECOR_HAUTEUR,
   DECOR_LARGEUR,
@@ -72,13 +87,19 @@ import {
   VERSIONS_MAX,
   baseNomFichier,
   bornerVersions,
+  centimesDuReglage,
   composerConsigneFond,
+  coutEstimeCents,
+  demandesDeLaLignee,
   etatDuFond,
+  exemplesDemandes,
   lireExemples,
   lireMessage,
   nettoyerTexte,
   nomsDuLot,
   plafondDepasse,
+  plafondDesFonds,
+  resteSousLePlafond,
   styleParDefaut,
 } from "./fonds-ia-consigne.js";
 
@@ -92,10 +113,11 @@ await mkdir(FONDS_DIR, { recursive: true });
 /* -------------------------------------------------------------------------- */
 
 /**
- * Les réglages propres aux fonds. Le modèle, la qualité, la fidélité et le
- * plafond du mois sont ceux des affiches IA (ia.ts) : un seul compte OpenAI,
- * une seule dépense. Le STYLE n'en est pas : c'est un style des affiches IA,
- * choisi sur l'écran et relu en base (table ia_prompt).
+ * Les réglages propres aux fonds. Le modèle, la qualité et la fidélité sont
+ * ceux des affiches IA (ia.ts) : un seul compte OpenAI. Le PLAFOND du mois,
+ * lui, est à part (relecture du 20/11) : celui des affiches protège les
+ * clients, celui-ci les fonds. Le STYLE n'en est pas : c'est un style des
+ * affiches IA, choisi sur l'écran et relu en base (table ia_prompt).
  */
 const DEFAUTS_FONDS = {
   /** Les règles propres aux fonds (fonds-ia-consigne.ts), pas le style. */
@@ -107,11 +129,18 @@ const DEFAUTS_FONDS = {
    * trois images en entrée (photo, décors d'exemple) qui se paient aussi.
    */
   "ia.fondCoutParVersionCents": 25,
+  /**
+   * Le plafond des fonds, en centimes par mois. Absent ou vide : la moitié
+   * du plafond des affiches (`plafondDesFonds`), pas une valeur fixe.
+   */
+  [CLE_PLAFOND_FONDS]: null,
   /** « 12, 57 » : les décors d'exemple ; vide = les deux premiers proposables. */
   "ia.fondExemples": "",
   /** « 1 » : le faux dessinateur, hors production seulement. */
   "ia.fondBouchon": "",
 } as const;
+
+type ReglagesIa = Awaited<ReturnType<typeof reglages>>;
 
 interface ReglagesFonds {
   consigne: string;
@@ -120,26 +149,46 @@ interface ReglagesFonds {
   coutParVersionCents: number;
   exemples: number[];
   bouchon: boolean;
+  /** Le plafond des fonds ce mois-ci, en centimes. */
+  plafondCents: number;
+  /** Vrai sans réglage : c'est alors la moitié du plafond des affiches. */
+  plafondParDefaut: boolean;
+  /** Le réglage tel qu'enregistré, null s'il n'y en a pas. */
+  plafondReglageCents: number | null;
+  /** Ce que vaut le plafond sans réglage : la moitié de celui des affiches. */
+  plafondDefautCents: number;
+  /** Le plafond des affiches des clients, pour l'expliquer à l'écran. */
+  plafondAffichesCents: number;
 }
 
-async function reglagesFonds(): Promise<ReglagesFonds> {
-  const rows = await db
-    .select()
-    .from(schema.settings)
-    .where(inArray(schema.settings.key, Object.keys(DEFAUTS_FONDS)));
+async function reglagesFonds(reg?: ReglagesIa): Promise<ReglagesFonds> {
+  const [rows, ia] = await Promise.all([
+    db
+      .select()
+      .from(schema.settings)
+      .where(inArray(schema.settings.key, Object.keys(DEFAUTS_FONDS))),
+    reg ?? reglages(),
+  ]);
   const lu = new Map(rows.map((r) => [r.key, r.value == null ? "" : String(r.value)]));
   const consigneLue = (lu.get("ia.fondConsigne") ?? "").trim();
-  const cout = Number(lu.get("ia.fondCoutParVersionCents"));
+  const plafond = plafondDesFonds(lu.get(CLE_PLAFOND_FONDS), ia["ia.plafondMensuelCents"]);
   return {
     consigne: consigneLue || CONSIGNE_FOND_DEFAUT,
     consigneParDefaut: !consigneLue,
     versions: bornerVersions(lu.get("ia.fondVersions"), DEFAUTS_FONDS["ia.fondVersions"]),
-    coutParVersionCents:
-      lu.has("ia.fondCoutParVersionCents") && Number.isFinite(cout) && cout >= 0
-        ? Math.round(cout)
-        : DEFAUTS_FONDS["ia.fondCoutParVersionCents"],
+    // Vide ou illisible : le coût par défaut, jamais 0 — à 0, plus rien ne
+    // compterait dans le plafond.
+    coutParVersionCents: centimesDuReglage(
+      lu.get("ia.fondCoutParVersionCents"),
+      DEFAUTS_FONDS["ia.fondCoutParVersionCents"],
+    ),
     exemples: lireExemples(lu.get("ia.fondExemples")),
     bouchon: ["1", "true", "oui"].includes((lu.get("ia.fondBouchon") ?? "").trim()),
+    plafondCents: plafond.cents,
+    plafondParDefaut: plafond.parDefaut,
+    plafondReglageCents: plafond.reglageCents,
+    plafondDefautCents: plafond.defautCents,
+    plafondAffichesCents: ia["ia.plafondMensuelCents"],
   };
 }
 
@@ -249,9 +298,66 @@ async function aTonTour<T>(travail: () => Promise<T>): Promise<T> {
 /**
  * Les versions en cours de dessin DANS CE PROCESSUS. Une ligne « en_cours »
  * qui n'y figure pas a été interrompue (l'API a redémarré) : on la dit en
- * échec au lieu de laisser l'écran attendre pour toujours.
+ * échec au lieu de laisser l'écran attendre pour toujours — et son coût,
+ * réservé au lancement, revient au plafond.
+ *
+ * Une version y entre AVANT que sa ligne soit écrite (`reserverVersions`) :
+ * une page qui sonde au même instant ne la prend jamais pour une interrompue.
  */
 const enCours = new Set<string>();
+
+const MESSAGE_INTERROMPUE = "Interrompue : le serveur a redémarré pendant le dessin. Recommencez.";
+
+/**
+ * Passe en échec, coût rendu, toutes les versions de fonds « en_cours »
+ * qu'aucun dessin de ce processus ne porte plus. Avant chaque lancement (sous
+ * le verrou du plafond) et à l'ouverture de l'écran : une réservation
+ * orpheline ne doit pas grignoter le plafond.
+ */
+async function solderLesInterrompues(
+  executeur: Pick<typeof db, "select" | "update"> = db,
+): Promise<void> {
+  const g = schema.aiGenerations;
+  // La base D'ABORD, la liste de ce processus ENSUITE, comme versionsDe
+  // (relecture du 20/11) : une version réservée pendant cette lecture est
+  // entrée dans `enCours` avant que sa ligne existe, et n'est donc jamais
+  // prise pour une interrompue. Relever la liste avant la base, c'était
+  // risquer de solder — « Interrompue », coût 0 — un dessin tout juste lancé
+  // depuis un autre onglet. Une version qui s'achève entre les deux est déjà
+  // « prete » quand l'UPDATE passe : il ne la touche pas.
+  const lignes = await executeur
+    .select({ id: g.id, publicId: g.publicId })
+    .from(g)
+    .where(and(isNotNull(g.fondId), eq(g.status, "en_cours")));
+  const interrompues = lignes.filter((l) => !enCours.has(l.publicId)).map((l) => l.id);
+  if (!interrompues.length) return;
+  await executeur
+    .update(g)
+    .set({ status: "echec", erreur: MESSAGE_INTERROMPUE, costCents: 0 })
+    .where(and(inArray(g.id, interrompues), eq(g.status, "en_cours")));
+}
+
+/** Une transaction en cours (cf. numeros-commande.ts) : un verrou pris dedans vit jusqu'au COMMIT. */
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Le verrou du plafond des fonds : relire la dépense et réserver le coût se
+ * font l'un après l'autre, jamais à deux. Sans lui, deux lots envoyés coup
+ * sur coup lisaient chacun la même dépense et passaient tous les deux.
+ */
+async function verrouillerLePlafond(tx: Transaction): Promise<void> {
+  await tx.execute(raw`select pg_advisory_xact_lock(hashtext(${"plafond-fonds-ia"}))`);
+}
+
+/** Le plafond refuse : levé dans la transaction qui l'a relu, rien n'est écrit. */
+class RefusDuPlafond extends Error {}
+
+/** Le même envoi (même jeton) est déjà passé : on rend ce qu'il a fait. */
+class DejaEnvoye extends Error {
+  constructor(readonly messageId: number | null = null) {
+    super("Envoi déjà fait");
+  }
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Fichiers                                                                  */
@@ -265,6 +371,19 @@ function cheminFonds(relatif: string | null | undefined): string | null {
 }
 
 const vignetteDe = (publicId: string) => `${publicId}-vignette.jpg`;
+
+/**
+ * Efface les photos d'un lot qui n'a pas abouti (refus du plafond, envoi
+ * déjà fait, erreur de la base) : aucune ligne ne les désigne, et la purge des
+ * photos de visiteurs ne passe pas dans ia/fonds — sans ceci, elles y
+ * resteraient pour toujours.
+ */
+async function effacerPhotosDuLot(photos: readonly string[]): Promise<void> {
+  for (const p of photos) {
+    const chemin = cheminFonds(p);
+    if (chemin) await rm(chemin, { force: true }).catch(() => undefined);
+  }
+}
 
 /**
  * Un décor de la bibliothèque, en PNG de 900 px de large, pour servir
@@ -323,50 +442,82 @@ async function exemplesRetenus(demandes: number[]): Promise<number[]> {
 type Fond = typeof schema.fondsIa.$inferSelect;
 type Message = typeof schema.fondsIaMessages.$inferSelect;
 
+/** Une version réservée : sa ligne `ai_generation` « en_cours », et le coût qu'elle engage. */
+interface VersionReservee {
+  id: number;
+  publicId: string;
+  coutCents: number;
+}
+
 /**
- * Crée les lignes des versions d'un message (statut « en_cours ») et lance
- * leur dessin en arrière-plan. Les lignes existent AVANT la réponse : l'écran
- * qui s'ouvre juste après les voit déjà.
+ * Réserve les versions d'un message : une ligne `ai_generation` « en_cours »
+ * par version, qui porte DÉJÀ son coût estimé. Relecture du 20/11 : à 0
+ * jusqu'à la fin du dessin, les versions en cours ne comptaient pas dans le
+ * plafond, et deux lots lancés coup sur coup le dépassaient ensemble. Le coût
+ * revient à 0 si le dessin échoue ou s'interrompt.
+ *
+ * Dans la transaction qui vient de relire le plafond sous verrou : les lignes
+ * existent AVANT la réponse, l'écran qui s'ouvre juste après les voit déjà.
+ * Les identifiants entrent dans `enCours` avant l'écriture et dans
+ * `o.reservees`, d'où l'appelant les retire si la transaction échoue.
+ */
+async function reserverVersions(
+  tx: Transaction,
+  fond: Fond,
+  message: Message,
+  o: { ip: string; bouchon: boolean; modele: string; coutParVersionCents: number; reservees: string[] },
+): Promise<VersionReservee[]> {
+  // Le bouchon ne coûte rien : il ne doit pas entamer le plafond.
+  const cout = o.bouchon ? 0 : o.coutParVersionCents;
+  const ids = Array.from({ length: message.versions }, () => randomUUID());
+  for (const id of ids) {
+    enCours.add(id);
+    o.reservees.push(id);
+  }
+  const lignes = await tx
+    .insert(schema.aiGenerations)
+    .values(
+      ids.map((publicId) => ({
+        publicId,
+        productId: null,
+        sourcePath: null,
+        prompt: null,
+        model: o.bouchon ? "bouchon" : o.modele,
+        size: TAILLE_FOND,
+        status: "en_cours",
+        ip: o.ip,
+        fondId: fond.id,
+        fondMessageId: message.id,
+        costCents: cout,
+      })),
+    )
+    .returning({ id: schema.aiGenerations.id, publicId: schema.aiGenerations.publicId });
+  return lignes.map((l) => ({ ...l, coutCents: cout }));
+}
+
+/**
+ * Dessine, en ARRIÈRE-PLAN, les versions réservées d'un message.
  *
  * Ce qui part au modèle : la version de départ du message (s'il en a une),
  * la photo du lieu, et — pour un dessin de zéro seulement — les décors
  * d'exemple ; la consigne du style relue en base, les règles des fonds, les
- * demandes déjà faites pour cette image, et celle du message, en dernier.
+ * demandes de la LIGNÉE de la version de départ, et celle du message, en
+ * dernier.
  */
-async function lancerMessage(
+function dessinerMessage(
   fond: Fond,
   message: Message,
-  ip: string,
-  bouchon: boolean,
-): Promise<void> {
-  const reg = await reglages();
-  const fr = await reglagesFonds();
-
-  const lignes = await db
-    .insert(schema.aiGenerations)
-    .values(
-      Array.from({ length: message.versions }, () => ({
-        publicId: randomUUID(),
-        productId: null,
-        sourcePath: null,
-        prompt: null,
-        model: bouchon ? "bouchon" : reg["ia.modele"],
-        size: TAILLE_FOND,
-        status: "en_cours",
-        ip,
-        fondId: fond.id,
-        fondMessageId: message.id,
-      })),
-    )
-    .returning({ id: schema.aiGenerations.id, publicId: schema.aiGenerations.publicId });
-  for (const l of lignes) enCours.add(l.publicId);
-
+  lignes: VersionReservee[],
+  o: { bouchon: boolean; reg: ReglagesIa; fr: ReglagesFonds },
+): void {
+  const { bouchon, reg, fr } = o;
+  // Un échec rend le coût réservé : l'image n'a pas été payée.
   const echouer = async (ids: number[], e: unknown) => {
     const texte = e instanceof Error ? e.message : String(e);
     console.error(`Fond IA ${fond.id} (message ${message.id}) en échec :`, texte);
     await db
       .update(schema.aiGenerations)
-      .set({ status: "echec", erreur: texte.slice(0, 1000) })
+      .set({ status: "echec", erreur: texte.slice(0, 1000), costCents: 0 })
       .where(inArray(schema.aiGenerations.id, ids))
       .catch(() => undefined);
   };
@@ -412,18 +563,27 @@ async function lancerMessage(
           }
         }
       }
-      // Le fil : toutes les demandes précédentes de CETTE image, pour qu'une
-      // correction obtenue ne se perde pas au message suivant.
-      const precedents = await db
-        .select({ demande: schema.fondsIaMessages.demande })
-        .from(schema.fondsIaMessages)
-        .where(
-          and(
-            eq(schema.fondsIaMessages.fondId, fond.id),
-            lt(schema.fondsIaMessages.id, message.id),
-          ),
-        )
-        .orderBy(asc(schema.fondsIaMessages.id));
+      // Le fil : les demandes de la LIGNÉE de la version de départ, pour
+      // qu'une correction obtenue ne se perde pas au message suivant — et pas
+      // celles d'une branche abandonnée par « Revenir à celle-ci », qui ne
+      // sont pas dans l'image de départ (relecture du 20/11).
+      const [fil, versionsDuFond] = await Promise.all([
+        db
+          .select({
+            id: schema.fondsIaMessages.id,
+            demande: schema.fondsIaMessages.demande,
+            baseVersion: schema.fondsIaMessages.baseVersion,
+          })
+          .from(schema.fondsIaMessages)
+          .where(eq(schema.fondsIaMessages.fondId, fond.id)),
+        db
+          .select({
+            publicId: schema.aiGenerations.publicId,
+            messageId: schema.aiGenerations.fondMessageId,
+          })
+          .from(schema.aiGenerations)
+          .where(eq(schema.aiGenerations.fondId, fond.id)),
+      ]);
       consigne = composerConsigneFond({
         style: await consigneDuStyle(fond.styleId),
         gabarit: fr.consigne,
@@ -431,7 +591,12 @@ async function lancerMessage(
         nbPhotos,
         nbExemples,
         depuisVersion,
-        historique: precedents.map((p) => p.demande),
+        historique: demandesDeLaLignee(
+          message,
+          fil,
+          new Map(versionsDuFond.map((v) => [v.publicId, v.messageId])),
+          fond.precision,
+        ),
         demande: message.demande,
       });
       await db
@@ -465,8 +630,10 @@ async function lancerMessage(
               .set({
                 status: "prete",
                 fullPath: `ia/fonds/${nom}`,
-                // Le bouchon ne coûte rien : il ne doit pas entamer le plafond.
-                costCents: bouchon ? 0 : fr.coutParVersionCents,
+                // Le coût réservé au lancement, reposé avec le statut : une
+                // version prête le porte toujours, quoi qu'il soit arrivé à
+                // la ligne entre-temps.
+                costCents: ligne.coutCents,
               })
               .where(eq(schema.aiGenerations.id, ligne.id));
             // Comme dans une discussion : la réponse la plus récente devient
@@ -506,7 +673,10 @@ function raisonLisible(brut: string | null): string | null {
   return "Le dessin a échoué. Recommencez.";
 }
 
-/** Les versions de ces fonds, les interrompues passées en échec au passage. */
+/**
+ * Les versions de ces fonds, les interrompues passées en échec au passage —
+ * leur coût réservé rendu au plafond.
+ */
 async function versionsDe(fondIds: number[]) {
   if (!fondIds.length) return [];
   const g = schema.aiGenerations;
@@ -526,14 +696,14 @@ async function versionsDe(fondIds: number[]) {
     .orderBy(asc(g.id));
   const interrompues = lignes.filter((l) => l.statut === "en_cours" && !enCours.has(l.publicId));
   if (interrompues.length) {
-    const message = "Interrompue : le serveur a redémarré pendant le dessin. Recommencez.";
     await db
       .update(g)
-      .set({ status: "echec", erreur: message })
+      .set({ status: "echec", erreur: MESSAGE_INTERROMPUE, costCents: 0 })
       .where(and(inArray(g.id, interrompues.map((l) => l.id)), eq(g.status, "en_cours")));
     for (const l of interrompues) {
       l.statut = "echec";
-      l.erreur = message;
+      l.erreur = MESSAGE_INTERROMPUE;
+      l.costCents = 0;
     }
   }
   return lignes.map((l) => ({
@@ -582,7 +752,11 @@ async function resumes(fonds: Fond[], avecFil = false) {
       backgroundId: f.backgroundId,
       enregistreLe: f.enregistreLe,
       messages: siens.length,
-      depenseCents: siennes.reduce((s, v) => s + (v.coutCents ?? 0), 0),
+      // Ce que ce fond a coûté : ses versions dessinées. Celles en cours ne
+      // portent qu'un coût réservé (compté dans le plafond, pas ici).
+      depenseCents: siennes
+        .filter((v) => v.statut === "prete")
+        .reduce((s, v) => s + (v.coutCents ?? 0), 0),
       ...etatDuFond(siennes.filter((v) => v.messageId === dernier?.id).map((v) => v.statut)),
       ...(avecFil
         ? {
@@ -611,24 +785,39 @@ function refuseSiPasProprietaire(c: Context) {
   return null;
 }
 
+const euros = (c: number) => `${(Math.max(0, c) / 100).toFixed(2).replace(".", ",")} €`;
+
 /**
- * Peut-on lancer `images` images ? Une phrase de refus, ou null. Le plafond
- * est celui des affiches IA : un seul compte OpenAI.
+ * Peut-on lancer `images` images ? Une phrase de refus, ou null.
+ *
+ * Le plafond est CELUI DES FONDS, et la dépense celle des fonds, versions en
+ * cours comprises (leur coût est réservé dès le lancement) : les affiches des
+ * clients n'y entrent pas, et un lot ne les coupe jamais (relecture du 20/11).
+ *
+ * Appelée une première fois sans verrou, pour refuser avant de lire les
+ * photos ; puis, avec `executeur` = la transaction, sous le verrou du
+ * plafond, juste avant de réserver : c'est ce second regard qui fait foi.
  */
-async function refusDeDepense(images: number, fr: ReglagesFonds): Promise<string | null> {
+async function refusDeDepense(
+  images: number,
+  fr: ReglagesFonds,
+  executeur: LecteurDepense & Pick<typeof db, "update"> = db,
+): Promise<string | null> {
   if (bouchonActif(fr.bouchon)) return null;
   if (!iaConfiguree)
     return "La génération IA n'est pas configurée sur ce serveur (clé OpenAI absente).";
-  const reg = await reglages();
-  const depense = await depenseDuMoisCents();
-  const euros = (c: number) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
-  if (plafondDepasse(depense, images, fr.coutParVersionCents, reg["ia.plafondMensuelCents"]))
-    return (
-      `Ce lancement dépasserait le plafond de dépense IA du mois (${euros(depense)} déjà ` +
-      `dépensés sur ${euros(reg["ia.plafondMensuelCents"])}). Demandez moins de versions, ` +
-      "ou relevez le plafond dans Atelier › Affiches IA."
-    );
-  return null;
+  // Une réservation laissée par un dessin interrompu (l'API a redémarré)
+  // ne doit pas fermer le plafond : elle est rendue avant de compter.
+  await solderLesInterrompues(executeur);
+  const depense = await depenseDuMoisCents("fonds", executeur);
+  if (!plafondDepasse(depense, images, fr.coutParVersionCents, fr.plafondCents)) return null;
+  return (
+    `Ce lancement (environ ${euros(coutEstimeCents(images, fr.coutParVersionCents))}) ` +
+    `dépasserait le plafond des fonds de ce mois : il reste ${euros(resteSousLePlafond(depense, fr.plafondCents))} ` +
+    `sur ${euros(fr.plafondCents)}. Demandez moins de photos ou de versions, ou relevez ce plafond ` +
+    "dans Créer un fond › Réglages des fonds. Les affiches des clients ont leur propre plafond : " +
+    "elles ne sont pas touchées."
+  );
 }
 
 const jetonValide = (j: unknown) => /^[A-Za-z0-9-]{8,80}$/.test(String(j ?? ""));
@@ -645,9 +834,11 @@ export function mountFondsIa(app: Hono): void {
   app.get("/admin/fonds-ia/catalogue", async (c) => {
     const refus = refuseSiPasProprietaire(c);
     if (refus) return refus;
-    const reg = await reglages();
     const fr = await reglagesFonds();
-    const [decors, styles, affiches, recents] = await Promise.all([
+    // Une réservation laissée par un dessin interrompu ne doit pas peser sur
+    // le « il reste » montré ici, ni sur la confirmation d'un lot.
+    await solderLesInterrompues();
+    const [decors, styles, affiches, recents, depenseFonds] = await Promise.all([
       decorsProposables(),
       stylesProposables(),
       db
@@ -662,6 +853,7 @@ export function mountFondsIa(app: Hono): void {
         )
         .orderBy(asc(schema.products.name)),
       db.select().from(schema.fondsIa).orderBy(desc(schema.fondsIa.id)).limit(80),
+      depenseDuMoisCents("fonds"),
     ]);
     return c.json({
       reglages: {
@@ -685,8 +877,20 @@ export function mountFondsIa(app: Hono): void {
       retouches: RETOUCHES.map((r) => ({ cle: r.cle, libelle: r.libelle })),
       configuree: iaConfiguree,
       bouchon: bouchonActif(fr.bouchon),
-      depenseCents: await depenseDuMoisCents(),
-      plafondCents: reg["ia.plafondMensuelCents"],
+      // La dépense et le plafond DES FONDS ce mois-ci (versions en cours
+      // comprises : leur coût est réservé). Ceux des affiches des clients
+      // sont à part, dans BO › Affiches IA.
+      depenseCents: depenseFonds,
+      plafondCents: fr.plafondCents,
+      plafondFonds: {
+        plafondCents: fr.plafondCents,
+        parDefaut: fr.plafondParDefaut,
+        reglageCents: fr.plafondReglageCents,
+        defautCents: fr.plafondDefautCents,
+        depenseCents: depenseFonds,
+        resteCents: resteSousLePlafond(depenseFonds, fr.plafondCents),
+        plafondAffichesCents: fr.plafondAffichesCents,
+      },
       decors: decors.map((d) => ({ id: d.id, nom: d.nom ?? `Décor n° ${d.id}`, url: d.url })),
       affiches,
       fonds: await resumes(recents),
@@ -698,7 +902,8 @@ export function mountFondsIa(app: Hono): void {
    *
    * Multipart : « photos » (1 à 10 fichiers), « nomLot », « noms » (un par
    * photo, dans l'ordre ; vide = le nom du lot), « styleId », « precision »,
-   * « versions », « exemples » (identifiants de décors), « jeton ».
+   * « versions », « exemples » (identifiants de décors ; « aucun » : pas
+   * d'exemple ; absent : ceux d'office), « jeton ».
    */
   app.post("/admin/fonds-ia/lots", async (c) => {
     const refus = refuseSiPasProprietaire(c);
@@ -712,7 +917,10 @@ export function mountFondsIa(app: Hono): void {
     const jeton = String(form.get("jeton") ?? "");
     if (!jetonValide(jeton))
       return c.json({ error: "Rechargez la page, puis renvoyez les photos." }, 400);
-    // Le même envoi, renvoyé (double clic, « Précédent ») : on rend le lot déjà fait.
+    // Le même envoi, renvoyé (double clic, formulaire renvoyé par le
+    // navigateur) : on rend le lot déjà fait. Revenue par « Précédent », la
+    // page tire un nouveau jeton (lib/fonds-bo.ts) : un nouvel envoi y est
+    // un nouveau lot, confirmé comme tel.
     const [deja] = await db
       .select({ lot: schema.fondsIa.lot })
       .from(schema.fondsIa)
@@ -735,41 +943,72 @@ export function mountFondsIa(app: Hono): void {
         { error: "Donnez un nom au lieu, par exemple « Colmar, la Petite Venise »." },
         400,
       );
-    const fr = await reglagesFonds();
+    const reg = await reglages();
+    const fr = await reglagesFonds(reg);
     const bouchon = bouchonActif(fr.bouchon);
     const versions = bornerVersions(form.get("versions"), fr.versions);
     const precision = nettoyerTexte(form.get("precision"), PRECISION_MAX) || null;
-    const exemples = await exemplesRetenus(
-      lireExemples(form.getAll("exemples").flatMap((e) => String(e).split(","))),
-    );
+    // « Aucun » dans chaque liste : aucun exemple, pas ceux d'office.
+    const exemplesVoulus = exemplesDemandes(form.getAll("exemples"));
+    const exemples =
+      exemplesVoulus === "aucun" ? [] : await exemplesRetenus(exemplesVoulus ?? []);
     const styles = await stylesProposables();
     const styleDemande = Number(form.get("styleId"));
     const style =
       styles.find((s) => s.id === styleDemande) ??
       (String(form.get("styleId") ?? "") === "aucun" ? null : styleParDefaut(styles));
 
-    const pasPossible = await refusDeDepense(fichiers.length * versions, fr);
+    // Un premier regard sur le plafond, avant de lire les photos : un refus
+    // ne coûte alors rien. Il est relu sous verrou au moment de réserver.
+    const images = fichiers.length * versions;
+    const pasPossible = await refusDeDepense(images, fr);
     if (pasPossible) return c.json({ error: pasPossible }, 409);
 
-    // Les photos d'abord, toutes : une photo refusée refuse le lot entier,
-    // avant qu'un centime ne parte.
-    const photos: string[] = [];
+    // Les photos d'abord, toutes, EN MÉMOIRE : une photo refusée refuse le lot
+    // entier, avant qu'un centime ne parte et sans rien laisser sur le disque.
+    const lues: Buffer[] = [];
     for (const [i, f] of fichiers.entries()) {
       if (f.size > PHOTO_MAX_OCTETS)
         return c.json({ error: `La photo ${i + 1} (« ${f.name} ») dépasse 12 Mo.` }, 413);
       const p = await normaliserPhoto(Buffer.from(await f.arrayBuffer()));
       if (!p.ok) return c.json({ error: `Photo ${i + 1} (« ${f.name} ») : ${p.erreur}.` }, 415);
-      const nom = `${randomUUID()}.jpg`;
-      await writeFile(resolve(FONDS_DIR, nom), p.donnees);
-      photos.push(`ia/fonds/${nom}`);
+      lues.push(p.donnees);
+    }
+    const photos = lues.map(() => `ia/fonds/${randomUUID()}.jpg`);
+    try {
+      for (const [i, donnees] of lues.entries())
+        await writeFile(resolve(FONDS_DIR, basename(photos[i]!)), donnees);
+    } catch (e) {
+      await effacerPhotosDuLot(photos);
+      console.error("Créer un fond : photos du lot non enregistrées :", e);
+      return c.json(
+        { error: "Les photos n'ont pas pu être enregistrées. Réessayez dans un instant." },
+        500,
+      );
     }
     const noms = nomsDuLot(nomLot, form.getAll("noms"), photos.length);
     const creePar = c.get("utilisateur")?.email ?? null;
+    const ip = ipDeLaRequete(c);
 
-    let crees: { fond: Fond; message: Message }[];
+    const reservees: string[] = [];
+    let crees: { fond: Fond; message: Message; lignes: VersionReservee[] }[];
     try {
       crees = await db.transaction(async (tx) => {
-        const sortie: { fond: Fond; message: Message }[] = [];
+        await verrouillerLePlafond(tx);
+        // Le même formulaire, envoyé deux fois au même instant : le second
+        // attend le verrou, puis trouve le lot du premier.
+        const [encore] = await tx
+          .select({ id: schema.fondsIa.id })
+          .from(schema.fondsIa)
+          .where(eq(schema.fondsIa.lot, jeton))
+          .limit(1);
+        if (encore) throw new DejaEnvoye();
+        // Le second regard, celui qui fait foi : sous le verrou, versions en
+        // cours comprises, juste avant de réserver.
+        const refusSousVerrou = await refusDeDepense(images, fr, tx);
+        if (refusSousVerrou) throw new RefusDuPlafond(refusSousVerrou);
+
+        const sortie: { fond: Fond; message: Message; lignes: VersionReservee[] }[] = [];
         for (const [i, photo] of photos.entries()) {
           const [fond] = await tx
             .insert(schema.fondsIa)
@@ -798,17 +1037,42 @@ export function mountFondsIa(app: Hono): void {
               versions,
             })
             .returning();
-          sortie.push({ fond: fond!, message: message! });
+          const lignes = await reserverVersions(tx, fond!, message!, {
+            ip,
+            bouchon,
+            modele: reg["ia.modele"],
+            coutParVersionCents: fr.coutParVersionCents,
+            reservees,
+          });
+          sortie.push({ fond: fond!, message: message!, lignes });
         }
         return sortie;
       });
-    } catch {
-      // Deux envois du même formulaire au même instant : le second perd la
-      // course sur le jeton unique, et rend le lot du premier.
-      return c.json({ lot: jeton, deja: true });
+    } catch (e) {
+      // Rien n'a été écrit : ni lignes, ni réservations, ni photos à garder.
+      for (const id of reservees) enCours.delete(id);
+      await effacerPhotosDuLot(photos);
+      if (e instanceof RefusDuPlafond) return c.json({ error: e.message }, 409);
+      // Le même envoi, passé juste avant (double clic, ou course perdue sur
+      // le jeton unique) : on rend son lot. Toute AUTRE erreur est une vraie
+      // erreur, et se dit comme telle (relecture du 20/11 : elle répondait
+      // « déjà fait » pour un lot qui n'existait pas).
+      let gagnant = e instanceof DejaEnvoye;
+      if (!gagnant) {
+        const [lot] = await db
+          .select({ id: schema.fondsIa.id })
+          .from(schema.fondsIa)
+          .where(eq(schema.fondsIa.lot, jeton))
+          .limit(1)
+          .catch(() => []);
+        gagnant = !!lot;
+      }
+      if (gagnant) return c.json({ lot: jeton, deja: true });
+      console.error("Créer un fond : le lot n'a pas pu être enregistré :", e);
+      return c.json({ error: "Le lot n'a pas pu être enregistré. Réessayez dans un instant." }, 500);
     }
-    const ip = ipDeLaRequete(c);
-    for (const { fond, message } of crees) await lancerMessage(fond, message, ip, bouchon);
+    for (const { fond, message, lignes } of crees)
+      dessinerMessage(fond, message, lignes, { bouchon, reg, fr });
     return c.json({ lot: jeton, fonds: crees.map((x) => x.fond.id) });
   });
 
@@ -953,35 +1217,65 @@ export function mountFondsIa(app: Hono): void {
       baseVersion = v.publicId;
     }
 
-    const fr = await reglagesFonds();
+    const reg = await reglages();
+    const fr = await reglagesFonds(reg);
+    const bouchon = bouchonActif(fr.bouchon);
     const versions = bornerVersions(b.versions, 1);
     const pasPossible = await refusDeDepense(versions, fr);
     if (pasPossible) return c.json({ error: pasPossible }, 409);
 
-    let message: Message | undefined;
+    const ip = ipDeLaRequete(c);
+    const reservees: string[] = [];
+    let cree: { message: Message; lignes: VersionReservee[] };
     try {
-      [message] = await db
-        .insert(schema.fondsIaMessages)
-        .values({
-          fondId: fond.id,
-          creePar: c.get("utilisateur")?.email ?? null,
-          jeton,
-          texte: depuisZero ? ["Recommencer de zéro", texte].filter(Boolean).join(" · ") : texte,
-          demande,
-          baseVersion,
-          versions,
-        })
-        .returning();
-    } catch {
+      cree = await db.transaction(async (tx) => {
+        await verrouillerLePlafond(tx);
+        // Le même message, envoyé deux fois au même instant : le second
+        // attend le verrou, puis trouve le premier.
+        const [encore] = await tx
+          .select({ id: schema.fondsIaMessages.id })
+          .from(schema.fondsIaMessages)
+          .where(eq(schema.fondsIaMessages.jeton, jeton));
+        if (encore) throw new DejaEnvoye(encore.id);
+        const refusSousVerrou = await refusDeDepense(versions, fr, tx);
+        if (refusSousVerrou) throw new RefusDuPlafond(refusSousVerrou);
+        const [message] = await tx
+          .insert(schema.fondsIaMessages)
+          .values({
+            fondId: fond.id,
+            creePar: c.get("utilisateur")?.email ?? null,
+            jeton,
+            texte: depuisZero ? ["Recommencer de zéro", texte].filter(Boolean).join(" · ") : texte,
+            demande,
+            baseVersion,
+            versions,
+          })
+          .returning();
+        const lignes = await reserverVersions(tx, fond, message!, {
+          ip,
+          bouchon,
+          modele: reg["ia.modele"],
+          coutParVersionCents: fr.coutParVersionCents,
+          reservees,
+        });
+        return { message: message!, lignes };
+      });
+    } catch (e) {
+      for (const id of reservees) enCours.delete(id);
+      if (e instanceof RefusDuPlafond) return c.json({ error: e.message }, 409);
+      if (e instanceof DejaEnvoye && e.messageId)
+        return c.json({ messageId: e.messageId, deja: true });
       const [gagnant] = await db
         .select({ id: schema.fondsIaMessages.id })
         .from(schema.fondsIaMessages)
-        .where(eq(schema.fondsIaMessages.jeton, jeton));
+        .where(eq(schema.fondsIaMessages.jeton, jeton))
+        .catch(() => []);
       if (gagnant) return c.json({ messageId: gagnant.id, deja: true });
+      console.error(`Créer un fond : le message du fond ${fond.id} n'a pas pu partir :`, e);
       return c.json({ error: "Le message n'a pas pu partir. Réessayez." }, 500);
     }
-    await lancerMessage(fond, message!, ipDeLaRequete(c), bouchonActif(fr.bouchon));
-    return c.json({ messageId: message!.id });
+    dessinerMessage(fond, cree.message, cree.lignes, { bouchon, reg, fr });
+    return c.json({ messageId: cree.message.id });
   });
 
   /** Revenir à une version précédente : le prochain message repartira d'elle. */
@@ -1062,33 +1356,49 @@ export function mountFondsIa(app: Hono): void {
         .toBuffer(),
     );
     const url = `/assets/${fichier}`;
+    // Le décor n'est acquis qu'au COMMIT : sans lui (double clic, erreur de
+    // la base), le fichier tout juste écrit ne serait désigné par rien.
+    const oublierLeFichier = () =>
+      rm(resolve(ASSETS_DIR, fichier), { force: true }).catch(() => undefined);
 
-    const enregistre = await db.transaction(async (tx) => {
-      // Revérifié dans la transaction, ligne verrouillée : deux clics
-      // simultanés ne font qu'un décor.
-      const [encore] = await tx
-        .select({ backgroundId: schema.fondsIa.backgroundId })
-        .from(schema.fondsIa)
-        .where(eq(schema.fondsIa.id, fond.id))
-        .for("update");
-      if (encore?.backgroundId) return { id: encore.backgroundId, deja: true };
-      // À la suite des décors de l'affiche, comme un décor ajouté à sa fiche.
-      const [pos] = productId
-        ? await tx
-            .select({ p: raw<number>`coalesce(max(${schema.backgrounds.position}), -1)::int` })
-            .from(schema.backgrounds)
-            .where(eq(schema.backgrounds.productId, productId))
-        : [{ p: -1 }];
-      const [bg] = await tx
-        .insert(schema.backgrounds)
-        .values({ productId, url, name: nom, position: Number(pos?.p ?? -1) + 1 })
-        .returning({ id: schema.backgrounds.id });
-      await tx
-        .update(schema.fondsIa)
-        .set({ versionGardee: v!.publicId, backgroundId: bg!.id, enregistreLe: new Date() })
-        .where(eq(schema.fondsIa.id, fond.id));
-      return { id: bg!.id, deja: false };
-    });
+    let enregistre: { id: number; deja: boolean };
+    try {
+      enregistre = await db.transaction(async (tx) => {
+        // Revérifié dans la transaction, ligne verrouillée : deux clics
+        // simultanés ne font qu'un décor.
+        const [encore] = await tx
+          .select({ backgroundId: schema.fondsIa.backgroundId })
+          .from(schema.fondsIa)
+          .where(eq(schema.fondsIa.id, fond.id))
+          .for("update");
+        if (encore?.backgroundId) return { id: encore.backgroundId, deja: true };
+        // À la suite des décors de l'affiche, comme un décor ajouté à sa fiche.
+        const [pos] = productId
+          ? await tx
+              .select({ p: raw<number>`coalesce(max(${schema.backgrounds.position}), -1)::int` })
+              .from(schema.backgrounds)
+              .where(eq(schema.backgrounds.productId, productId))
+          : [{ p: -1 }];
+        const [bg] = await tx
+          .insert(schema.backgrounds)
+          .values({ productId, url, name: nom, position: Number(pos?.p ?? -1) + 1 })
+          .returning({ id: schema.backgrounds.id });
+        await tx
+          .update(schema.fondsIa)
+          .set({ versionGardee: v!.publicId, backgroundId: bg!.id, enregistreLe: new Date() })
+          .where(eq(schema.fondsIa.id, fond.id));
+        return { id: bg!.id, deja: false };
+      });
+    } catch (e) {
+      await oublierLeFichier();
+      console.error(`Créer un fond : le fond ${fond.id} n'a pas pu être enregistré comme décor :`, e);
+      return c.json({ error: "Le décor n'a pas pu être enregistré. Réessayez dans un instant." }, 500);
+    }
+    // Le second clic a perdu : le décor du premier est là, ce fichier-ci ne sert à rien.
+    if (enregistre.deja) {
+      await oublierLeFichier();
+      return c.json({ backgroundId: enregistre.id, deja: true });
+    }
 
     // Les versions légères (aperçu du configurateur, vignette), tout de
     // suite et en tâche de fond, comme pour un décor ajouté à une fiche.
@@ -1099,6 +1409,6 @@ export function mountFondsIa(app: Hono): void {
           .then((r) => r.arrayBuffer())
           .catch(() => undefined);
     })();
-    return c.json({ backgroundId: enregistre.id, url, deja: enregistre.deja });
+    return c.json({ backgroundId: enregistre.id, url, deja: false });
   });
 }

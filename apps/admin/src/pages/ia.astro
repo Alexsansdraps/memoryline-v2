@@ -175,6 +175,20 @@ try {
 const texte = (cle: string) =>
   typeof reglages[cle] === "string" ? (reglages[cle] as string) : "";
 
+/**
+ * Les fonds de « Créer un fond », à part (relecture du 20/11) : leur dépense
+ * ne compte plus dans le plafond des affiches, qui ne protège que les clients,
+ * et ils ont le leur. L'API les ajoute aux chiffres du mois.
+ */
+type FondsDuMois = {
+  versions: number;
+  depenseCents: number;
+  plafondCents: number;
+  plafondParDefaut: boolean;
+  resteCents: number;
+};
+const fondsDuMois = (stats as (StatsIA & { fonds?: FondsDuMois }) | null)?.fonds ?? null;
+
 // Ce que l'API applique fait foi : c'est elle qui lit les réglages et facture.
 const modele = stats?.modele ?? texte("ia.modele") ?? MODELE_DEFAUT;
 const taille = stats?.taille ?? texte("ia.taille") ?? TAILLE_DEFAUT;
@@ -281,7 +295,7 @@ const derniere = premiere + lignes.length;
   <section class="mb-6">
     <div class="grid gap-px overflow-hidden rounded-lg border border-bo-border bg-bo-border sm:grid-cols-2 lg:grid-cols-5">
       <div class="bg-bo-surface px-4 py-3 sm:col-span-2">
-        <div class="text-xs text-bo-muted">Dépensé ce mois-ci chez OpenAI</div>
+        <div class="text-xs text-bo-muted">Dépensé ce mois-ci pour les affiches des clients</div>
         <div class="mt-1 flex items-baseline gap-2">
           <span class="text-3xl">{formatPrice(depenseCents)}</span>
           {plafondCents > 0 && (
@@ -314,6 +328,15 @@ const derniere = premiere + lignes.length;
                 ? "Le plafond approche. Au-delà, la génération s'arrête d'elle-même."
                 : `Il reste ${formatPrice(stats?.resteCents ?? 0)} ce mois-ci. Chaque aperçu demandé est facturé, que le visiteur achète ou non.`}
         </p>
+        {fondsDuMois && (
+          <p class="mt-1 text-xs text-bo-muted">
+            À part : les fonds de
+            <a href={url("/fonds")} class="text-bo-accent underline">Créer un fond</a>,
+            {formatPrice(fondsDuMois.depenseCents)} engagés sur leur propre plafond de
+            {formatPrice(fondsDuMois.plafondCents)}. Ils ne comptent pas ici et ne
+            peuvent pas couper les affiches des clients.
+          </p>
+        )}
       </div>
 
       <div class="bg-bo-surface px-4 py-3">
@@ -427,6 +450,8 @@ const derniere = premiere + lignes.length;
           <span class="mt-1 block text-xs text-bo-muted">
             Atteint, il coupe la génération jusqu'au mois suivant. C'est le
             garde-fou contre un robot qui demanderait mille aperçus la nuit.
+            Il ne compte que les affiches des clients : les fonds de Créer un
+            fond ont leur propre plafond (par défaut, la moitié de celui-ci).
           </span>
         </label>
 

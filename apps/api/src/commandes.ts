@@ -86,6 +86,7 @@ import { bornesDuVendeur } from "./vendeurs.js";
 import { supprimerPourToujours } from "./suppression.js";
 import {
   avecEtiquetteTest,
+  estVenteDeTest,
   ETIQUETTE_TEST,
   lireFiltreTest,
   miseEnTest,
@@ -362,6 +363,206 @@ export function motifCommandeAGarder(e: EtatCommandeASupprimer): string | null {
   if (e.dernierDeSaSerie)
     return `C'est la dernière commande numérotée de sa série : la supprimer redonnerait son numéro à la prochaine commande, alors que le client a pu le recevoir par courriel. Elle pourra partir dès qu'une commande plus récente aura été passée. ${suite}`;
   return null;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Factures : qui en reçoit une, sous quel nom, et d'où se demande le ZIP    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Ce qu'il faut savoir d'une commande cochée pour décider si le ZIP des
+ * factures (GET /admin/factures.zip) lui en fait une. Lu en base par la
+ * route ; la règle elle-même ne touche à rien et s'essaie sans base
+ * (tests/factures-zip.test.ts).
+ */
+export interface CommandeAFacturer {
+  number: string;
+  channel: string;
+  status: string;
+  tags?: unknown;
+  /** Non nul : une commande reprise de Shopify (17/11). */
+  legacyId: number | null;
+  /** Son numéro chez Shopify (« #1042 »). */
+  legacyName?: string | null;
+  invoiceNumber: string | null;
+}
+
+/**
+ * Pourquoi le ZIP des factures ne fait PAS la facture de cette commande, ou
+ * null s'il la fait.
+ *
+ * Un numéro de facture se donne à la première édition et ne se reprend
+ * jamais : la suite doit rester continue, sans trou (art. 242 nonies A de
+ * l'annexe II au CGI). Or une sélection de Ventes stand mêle des ventes
+ * payées, des annulées, des ventes de test, parfois une vente rouverte : les
+ * facturer toutes aurait pris des numéros pour des ventes qui n'ont pas eu
+ * lieu — et une vente du stand qui a une facture ne se supprime plus
+ * (motifCommandeAGarder). Relecture du 20/11.
+ *
+ * Dans l'ordre :
+ *   1. une reprise de Shopify : réglée et facturée là-bas, jamais ici ;
+ *   2. un panier, vente rouverte et pas revalidée comprise : rien à facturer
+ *      (composerLaFacture le refuse aussi) ;
+ *   3. une commande qui a DÉJÀ sa facture la garde, même annulée depuis — son
+ *      PDF le dit : rien de neuf n'est numéroté ;
+ *   4. sinon, une annulée (vente de test comprise) ou une commande pas
+ *      encore payée n'en reçoit pas.
+ *
+ * La raison est courte, sans point final : elle suit le numéro de la
+ * commande dans « factures-non-faites.txt » et dans le message du BO.
+ */
+export function raisonSansFactureDansLeZip(o: CommandeAFacturer): string | null {
+  if (o.legacyId != null)
+    return `reprise de Shopify${o.legacyName ? ` (${o.legacyName})` : ""}, réglée et facturée là-bas`;
+  if (o.status === "draft")
+    // Une vente du stand rouverte garde son SAL- (salon.ts) : c'est elle.
+    return /^SAL-\d+$/.test(o.number)
+      ? o.invoiceNumber
+        ? `vente rouverte sur la tablette et pas revalidée ; sa facture ${o.invoiceNumber} existe déjà et se réédite une fois la vente revalidée`
+        : "vente rouverte sur la tablette et pas revalidée, redevenue un panier"
+      : "panier, pas une commande";
+  if (o.invoiceNumber) return null;
+  if (estVenteDeTest(o)) return "vente de test";
+  if (STATUTS_ANNULES.includes(o.status)) return "annulée";
+  if (o.status !== "paid") return "pas encore payée";
+  return null;
+}
+
+/** Une commande cochée que le ZIP n'a pas facturée : son numéro de commande, et pourquoi. */
+export interface FactureNonFaite {
+  /** Le numéro de la liste (SAL-0012, WEB-1042), jamais l'identifiant interne. */
+  numero: string;
+  raison: string;
+}
+
+/** Une raison sans son point final : la phrase qui la cite met le sien. */
+function sansPointFinal(raison: string): string {
+  return raison.trim().replace(/[\s.]+$/, "");
+}
+
+/** La phrase des commandes cochées qui n'existent plus, ou null s'il n'y en a pas. */
+function phraseIntrouvables(introuvables: number): string | null {
+  if (introuvables <= 0) return null;
+  return introuvables > 1
+    ? `${introuvables} commandes cochées n'existent plus (supprimées depuis l'affichage de la liste).`
+    : "Une commande cochée n'existe plus (supprimée depuis l'affichage de la liste).";
+}
+
+/**
+ * Le contenu de « factures-non-faites.txt », rangé dans le ZIP à côté des
+ * factures : chaque commande cochée qui n'en a pas, par son NUMÉRO de
+ * commande et avec sa raison. Aucune n'a reçu de numéro de facture, et le
+ * fichier le dit.
+ */
+export function texteFacturesNonFaites(
+  nonFaites: readonly FactureNonFaite[],
+  introuvables = 0,
+): string {
+  const lignes = nonFaites.map((n) => `${n.numero} : ${sansPointFinal(n.raison)}.`);
+  const perdues = phraseIntrouvables(introuvables);
+  if (perdues) lignes.push(perdues);
+  return `Factures non faites : ce téléchargement n'a donné aucun numéro de facture à ces commandes.\n\n${lignes.join("\n")}\n`;
+}
+
+/**
+ * Le refus quand aucune des commandes cochées n'a de facture à faire : les
+ * premières avec leur raison, puis combien d'autres, pour que la phrase
+ * tienne dans le message du back-office.
+ */
+export function messageAucuneFacture(
+  nonFaites: readonly FactureNonFaite[],
+  introuvables = 0,
+  max = 6,
+): string {
+  const perdues = phraseIntrouvables(introuvables);
+  if (!nonFaites.length)
+    return `${perdues ?? "Aucune commande cochée."} Rechargez la page : aucune facture n'a été faite.`;
+  const vues = nonFaites.slice(0, max).map((n) => `${n.numero} (${sansPointFinal(n.raison)})`);
+  const autres = nonFaites.length - vues.length;
+  const liste =
+    autres > 0
+      ? `${vues.join(", ")} et ${autres} autre${autres > 1 ? "s" : ""}`
+      : vues.length > 1
+        ? `${vues.slice(0, -1).join(", ")} et ${vues[vues.length - 1]}`
+        : vues[0];
+  return `Aucune facture à faire parmi les commandes cochées, et aucun numéro de facture n'a été donné : ${liste}.${perdues ? ` ${perdues}` : ""}`;
+}
+
+/**
+ * Vrai si la requête peut venir du back-office lui-même.
+ *
+ * GET /admin/factures.zip NUMÉROTE des factures. Un lien piégé — sur une autre
+ * page, dans un courriel —, ouvert par la propriétaire connectée, en ferait
+ * à son insu : le cookie de session (« SameSite=Lax ») accompagne une
+ * navigation venue d'ailleurs. L'en-tête « Sec-Fetch-Site », que le
+ * navigateur pose et qu'aucune page ne peut écrire à sa place, dit d'où part
+ * la requête : seul « same-origin » passe — le bouton du back-office, qui
+ * télécharge par fetch, servi à la même adresse que l'API derrière le
+ * proxy. « none » (un lien cliqué dans Outlook ou Thunderbird, une adresse
+ * tapée), « same-site » et « cross-site » sont refusés (relecture du
+ * 20/11). Sans l'en-tête (navigateur ancien, outil en ligne de commande),
+ * rien ne se décide ici : la session reste exigée, comme partout.
+ */
+export function requeteDuBackOffice(secFetchSite: string | null | undefined): boolean {
+  if (secFetchSite === undefined || secFetchSite === null) return true;
+  return secFetchSite.trim().toLowerCase() === "same-origin";
+}
+
+/**
+ * Un nom de fichier en ASCII imprimable : accents retirés, tout autre
+ * caractère remplacé par « _ », barres comprises (dans un ZIP, « / » rangerait
+ * le fichier dans un dossier). Même règle que les noms des affiches de
+ * démonstration (archive-zip.ts).
+ */
+export function nomEnAscii(nom: string): string {
+  return (
+    nom
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/[^\x20-\x7e]|[/\\]/g, "_")
+      .trim() || "fichier"
+  );
+}
+
+/**
+ * L'en-tête Content-Disposition d'un fichier, quel que soit son nom.
+ *
+ * Un en-tête HTTP ne porte que des octets : un nom en japonais y faisait
+ * lever une exception, et la facture d'une cliente japonaise répondait 500.
+ * Le nom part donc en ASCII dans `filename`, que lisent tous les navigateurs,
+ * et, s'il y perdait quelque chose, en entier dans `filename*` (RFC 6266 et
+ * 5987), que les navigateurs préfèrent quand il est là.
+ */
+export function dispositionDuFichier(mode: "inline" | "attachment", nom: string): string {
+  const ascii = nomEnAscii(nom).replace(/["\\]/g, "_");
+  if (ascii === nom) return `${mode}; filename="${ascii}"`;
+  const encode = encodeURIComponent(nom).replace(
+    /['()*]/g,
+    (signe) => `%${signe.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `${mode}; filename="${ascii}"; filename*=UTF-8''${encode}`;
+}
+
+/**
+ * Le nom du PDF d'une facture : « Facture_F2026-0001_SAL-0012.pdf », dans la
+ * langue du PDF.
+ *
+ * Japonais et chinois sortent en anglais (« Invoice_… »), comme le PDF
+ * lui-même : Helvetica n'a pas leurs caractères (renderInvoicePdf, pdf.ts,
+ * 18/11). « 請求書 » dans le nom faisait en plus répondre 500 au
+ * téléchargement (voir dispositionDuFichier). Toujours en ASCII : c'est aussi
+ * le nom de la pièce jointe du courriel et celui du fichier dans le ZIP, que
+ * l'Explorateur de Windows lit mal hors de l'ASCII.
+ */
+export function nomDuFichierDeFacture(
+  langue: Langue,
+  numeroFacture: string,
+  numeroCommande: string,
+): string {
+  const langueDuPdf: Langue = langue === "ja" || langue === "zh" ? "en" : langue;
+  return nomEnAscii(
+    `${tc(langueDuPdf)("facturePdf.nomFichier")}_${numeroFacture}_${numeroCommande}.pdf`,
+  );
 }
 
 /** Lien de suivi public, quand on sait le fabriquer. */
@@ -3462,25 +3663,36 @@ export function mountOrderRoutes(app: Hono): void {
   /* ------------------------------------------------------------------ */
 
   /**
-   * La facture d'une commande, en PDF.
-   *
-   * Le numéro se pose à la PREMIÈRE édition et ne bouge plus : rouvrir cette
-   * adresse rend la même facture, portant le même numéro. C'est une obligation
-   * légale autant qu'une commodité — la cliente qui réclame « sa » facture
-   * doit recevoir celle qu'elle a déjà, pas une nouvelle.
-   */
-  /**
    * Les factures de plusieurs commandes d'un coup, en ZIP (20/11, Alexandra,
    * barre de sélection de Ventes stand : « change bons de livraisons en
    * facture »). Chaque facture est celle du bouton de la fiche
    * (composerLaFacture) : la première édition lui donne son numéro. Réservée
    * à la propriétaire, comme la facture seule. Hors de « /admin/orders » :
    * l'adresse ne doit pas se lire comme l'identifiant d'une commande.
+   *
+   * Ce numéro ne se reprend jamais : seules les commandes qui doivent avoir
+   * une facture en reçoivent une (raisonSansFactureDansLeZip, relecture du
+   * 20/11). Les autres — reprises de Shopify, paniers, annulées et ventes de
+   * test sans facture, commandes pas encore payées — sont écartées AVANT
+   * toute numérotation, et citées par leur numéro de commande, avec leur
+   * raison, dans « factures-non-faites.txt ». Leur nombre part aussi dans
+   * l'en-tête « X-Factures-Non-Faites », que le back-office affiche.
+   *
+   * Un GET qui numérote : il ne se fait que depuis le back-office lui-même
+   * (requeteDuBackOffice), pas depuis un lien venu d'ailleurs.
    */
   app.get("/admin/factures.zip", async (c) => {
     const user = c.get("utilisateur");
     if (user && user.role !== "owner")
       return c.json({ error: "Les factures sont réservées à la propriétaire." }, 403);
+    if (!requeteDuBackOffice(c.req.header("Sec-Fetch-Site")))
+      return c.json(
+        {
+          error:
+            "Les factures se téléchargent depuis le back-office (Ventes stand, bouton « Factures »), pas par un lien venu d'une autre page : aucune facture n'a été faite.",
+        },
+        403,
+      );
     const ids = [
       ...new Set(
         String(c.req.query("ids") ?? "")
@@ -3490,19 +3702,55 @@ export function mountOrderRoutes(app: Hono): void {
       ),
     ].slice(0, 200);
     if (!ids.length) return c.json({ error: "Aucune commande choisie." }, 400);
+    const langue = langueLue(c.req.query("langue"));
+
+    // Toute la sélection d'une lecture, pour trier AVANT de numéroter quoi
+    // que ce soit.
+    const commandes = await db
+      .select({
+        id: schema.orders.id,
+        number: schema.orders.number,
+        channel: schema.orders.channel,
+        status: schema.orders.status,
+        tags: schema.orders.tags,
+        legacyId: schema.orders.legacyId,
+        legacyName: schema.orders.legacyName,
+        invoiceNumber: schema.orders.invoiceNumber,
+      })
+      .from(schema.orders)
+      .where(inArray(schema.orders.id, ids));
+    const parId = new Map(commandes.map((o) => [o.id, o]));
+
     const fichiers: FichierArchive[] = [];
-    const refusees: string[] = [];
+    const nonFaites: FactureNonFaite[] = [];
+    let introuvables = 0;
+    // Dans l'ordre de la sélection, celui de la liste.
     for (const id of ids) {
-      const facture = await composerLaFacture(id, langueLue(c.req.query("langue")));
-      if ("erreur" in facture) refusees.push(`commande ${id} : ${facture.erreur}`);
+      const commande = parId.get(id);
+      if (!commande) {
+        introuvables++;
+        continue;
+      }
+      const raison = raisonSansFactureDansLeZip(commande);
+      if (raison) {
+        nonFaites.push({ numero: commande.number, raison });
+        continue;
+      }
+      // composerLaFacture relit la commande et, sur la ligne verrouillée au
+      // moment de numéroter, rejoue la même règle : une vente rouverte sur la
+      // tablette, annulée ou mise en test depuis la lecture ci-dessus (le ZIP
+      // prend quelques secondes) est écartée ici, sans numéro.
+      const facture = await composerLaFacture(id, langue, { seulementLesVentes: true });
+      if ("erreur" in facture) nonFaites.push({ numero: commande.number, raison: facture.erreur });
       else fichiers.push({ nom: facture.nomFichier, contenu: new Uint8Array(facture.pdf) });
     }
     if (!fichiers.length)
-      return c.json({ error: `Aucune facture n'a pu être faite (${refusees.join(" ; ")}).` }, 400);
-    if (refusees.length)
+      return c.json({ error: messageAucuneFacture(nonFaites, introuvables) }, 400);
+    const ecartees = nonFaites.length + introuvables;
+    if (ecartees)
       fichiers.push({
         nom: "factures-non-faites.txt",
-        contenu: new TextEncoder().encode(`Factures non faites :\n${refusees.join("\n")}\n`),
+        contenu: new TextEncoder().encode(texteFacturesNonFaites(nonFaites, introuvables)),
       });
     const morceaux = archiveZip(fichiers);
     const taille = morceaux.reduce((n, m) => n + m.length, 0);
@@ -3515,11 +3763,21 @@ export function mountOrderRoutes(app: Hono): void {
     });
     return c.body(flux, 200, {
       "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="factures.zip"`,
+      "Content-Disposition": dispositionDuFichier("attachment", "factures.zip"),
       "Content-Length": String(taille),
+      "Cache-Control": "no-store",
+      "X-Factures-Non-Faites": String(ecartees),
     });
   });
 
+  /**
+   * La facture d'une commande, en PDF.
+   *
+   * Le numéro se pose à la PREMIÈRE édition et ne bouge plus : rouvrir cette
+   * adresse rend la même facture, portant le même numéro. C'est une obligation
+   * légale autant qu'une commodité — la cliente qui réclame « sa » facture
+   * doit recevoir celle qu'elle a déjà, pas une nouvelle.
+   */
   app.get("/admin/orders/:id/facture.pdf", async (c) => {
     // Réservée à la propriétaire, et vérifiée ICI. Le garde-fou général du
     // serveur laisse passer les LECTURES d'un vendeur sous « /admin/orders »,
@@ -3546,7 +3804,7 @@ export function mountOrderRoutes(app: Hono): void {
     return new Response(new Uint8Array(facture.pdf), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${facture.nomFichier}"`,
+        "Content-Disposition": dispositionDuFichier("inline", facture.nomFichier),
       },
     });
   });
@@ -3638,19 +3896,39 @@ export function mountOrderRoutes(app: Hono): void {
    * Factures) ne se fige pas non plus : figé vide, il aurait privé cette
    * facture de ses mentions obligatoires pour toujours. Elle les prendra
    * dès qu'elles seront saisies (emetteurComplet, facturation.ts).
+   *
+   * La COMMANDE aussi est verrouillée (relecture du 20/11) : deux éditions
+   * simultanées de la même commande (le ZIP et la fiche) se rangent l'une
+   * derrière l'autre, et la seconde rend le numéro de la première au lieu
+   * d'en tirer un autre — qui aurait écrasé le premier et laissé un trou.
+   * `refus`, quand il est donné (le ZIP : raisonSansFactureDansLeZip), se
+   * relit sur cette ligne verrouillée : une vente annulée ou mise en test
+   * pendant la préparation du ZIP n'a pas de numéro.
    */
   async function numeroterLaFacture(
     orderId: number,
-  ): Promise<{ numero: string; emiseLe: Date; emetteur: Emetteur | null }> {
+    refus?: (commande: CommandeAFacturer) => string | null,
+  ): Promise<{ numero: string; emiseLe: Date; emetteur: Emetteur | null } | { refus: string }> {
     return db.transaction(async (tx) => {
       const [commande] = await tx
         .select({
           numero: schema.orders.invoiceNumber,
           emiseLe: schema.orders.invoicedAt,
           emetteur: schema.orders.invoiceIssuer,
+          number: schema.orders.number,
+          channel: schema.orders.channel,
+          status: schema.orders.status,
+          tags: schema.orders.tags,
+          legacyId: schema.orders.legacyId,
+          legacyName: schema.orders.legacyName,
         })
         .from(schema.orders)
-        .where(eq(schema.orders.id, orderId));
+        .where(eq(schema.orders.id, orderId))
+        .for("update");
+      if (commande && refus) {
+        const raison = refus({ ...commande, invoiceNumber: commande.numero });
+        if (raison) return { refus: raison };
+      }
       if (commande?.numero)
         return {
           numero: commande.numero,
@@ -3683,7 +3961,7 @@ export function mountOrderRoutes(app: Hono): void {
       await tx
         .update(schema.orders)
         .set({ invoiceNumber: numero, invoicedAt: maintenant, invoiceIssuer: emetteur })
-        .where(eq(schema.orders.id, orderId));
+        .where(and(eq(schema.orders.id, orderId), isNull(schema.orders.invoiceNumber)));
       return { numero, emiseLe: maintenant, emetteur };
     });
   }
@@ -3698,12 +3976,16 @@ export function mountOrderRoutes(app: Hono): void {
    * Dans la langue de la cliente (`langueDuDestinataire`), sauf `langueVoulue`
    * explicite. Les montants et les dates suivent ; la mention de TVA reste en
    * français, sa traduction dessous (voir renderInvoicePdf).
+   *
+   * `seulementLesVentes` (le ZIP des factures) : la règle du ZIP se relit au
+   * moment de numéroter, sur la commande verrouillée (numeroterLaFacture).
    */
   async function composerLaFacture(
     orderId: number,
     langueVoulue: Langue | null = null,
+    options: { seulementLesVentes?: boolean } = {},
   ): Promise<
-    | { erreur: string; code: 400 | 404 }
+    | { erreur: string; code: 400 | 404 | 409 }
     | {
         pdf: Buffer;
         nomFichier: string;
@@ -3723,6 +4005,17 @@ export function mountOrderRoutes(app: Hono): void {
       .from(schema.orders)
       .where(eq(schema.orders.id, orderId));
     if (!order) return { erreur: "Cette commande n'existe pas.", code: 404 };
+    // Une reprise de Shopify (17/11) a été réglée et facturée là-bas : un
+    // numéro d'ici la ferait entrer dans la suite légale pour une facture qui
+    // existe déjà ailleurs, et il ne se reprendrait plus. index.ts le refuse
+    // sous « /admin/orders/:id/facture… » (GESTES_REFUSES_AUX_REPRISES), mais
+    // le ZIP des factures ne passe pas par là : la garde est donc ICI aussi,
+    // avant toute numérotation, pour tous les chemins.
+    if (order.legacyId != null)
+      return {
+        erreur: `Commande reprise de Shopify (${order.legacyName ?? "ancienne boutique"}) : elle a été réglée et facturée là-bas. Aucune facture ne se fait ici, et aucun numéro ne lui a été donné.`,
+        code: 409,
+      };
     // Un panier n'a rien à facturer : personne n'a commandé, personne ne doit
     // rien. Lui donner un numéro le prendrait dans la suite des factures, et
     // ce numéro serait perdu pour de bon.
@@ -3733,11 +4026,12 @@ export function mountOrderRoutes(app: Hono): void {
         code: 400,
       };
 
-    const {
-      numero: numeroFacture,
-      emiseLe,
-      emetteur: emetteurFige,
-    } = await numeroterLaFacture(orderId);
+    const numerotee = await numeroterLaFacture(
+      orderId,
+      options.seulementLesVentes ? raisonSansFactureDansLeZip : undefined,
+    );
+    if ("refus" in numerotee) return { erreur: numerotee.refus, code: 409 };
+    const { numero: numeroFacture, emiseLe, emetteur: emetteurFige } = numerotee;
 
     const [client] = order.customerId
       ? await db
@@ -3753,7 +4047,14 @@ export function mountOrderRoutes(app: Hono): void {
     const langue =
       langueVoulue ??
       langueDuDestinataire({ compte: client?.langue, commande: order.langue });
-    const t = tc(langue);
+    // Le PDF d'une cliente japonaise ou chinoise sort en anglais
+    // (renderInvoicePdf : Helvetica n'a pas leurs caractères, et tout ce qui
+    // n'est pas latin s'efface). Ce qui s'écrit DANS le PDF se compose donc
+    // dans sa langue à lui : en japonais, la mention de règlement et le mode
+    // de livraison sortaient vides (relecture du 20/11). Le courriel, lui,
+    // garde la langue de la cliente (`langue`, rendue plus bas).
+    const langueDuPdf: Langue = langue === "ja" || langue === "zh" ? "en" : langue;
+    const t = tc(langueDuPdf);
 
     const lignes: LigneFacture[] = articles.map((it) => {
       const cfg = (it.config ?? {}) as Record<string, unknown>;
@@ -3773,7 +4074,7 @@ export function mountOrderRoutes(app: Hono): void {
         precision:
           [
             typeof cfg.format === "string" ? t("lignes.format", { format: cfg.format }) : null,
-            cadre ? (nomTraduit(cadre.translations, langue) ?? cadre.name) : null,
+            cadre ? (nomTraduit(cadre.translations, langueDuPdf) ?? cadre.name) : null,
           ]
             .filter(Boolean)
             .join(" · ") || null,
@@ -3808,7 +4109,7 @@ export function mountOrderRoutes(app: Hono): void {
     // Le lieu de retrait, quand la cliente vient chercher sa commande : il
     // se dit sous la commande, pas dans « Facturé à » — un chalet n'est pas
     // son adresse.
-    const lieu = lieuDeRetrait(order, langue);
+    const lieu = lieuDeRetrait(order, langueDuPdf);
 
     const pdf = await renderInvoicePdf({
       langue,
@@ -3850,10 +4151,10 @@ export function mountOrderRoutes(app: Hono): void {
       portCents: port,
       // Le nom français reste sur la commande ; la facture d'une cliente
       // étrangère porte celui de sa langue, quand la boutique l'a traduit.
-      modeLivraison: (await livraisonDansLaLangue(order, langue)).nom,
+      modeLivraison: (await livraisonDansLaLangue(order, langueDuPdf)).nom,
       totalCents: order.totalCents,
       rembourseCents: resume.rembourseCents,
-      mentionReglement: mentionDeReglement(order, langue),
+      mentionReglement: mentionDeReglement(order, langueDuPdf),
       adresseBoutique: emetteur.adresse.length ? emetteur.adresse : null,
       siret: siretGroupe(emetteur.siret),
       mention: emetteur.mention,
@@ -3871,13 +4172,15 @@ export function mountOrderRoutes(app: Hono): void {
 
     return {
       pdf,
-      nomFichier: `${t("facturePdf.nomFichier")}_${numeroFacture}_${order.number}.pdf`,
+      // Dans la langue du PDF, en ASCII : « Invoice_… » pour une cliente
+      // japonaise ou chinoise, dont le nom en kanji faisait répondre 500.
+      nomFichier: nomDuFichierDeFacture(langue, numeroFacture, order.number),
       numeroFacture,
       numeroCommande: order.number,
       totalCents: order.totalCents,
       dejaPayee: order.status === "paid",
       clientEmail: client?.email ?? null,
-      prenomClient: prenomPourCourrier(client) || t("commun.prenomParDefaut"),
+      prenomClient: prenomPourCourrier(client) || tc(langue)("commun.prenomParDefaut"),
       langue,
     };
   }

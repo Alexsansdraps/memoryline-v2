@@ -259,7 +259,10 @@ test("validation sans paiement : refusée dès qu'il reste un centime à payer",
 /*  Contre la base locale : la double dépense, le code à usage unique        */
 /* ------------------------------------------------------------------------ */
 
-const baseLocale = /@db:5432\//.test(process.env.DATABASE_URL ?? "");
+// Le service de base s'appelle « db » en production aussi, et l'image de
+// production contient les tests : NODE_ENV=production les en écarte.
+const baseLocale =
+  /@db:5432\//.test(process.env.DATABASE_URL ?? "") && process.env.NODE_ENV !== "production";
 
 after(async () => {
   if (!baseLocale) return;
