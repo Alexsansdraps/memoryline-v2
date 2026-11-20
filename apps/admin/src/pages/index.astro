@@ -141,6 +141,16 @@ function leJourCourt(iso: string): string {
     timeZone: "UTC",
   });
 }
+/** Aujourd'hui à Paris (« 2026-11-20 ») : le filtre de dates de la liste des ventes. */
+const aujourdhuiParis = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(
+  new Date(),
+);
+/**
+ * La carte d'un stand se clique (20/11, Alexandra : « ça doit être
+ * clickable ») : ses ventes dans Ventes stand, toutes ou celles du jour.
+ */
+const ventesDuStand = (id: number, duJour = false) =>
+  `${url("/ventes-salon")}?stand=${id}${duJour ? `&from=${aujourdhuiParis}&to=${aujourdhuiParis}` : ""}`;
 
 let paiements: { stripe: boolean; paypal: boolean } | null = null;
 if (isOwner) {
@@ -202,8 +212,11 @@ const teinte = (sens: string) =>
       </div>
       <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
         {standsEnCours.map((s) => (
-          <div class="rounded border border-bo-border p-3">
-            <p class="font-medium">
+          <div class="rounded border border-bo-border p-3 transition-colors hover:border-bo-accent">
+            {/* Chaque partie mène à ses ventes ; pas de lien autour de toute la
+                carte : la pastille « à encaisser » en est déjà un, et un lien
+                dans un lien n'est pas du HTML valide. */}
+            <a href={ventesDuStand(s.id)} class="block font-medium hover:underline">
               {s.nom}
               <span class="ml-2 text-xs font-normal text-bo-muted">
                 {s.dateDebut === s.dateFin
@@ -211,17 +224,23 @@ const teinte = (sens: string) =>
                   : `du ${leJourCourt(s.dateDebut)} au ${leJourCourt(s.dateFin)}`}
                 {s.ouvert ? " · ouvert" : " · fermé"}
               </span>
-            </p>
+            </a>
             <div class="mt-2 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <p class="text-xs text-bo-muted">Aujourd'hui</p>
-                <p class="text-lg font-semibold">
-                  {s.aujourdhui.ventes} vente{s.aujourdhui.ventes > 1 ? "s" : ""}
-                  {isOwner && <span class="ml-1 font-normal">· {formatPrice(s.aujourdhui.cents)}</span>}
-                </p>
+                <a
+                  href={ventesDuStand(s.id, true)}
+                  class="-m-1 block rounded p-1 hover:bg-bo-bg"
+                  title="Voir les ventes d'aujourd'hui de ce stand"
+                >
+                  <span class="block text-xs text-bo-muted">Aujourd'hui →</span>
+                  <span class="block text-lg font-semibold">
+                    {s.aujourdhui.ventes} vente{s.aujourdhui.ventes > 1 ? "s" : ""}
+                    {isOwner && <span class="ml-1 font-normal">· {formatPrice(s.aujourdhui.cents)}</span>}
+                  </span>
+                </a>
                 {s.aujourdhui.aEncaisser > 0 ? (
                   <a
-                    href={`${url("/ventes-salon")}?etape=a_encaisser`}
+                    href={`${url("/ventes-salon")}?stand=${s.id}&etape=a_encaisser`}
                     class="mt-0.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900"
                   >
                     {s.aujourdhui.aEncaisser} à encaisser
@@ -232,11 +251,17 @@ const teinte = (sens: string) =>
                 )}
               </div>
               <div>
-                <p class="text-xs text-bo-muted">Depuis le début du stand</p>
-                <p class="text-lg font-semibold">
-                  {s.depuisLeDebut.ventes} vente{s.depuisLeDebut.ventes > 1 ? "s" : ""}
-                  {isOwner && <span class="ml-1 font-normal">· {formatPrice(s.depuisLeDebut.cents)}</span>}
-                </p>
+                <a
+                  href={ventesDuStand(s.id)}
+                  class="-m-1 block rounded p-1 hover:bg-bo-bg"
+                  title="Voir toutes les ventes de ce stand"
+                >
+                  <span class="block text-xs text-bo-muted">Depuis le début du stand →</span>
+                  <span class="block text-lg font-semibold">
+                    {s.depuisLeDebut.ventes} vente{s.depuisLeDebut.ventes > 1 ? "s" : ""}
+                    {isOwner && <span class="ml-1 font-normal">· {formatPrice(s.depuisLeDebut.cents)}</span>}
+                  </span>
+                </a>
               </div>
             </div>
           </div>
