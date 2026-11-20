@@ -736,6 +736,13 @@
       "when": 1795166219066,
       "tag": "0104_date_des_ventes_du_stand",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1795185000000,
+      "tag": "0105_ventes_du_stand_retrouvees",
+      "breakpoints": true
     }
   ]
 }
