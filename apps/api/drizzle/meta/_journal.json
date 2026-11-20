@@ -750,6 +750,13 @@
       "when": 1795190000000,
       "tag": "0106_banniere_toutes_les_pages",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1795195000000,
+      "tag": "0108_affiche_photo_au_menu",
+      "breakpoints": true
     }
   ]
 }
