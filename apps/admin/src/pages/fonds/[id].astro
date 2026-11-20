@@ -118,7 +118,7 @@ const estCourante = (v: VersionFondIa) => v.publicId === courante?.publicId;
 <Admin title={fond ? fond.nom : "Fond"}>
   <div data-fonds class="space-y-5">
     <p class="text-sm">
-      <a href={url("/fonds")} class="text-bo-accent hover:underline">← Créer un fond</a>
+      <a href={url("/fonds")} class="text-bo-accent hover:underline">← Créer des fonds</a>
       {fond && fond.lotFonds.length > 1 && (
         <span class="ml-3 text-bo-muted">
           Photo {rangDe.get(fond.id)} sur {fond.lotFonds.length} du lot :

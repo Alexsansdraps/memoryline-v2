@@ -815,7 +815,7 @@ async function refusDeDepense(
     `Ce lancement (environ ${euros(coutEstimeCents(images, fr.coutParVersionCents))}) ` +
     `dépasserait le plafond des fonds de ce mois : il reste ${euros(resteSousLePlafond(depense, fr.plafondCents))} ` +
     `sur ${euros(fr.plafondCents)}. Demandez moins de photos ou de versions, ou relevez ce plafond ` +
-    "dans Créer un fond › Réglages des fonds. Les affiches des clients ont leur propre plafond : " +
+    "dans Créer des fonds › Réglages des fonds. Les affiches des clients ont leur propre plafond : " +
     "elles ne sont pas touchées."
   );
 }

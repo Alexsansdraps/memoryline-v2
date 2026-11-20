@@ -121,6 +121,8 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
   // « d'exemple », imprimées d'avance pour la vitrine du stand.
   // Ce que dit Margaux d'un décor à faire depuis une photo (20/11).
   "/fonds": [
+    // L'ancien nom de l'écran (« Créer un fond », jusqu'au 20/11 au soir).
+    "créer un fond",
     "générer un fond", "nouveau décor", "fond de ville", "décor depuis une photo",
     "dessiner un décor", "photo de ville", "créer un décor",
   ],

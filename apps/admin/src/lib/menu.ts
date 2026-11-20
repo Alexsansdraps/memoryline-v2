@@ -148,7 +148,9 @@ export const MENU: GroupeNav[] = [
       // Margaux : « Si seulement tu pouvais me faire un programme où j'ai juste
       // à mettre des photos et qu'il me génère des fonds automatiquement ». Juste
       // sous les décors : ce qu'il fabrique y entre.
-      { href: "/fonds", label: "Créer un fond", icon: "🖌️", owner: true },
+      // « Créer des fonds » (20/11 au soir, Alexandra) : on y en fait plusieurs
+      // d'un coup, une photo par fond.
+      { href: "/fonds", label: "Créer des fonds", icon: "🖌️", owner: true },
       {
         href: "/ia",
         label: "Affiches IA",

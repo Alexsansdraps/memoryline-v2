@@ -1,49 +1,99 @@
-# À faire — Memory Line (à jour le 18/11)
+# À faire — Memory Line (à jour le 20/11)
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. Ce soir (20/11) : corriger, puis mettre en ligne — plan de reprise
+## 0. État au 20/11, 22 h 40 : tout `main` est en ligne
 
-Alexandra : « on met ce soir ». Rien ne part avant son « mets en prod ».
+### 0.1 En ligne
+- **Tout `main` jusqu'à `4eaf9d2`**, mis en ligne le 20/11 à 22 h 35, marché fermé.
+  - Migrations 0111 et 0112 passées.
+  - Proxy relancé pour le nouveau `Caddyfile.prod` : `frame-ancestors 'none'` partout, `'self'` sur `/atelier-affiche` (vérifié).
+- **Ce que ça a ajouté** :
+  - `91e47bd` : dans Ventes stand, les boutons « Factures » (ZIP) et « Ces commandes sont des tests ».
+  - `0024f71` : sur les affiches de démo, la peau va au groupe « Peau ».
+  - `1ad2c31` : BO › Atelier › **Créer des fonds** (nommé « Créer un fond » jusqu'au 20/11 au soir), et dans BO › Affiches IA, « Créer une fiche produit » et « Créer une affiche ».
+  - `4eaf9d2` : les corrections de la relecture.
+    - La date d'une vente du stand est celle de sa DERNIÈRE validation. La migration 0112 corrige les ventes déjà faites ; SAL-0006 avait déjà été corrigée à la main.
+    - Factures en ZIP, numéros :
+      - seules les ventes payées reçoivent un numéro ;
+      - la règle est relue sur la commande verrouillée au moment de numéroter ;
+      - les autres ventes sont citées dans `factures-non-faites.txt`.
+    - Factures en ZIP, téléchargement :
+      - une facture en japonais ou en chinois sort en anglais, sans erreur 500 ni mention vide ;
+      - le GET n'est accepté qu'avec `Sec-Fetch-Site: same-origin` (le bouton du BO télécharge par fetch) ;
+      - une vente facturée ne se rouvre plus à la tablette.
+    - Créer des fonds :
+      - les fonds ont leur propre plafond (`ia.fondPlafondMensuelCents` ; vide, il vaut la moitié de celui des affiches) : un lot ne coupe jamais les affiches des clients ;
+      - le coût d'une version est réservé dès son lancement ;
+      - le fil rappelé au modèle se limite à la lignée de la version de départ.
+- **Vérifié** : le site, l'API, les tables des fonds, 0 erreur dans les journaux de l'API.
+- **Pas vérifié au BO**, faute de session dans le navigateur de Claude :
+  - Créer des fonds s'ouvre ;
+  - les deux boutons d'Affiches IA s'affichent ;
+  - « Factures » apparaît dans Ventes stand.
 
-### 0.1 L'état exact
-- **En ligne** : tout `main` jusqu'à `ce37571` (textes des affiches de démo), PLUS le seul correctif de la photo de la tablette (`25f6d74`, mis en ligne à part à 16 h 27 : la version `ce37571` + ce fichier).
-- **Sur `main`, PAS en ligne** :
-  - `91e47bd` — Ventes stand, barre de sélection : plus d'« Étape suivante », « Factures » (ZIP, route `/admin/factures.zip`) à la place de « Bons de livraison », « Ces commandes sont des tests ».
-  - `0024f71` — générateur de démo : la peau tirée va au groupe du nuancier « Peau ».
-  - `1ad2c31` — **BO › Décors › Créer un fond** (migration **0111**, tables `fond_ia`, `fond_ia_message`, colonnes `ai_generation.fond_id`/`fond_message_id`) et **BO › Affiches IA** : « Créer une fiche produit » (affiche personnalisable en brouillon, l'image en décor) et « Créer une affiche » (le module complet dans une fenêtre, page `/atelier-affiche`, PDF sans commande) ; `Caddyfile.prod` change (frame-ancestors).
-- Vérifié avant la relecture : API 450 tests, BO 56, tsc et astro check sans erreur, migration appliquée en local.
+### 0.2 Reste de la relecture (mineurs, non faits)
+- **Décor d'une fiche en brouillon** : une fiche produit en BROUILLON (« Créer une fiche produit ») livre son décor par `GET /backgrounds?productId=…`.
+  - Cette route est publique, et les identifiants se suivent.
+  - Ce décor est l'image IA en pleine définition, sans filigrane.
+  - À faire : écarter les décors des produits en brouillon. Vérifier d'abord que l'aperçu du BO ne passe pas par cette route.
+- **Facture de la fiche** : `/admin/orders/:id/facture.pdf` n'a pas la garde `Sec-Fetch-Site` du ZIP.
+- **Types du BO** : ajouter à `apps/admin/src/lib/api.ts` les champs `plafondFonds` (catalogue des fonds) et `fonds` (stats IA). Ils sont typés dans les pages pour l'instant.
+- **Tests des fonds** : il manque un test sur base de la réservation du coût et de la séparation affiches / fonds.
+- **Clé OpenAI partagée** : les fonds et les affiches des clients passent par la même clé, donc par la même limite de cadence. Lancer les gros lots de fonds hors des heures du marché.
 
-### 0.2 À corriger d'abord (relecture adverse du 20/11, 16 h 30)
-Les 6 « importants » étaient en cours de revérification quand la session s'est arrêtée : les revérifier dans le code, corriger les vrais.
-1. **Factures en ZIP (important)** : `composerLaFacture` (commandes.ts) donne un NUMÉRO DE FACTURE à toute commande demandée — un numéro ne se reprend pas. Écarter dans `/admin/factures.zip` (et refuser dans `composerLaFacture` pour les reprises) : les reprises Shopify (`legacyId` non nul, la garde `GESTES_REFUSES_AUX_REPRISES` d'index.ts ne couvre que `/admin/orders/:id/*`), les ventes annulées ou voided SANS numéro déjà posé (ventes de test comprises), les paniers ; les citer dans `factures-non-faites.txt` par leur NUMÉRO de commande, pas leur identifiant.
-2. **Créer un fond, plafond (important)** : `refusDeDepense` (fonds-ia.ts ~l. 623) ne compte pas les versions en cours (lignes `ai_generation` à `cost_cents` 0) : réserver le coût dès le lancement, le remettre à 0 en cas d'échec ou d'« Interrompue ».
-3. **Créer un fond, plafond partagé (important)** : un lot peut épuiser le plafond mensuel commun et couper les affiches IA des CLIENTS (`/ia/generer` refuse dès que la dépense dépasse) : donner aux fonds leur propre plafond (réglage) ou garder une réserve pour les clients ; le dire dans la confirmation.
-4. **Créer un fond, discussion (important)** : l'historique rappelé au modèle reprend TOUTES les demandes du fond, même celles d'une branche abandonnée (« Revenir à celle-ci ») : le construire depuis la lignée de la version de départ.
-5. **Serveur web (important)** : `mettre-en-ligne.sh` ne relance pas le proxy, donc le nouveau `Caddyfile.prod` ne s'applique pas tout seul (voir 0.3).
-6. Mineurs, si le temps le permet :
-   - `/admin/factures.zip` est un GET qui numérote : refuser `Sec-Fetch-Site` autre que same-origin/none (ou passer en POST) ; côté BO, télécharger par `fetch` avec « Préparation… » au lieu de `location.href` (une erreur affiche du JSON brut) ;
-   - facture d'une cliente ja/zh : 500, nom de fichier non ASCII dans `Content-Disposition` (défaut d'avant) → nom en anglais ;
-   - ia-reutiliser.ts `configDeLAtelier` laisse passer `foregroundUrl` venu de la page → l'écarter ;
-   - une fiche en brouillon rend son décor (l'image IA pleine définition, sans filigrane) public par GET /backgrounds → écarter les décors des fiches en brouillon ;
-   - fonds-ia : « Aucun » décor d'exemple choisi deux fois reprend les exemples d'office ; toute erreur de transaction du lot répond 200 « déjà » ; coût vidé enregistré à 0 ; fichiers écrits avant que l'envoi soit acquis ; jeton réutilisé au retour « Précédent » ;
-   - `/admin/ia/generations` et `/admin/ia/stats` comptent les versions de fonds comme des aperçus de clients → filtrer `fond_id`.
+### 0.3 À décider
+- **SAL-0006** :
+  - Validée à 11 h 32 (29 €), rouverte à 11 h 37, puis jamais revalidée.
+  - La tablette a gardé ce panier et l'a revalidé à 20 h 03 pour un autre client (35 €).
+  - La vente du matin n'existe donc plus dans les comptes.
+  - Proposé : une vente rouverte qui n'est pas revalidée en 15 minutes se referme d'office, payée et terminée, comme avant la réouverture.
+- **Propositions encore ouvertes** :
+  - garder une trace de chaque suppression ;
+  - n'autoriser la suppression d'une vente du stand payée que si elle est annulée ou en test ;
+  - pas de bandeau cookies sur la tablette ;
+  - en-tête compact sous 1280 px.
 
-### 0.3 La mise en ligne (sur « mets en prod » seulement)
-- **La clé SSH** `~/.ssh/memoryline_deploiement` est sur le PC du BUREAU : depuis la maison, sans elle, pas de mise en ligne.
-- Tests d'abord : API (`npx tsc --noEmit -p . ; npx tsx --test tests/*.test.ts` dans le conteneur api), BO (`npx astro check ; node --test "tests/*.test.mjs"`), web (`npx tsc --noEmit -p .`, 3 erreurs anciennes de StandSalon.tsx tolérées).
-- Puis la mise en ligne habituelle (git archive de HEAD + polices AnotherShabby, scp, `mettre-en-ligne.sh`). La migration 0111 passe toute seule (`when` 1795210000000 > 1795200000000, dernière appliquée en prod).
-- **Juste après** : relancer le proxy pour le nouveau `Caddyfile.prod` (`cd ~/memoryline && docker compose -f docker-compose.prod.yml restart proxy`, 2 s de coupure), puis vérifier qu'une page normale porte `frame-ancestors 'none'` et `/atelier-affiche` `frame-ancestors 'self'`.
-- Vérifier ensuite : site, BO, API ; BO › Décors › Créer un fond s'ouvre ; BO › Affiches IA montre les deux boutons ; Ventes stand montre « Factures » et « Ces commandes sont des tests ».
+### 0.4 Prochain chantier : personnages et muret sur les affiches « à partir de votre photo »
+Alexandra, le 20/11 : « faut pouvoir ajouter personnages et murets si les gens veulent pour les images à partir de leurs photos ». Le plan complet est dans `docs/plan-personnages-affiches-photo.md`, avec les fichiers, les tests, les pièges et 11 questions.
 
-### 0.4 Après la mise en ligne
-- **Premier vrai essai de « Créer un fond » avec Margaux** (le faux dessinateur est ignoré en production) : vérifier que le modèle accepte plusieurs images et 1024 × 1536, juger le rendu avec son style « bâtiment / paysage », recaler le coût par image (estimé 0,25 €, `ia.fondCoutParVersionCents`).
-- **Nettoyage des personnages de test en prod, avant un lot de démo** (BO) : coiffure « TEST » de « Femme 2 », second fauteuil de « Femme fauteuil roulant », archiver « Femme test », « emond », « ddd » ; rattacher leur décor aux 6 affiches grisées ; une A4 d'essai en « Taille réelle ».
+**Le principe** :
+- Une fois l'image créée (en portrait), un bloc facultatif propose « Assis sur le muret » (de dos) ou « Debout, de face ».
+- Le module de personnalisation s'ouvre sur la seule étape « Personnages », avec l'image filigranée comme fond.
+- AfficheIA reste maître de la ligne de panier : textes déplacés, format, quantité.
+- L'impression sait déjà poser le muret et les personnages. Ne toucher ni `pdf.ts`, ni `fichiers-impression.ts`, ni `packages/types` (empreinte LANCEMENT).
 
-### 0.5 Restés ouverts aujourd'hui
-- **Chiffres dans le PDF** : « ça met erreur, uniquement au téléchargement du PDF, pas avec toutes les polices ». Non reproduit en local (100 rendus : 10 polices × 5 formes de lignes, aperçu et PDF). Les journaux de l'API de prod se perdent à chaque mise en ligne : refaire le téléchargement qui échoue, PUIS lire les journaux (accord d'Alexandra donné) avec le numéro de la commande.
-- **Ventes du stand disparues** : SAL-0001, 0002, 0003, 0004 et 0007 ont été SUPPRIMÉES définitivement entre 10 h 50 et 15 h 16 (bouton « Supprimer »), sans trace de qui. À voir avec Margaux : si c'étaient de vraies ventes, SAL-0001 (sauvegarde du 19/11), SAL-0002 et 0003 (sauvegarde « avant-restauration » de 10 h) se restaurent ; SAL-0004 et 0007 sont perdues. **SAL-0006** a été rouverte à 11 h 37 sans être revalidée (panier invisible).
-- Proposés, pas encore décidés : garder une trace de chaque suppression ; n'autoriser la suppression d'une vente du stand payée que si elle est annulée ou en test ; repasser d'office en « payée et terminée » une vente rouverte non revalidée après 15 min ; pas de bandeau cookies sur la tablette ; en-tête compact sous 1280 px.
+**À poser à Alexandra avant de coder** (recommandations entre parenthèses) :
+1. Un supplément de prix ? (non)
+2. Quels murets ? (un seul, celui du type « De dos », `muret_officiel.svg`)
+3. « Assis sur le muret » ET « Debout, de face » ? (les deux, le muret en premier)
+
+**Retenu sans question** : portrait seulement, placement automatique, personnages gardés d'une version à l'autre, pas de muret sans personnage.
+
+**Indispensables au serveur** :
+- `ia-composition.ts`, qui contrôle la ligne IA au POST et au PUT du panier ;
+- `apercus.ts`, avec la règle « iaComposee » ;
+- le correctif du rattachement dans `ia.ts`, pour deux lignes qui portent le même `aiPublicId`.
+
+### 0.5 Après la mise en ligne
+- **Premier vrai essai de « Créer des fonds » avec Margaux** (le faux dessinateur est ignoré en production) :
+  - vérifier que le modèle accepte plusieurs images et le format 1024 × 1536 ;
+  - juger le rendu avec son style « bâtiment / paysage » ;
+  - recaler le coût par image (estimé à 0,25 €, `ia.fondCoutParVersionCents`).
+- **Nettoyer les personnages de test en prod, avant un lot de démo** (BO) :
+  - la coiffure « TEST » de « Femme 2 » ;
+  - le second fauteuil de « Femme fauteuil roulant » ;
+  - archiver « Femme test », « emond » et « ddd » ;
+  - rattacher leur décor aux 6 affiches grisées ;
+  - imprimer une A4 d'essai en « Taille réelle ».
+
+### 0.6 Restés ouverts
+- **Chiffres dans le PDF** : « ça met erreur, uniquement au téléchargement du PDF, pas avec toutes les polices ».
+  - Pas reproduit en local : 100 rendus (10 polices × 5 formes de lignes), en aperçu et en PDF.
+  - Les journaux de l'API de prod se perdent à chaque mise en ligne. Il faut refaire le téléchargement qui échoue, PUIS lire les journaux (accord d'Alexandra donné) avec le numéro de la commande.
+- **Ventes du stand disparues** : SAL-0001, 0002, 0003, 0004 et 0007 ont été SUPPRIMÉES définitivement entre 10 h 50 et 15 h 16, sans trace de qui.
+  - SAL-0001 était la vente d'essai, supprimée à la demande d'Alexandra.
+  - Pour les autres, à voir avec Margaux. Si c'étaient de vraies ventes : SAL-0002 et 0003 se restaurent (sauvegarde « avant-restauration » de 10 h) ; SAL-0004 et 0007 sont perdues.
 
 ## 1. Où on en est
 
@@ -171,7 +221,7 @@ Les 6 « importants » étaient en cours de revérification quand la session s'e
 
 ## 3. Pour Alexandra
 
-- **Créer un fond (BO › Atelier, 20/11), premier vrai essai avec Margaux** : pas encore en ligne (migration `0111_fonds_ia`, mise en ligne sur le feu vert d'Alexandra). Testé en local seulement avec le faux dessinateur (réglage `ia.fondBouchon` = 1, ignoré en production) : aucun vrai appel à OpenAI n'a encore été fait. Au premier essai : vérifier que la clé OpenAI de la prod accepte plusieurs images en entrée (photo + 2 décors d'exemple, ou version + photo en discussion) et la taille 1024 × 1536, juger le rendu avec le style « bâtiment / paysage » et, au besoin, retoucher la consigne propre aux fonds (écran, « Réglages des fonds »), puis caler le coût estimé par image (0,25 € par défaut) sur la facture OpenAI.
+- **Créer des fonds (BO › Atelier, 20/11), premier vrai essai avec Margaux** : en ligne depuis le 20/11 à 22 h 35 (migration `0111_fonds_ia`). Testé en local seulement avec le faux dessinateur (réglage `ia.fondBouchon` = 1, ignoré en production) : aucun vrai appel à OpenAI n'a encore été fait. Au premier essai : vérifier que la clé OpenAI de la prod accepte plusieurs images en entrée (photo + 2 décors d'exemple, ou version + photo en discussion) et la taille 1024 × 1536, juger le rendu avec le style « bâtiment / paysage » et, au besoin, retoucher la consigne propre aux fonds (écran, « Réglages des fonds »), puis caler le coût estimé par image (0,25 € par défaut) sur la facture OpenAI.
 - **Affiches de démonstration (20/11), avant de tirer le lot du marché** : l'outil n'est pas encore en ligne (migration `0110_affiches_demo`, mise en ligne sur le feu vert d'Alexandra). Puis, dans le BO de la prod (constats faits sur les données locales, la prod peut différer) :
   - **Personnages** : la coiffure position 503 « TEST », calée pour Femme 6 seulement, est aussi liée à Femme 2 (dos), sans calage : la retirer de Femme 2 ou lui donner un calage « hair:503 », puis renommer la pièce. « Femme fauteuil roulant » a l'accessoire 17 « Wheel Chair 1 », un second fauteuil par-dessus le sien : le lui retirer. Archiver les personnages d'essai : les trois « Femme test », « emond » et « ddd » (deux captures d'écran PNG que l'impression ne sait pas dessiner). Le tirage les écarte déjà (nom contenant « test » ou « essai », dessin qui n'est pas un SVG, tenue du BO gardée pour un « Fauteuil roulant »), mais le site les propose encore aux clients.
   - **Décors** : une affiche sans décor rattaché, dont plusieurs décors de sa ville sont à égalité en tête de liste, reste grisée dans l'outil. En local : COMPIÈGNE Beaux-monts, Beaux-monts sunset et Hotel de ville, CÔTE D'OPALE Plage #2, MONTAGNE Neige, PARIS Tour Eiffel sunset #1. Rattacher son décor sur sa fiche : aujourd'hui, le site leur présélectionne le décor d'une autre affiche de la ville.

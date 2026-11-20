@@ -655,8 +655,8 @@ test("« paiements », « clés stripe », « passer en réel » mènent à l'é
   for (const q of ["paypal", "stripe"]) assert.equal(premier(q)?.id, "ecran:/finances", q);
 });
 
-test("« créer un fond », « fond de ville »… mènent à Créer un fond (20/11), « décors » reste aux Décors", () => {
-  for (const q of ["créer un fond", "creer un fond", "fond de ville", "générer un fond", "nouveau décor"])
+test("« créer des fonds », « créer un fond », « fond de ville »… mènent à Créer des fonds (20/11), « décors » reste aux Décors", () => {
+  for (const q of ["créer des fonds", "créer un fond", "creer un fond", "fond de ville", "générer un fond", "nouveau décor"])
     assert.equal(premier(q)?.id, "ecran:/fonds", q);
   assert.equal(premier("decors")?.id, "ecran:/decors");
   assert.ok(ids(chercher("créer un fond").aide).includes("aide:creer-un-fond"));
