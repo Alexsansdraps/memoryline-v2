@@ -757,6 +757,13 @@
       "when": 1795195000000,
       "tag": "0108_affiche_photo_au_menu",
       "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1795197000000,
+      "tag": "0109_photo_dans_le_menu_deroulant",
+      "breakpoints": true
     }
   ]
 }
