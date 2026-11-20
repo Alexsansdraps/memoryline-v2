@@ -45,7 +45,20 @@ import { renderPosterPng } from "./pdf.js";
  * raison d'être — montrer ce qui part à l'atelier. On lit donc la même.
  */
 import { donneesDImpression, enFile } from "./fichiers-impression.js";
-import type { PosterConfig } from "@memoryline/types";
+import { lignesRemplies, type PosterConfig, type TextesAffiche } from "@memoryline/types";
+
+/**
+ * Une affiche IA qui porte du texte : son aperçu ne peut pas être l'image du
+ * modèle telle quelle (20/11, Alexandra : « le texte ne s'affiche pas sur ma
+ * photo personnalisée ») — le texte se pose par-dessus, au fichier
+ * d'impression comme sur le site.
+ */
+function iaAvecTexte(config: unknown): boolean {
+  const c = config as Partial<PosterConfig> | null;
+  return (
+    !!c?.aiPublicId && lignesRemplies(c.texts as TextesAffiche | undefined).length > 0
+  );
+}
 
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
 /** Les vignettes déjà calculées. Un rendu complet coûte plusieurs secondes. */
@@ -130,10 +143,11 @@ function jetonValide(orderItemId: number, fourni: string): boolean {
  * image, une autre adresse.
  */
 export function versionApercu(config: unknown): string {
-  return createHash("sha1")
-    .update(JSON.stringify(config ?? null))
-    .digest("base64url")
-    .slice(0, 10);
+  const h = createHash("sha1").update(JSON.stringify(config ?? null));
+  // Les vignettes d'affiches IA avec texte rangées avant le 20/11 n'avaient
+  // pas leur texte : elles changent d'adresse, donc se refont.
+  if (iaAvecTexte(config)) h.update("ia-avec-texte");
+  return h.digest("base64url").slice(0, 10);
 }
 
 /**
@@ -304,19 +318,26 @@ async function fabriquerApercu(
     }
   }
 
-  const config = (ligne.config ?? null) as PosterConfig | null;
+  let config = (ligne.config ?? null) as PosterConfig | null;
 
   /*
    * Affiche générée : son visuel n'est PAS une pile de calques, c'est l'image
-   * produite par le modèle. L'aperçu filigrané existe déjà sur le disque — le
-   * refabriquer coûterait un rendu complet pour un résultat identique.
+   * produite par le modèle. Sans texte, l'aperçu filigrané existe déjà sur le
+   * disque — le refabriquer coûterait un rendu complet pour un résultat
+   * identique. AVEC du texte (20/11), l'image du modèle devient le fond et
+   * les lignes se composent par-dessus, comme au fichier d'impression
+   * (configAImprimer, fichiers-impression.ts) : on regarde ce qui part à
+   * l'atelier. Le fond reste l'aperçu FILIGRANÉ, pas la pleine définition :
+   * la vignette d'un panier pas encore payé ne doit pas livrer l'affiche.
    */
   if (config?.aiPublicId) {
     const [gen] = await db
       .select({ previewPath: schema.aiGenerations.previewPath })
       .from(schema.aiGenerations)
       .where(eq(schema.aiGenerations.publicId, config.aiPublicId));
-    if (gen?.previewPath) {
+    if (gen?.previewPath && iaAvecTexte(config)) {
+      config = { ...config, backgroundUrl: gen.previewPath };
+    } else if (gen?.previewPath) {
       try {
         const brut = await readFile(resolve(ASSETS_DIR, gen.previewPath.replace(/^\/+/, "")));
         const vignette = await sharp(brut)
