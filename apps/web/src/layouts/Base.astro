@@ -187,10 +187,27 @@ if (reponseMenu?.entrees.length) entreesMenu = reponseMenu.entrees;
 const pageDuStand = Astro.locals.pageDuStand;
 if (pageDuStand) {
   const adresseDuStand = `/pages/${pageDuStand.slug}`;
-  entreesMenu = [
-    { id: 0, label: pageDuStand.titre, href: adresseDuStand, enfants: [] },
-    ...entreesMenu.filter((e) => e.href !== adresseDuStand),
-  ];
+  const lienDuStand = { id: 0, label: pageDuStand.titre, href: adresseDuStand };
+  const sansLui = entreesMenu.filter((e) => e.href !== adresseDuStand);
+  /*
+   * En tête du menu DÉROULANT « Affiches personnalisables », et non plus du
+   * premier niveau (20/11, Alexandra : « à la rigueur met affiche
+   * personnalisée alsace dans le sous menu ») : sur la tablette, cette
+   * entrée de plus faisait déborder la rangée, et la recherche sortait de
+   * l'écran. Sans menu déroulant où la ranger, elle reprend la tête.
+   */
+  const hote =
+    sansLui.findIndex((e) => e.href === "/affiches?genre=personnalisable" && e.enfants.length > 0) >= 0
+      ? sansLui.findIndex((e) => e.href === "/affiches?genre=personnalisable" && e.enfants.length > 0)
+      : sansLui.findIndex((e) => e.enfants.length > 0);
+  entreesMenu =
+    hote >= 0
+      ? sansLui.map((e, i) =>
+          i === hote
+            ? { ...e, enfants: [lienDuStand, ...e.enfants.filter((x) => x.href !== adresseDuStand)] }
+            : e,
+        )
+      : [{ ...lienDuStand, enfants: [] }, ...sansLui];
 }
 
 /**
@@ -816,7 +833,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         1024 px au lieu de 1290.
       */}
       <div
-        class="flex w-full items-center gap-4 px-4 py-4 max-[359px]:gap-3 sm:gap-6 sm:px-6 lg:px-10"
+        class="flex w-full items-center gap-4 px-4 py-4 max-[359px]:gap-3 sm:gap-6 sm:px-4 xl:px-10"
       >
         {/* Le logo et le menu, à leur largeur naturelle. `shrink-0` est ce
             qui empêche les libellés de se couper : sans lui, le navigateur
