@@ -225,6 +225,14 @@ function brancher({ champ, panneau, basculer }: Branchement): void {
 }
 
 export function brancherRechercheInstantanee(): void {
+  // La TABLETTE DU STAND n'a pas de suggestions pendant la frappe (20/11,
+  // Margaux, par Alexandra : « elle veut la page de recherche et pas que les
+  // suggestions s'affichent en tapant ») : le clavier de la tablette
+  // recouvrait le panneau. Le champ reste un vrai formulaire — Entrée, ou sa
+  // loupe, mène à la page de recherche — et la loupe des petits écrans y
+  // mène tout droit, sans l'écran plein.
+  if (document.documentElement.dataset.stand === "1") return;
+
   // Grands écrans : le champ de l'en-tête, le panneau dessous.
   const champ = document.getElementById("ml-q") as HTMLInputElement | null;
   const panneau = document.getElementById("ml-q-panneau");
