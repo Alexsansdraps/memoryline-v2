@@ -510,7 +510,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    *
    * Gardées aussi dans la mémoire de l'onglet (sessionStorage) : un
    * rechargement par erreur sur la tablette ne doit pas les faire perdre.
-   * La clé porte le PANIER : au stand, « Client suivant » repart d'un panier
+   * La clé porte le PANIER : au stand, « Terminé » repart d'un panier
    * neuf, et le client suivant ne voit donc rien de celles du précédent.
    * Chacune garde la photo dont elle vient, pour pouvoir la relancer.
    */

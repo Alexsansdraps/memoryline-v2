@@ -416,8 +416,10 @@ export const ui = {
     "stand.erreur": "La commande n'a pas pu être enregistrée. Réessayez.",
     "stand.merci":
       "Votre commande est validée, vous pouvez maintenant vous adresser au vendeur",
+    "stand.revenir": "Revenir à ma commande",
+    "stand.revenir_erreur": "La commande n'a pas pu être rouverte. Adressez-vous au vendeur.",
     "stand.numero": "Numéro de commande",
-    "stand.suivant": "Client suivant",
+    "stand.suivant": "Terminé",
 
     "cookies.texte":
       "Ce site garde dans votre navigateur ce qu'il faut pour votre panier et vos préférences. Avec votre accord, il mesure aussi son audience et l'efficacité de ses publicités.",
@@ -1216,8 +1218,10 @@ export const ui = {
     "stand.envoi": "Saving…",
     "stand.erreur": "The order could not be saved. Please try again.",
     "stand.merci": "Your order is confirmed, you can now go to the seller",
+    "stand.revenir": "Back to my order",
+    "stand.revenir_erreur": "The order could not be reopened. Please ask the seller.",
     "stand.numero": "Order number",
-    "stand.suivant": "Next customer",
+    "stand.suivant": "Done",
 
     "cookies.texte":
       "This site keeps what your basket and preferences need in your browser. With your consent, it also measures its audience and the effectiveness of its ads.",
@@ -1993,8 +1997,10 @@ export const ui = {
     "stand.erreur":
       "Die Bestellung konnte nicht gespeichert werden. Bitte erneut versuchen.",
     "stand.merci": "Ihre Bestellung ist bestätigt, Sie können sich jetzt an den Verkäufer wenden",
+    "stand.revenir": "Zurück zu meiner Bestellung",
+    "stand.revenir_erreur": "Die Bestellung konnte nicht wieder geöffnet werden. Bitte wenden Sie sich an den Verkäufer.",
     "stand.numero": "Bestellnummer",
-    "stand.suivant": "Nächster Kunde",
+    "stand.suivant": "Fertig",
 
     "cookies.texte":
       "Diese Website speichert in Ihrem Browser, was Warenkorb und Einstellungen brauchen. Mit Ihrer Zustimmung misst sie außerdem ihre Reichweite und die Wirkung ihrer Werbung.",
@@ -2772,8 +2778,10 @@ export const ui = {
     "stand.envoi": "Salvataggio…",
     "stand.erreur": "Non è stato possibile salvare l'ordine. Riprova.",
     "stand.merci": "Il tuo ordine è confermato, ora puoi rivolgerti al venditore",
+    "stand.revenir": "Torna al mio ordine",
+    "stand.revenir_erreur": "Non è stato possibile riaprire l'ordine. Rivolgiti al venditore.",
     "stand.numero": "Numero d'ordine",
-    "stand.suivant": "Cliente successivo",
+    "stand.suivant": "Fatto",
 
     "cookies.texte":
       "Questo sito conserva nel tuo browser ciò che serve al carrello e alle preferenze. Con il tuo consenso, misura anche il traffico e l'efficacia delle sue pubblicità.",
@@ -3546,8 +3554,10 @@ export const ui = {
     "stand.envoi": "Guardando…",
     "stand.erreur": "No se ha podido registrar el pedido. Vuelve a intentarlo.",
     "stand.merci": "Tu pedido está validado, ahora puedes dirigirte al vendedor",
+    "stand.revenir": "Volver a mi pedido",
+    "stand.revenir_erreur": "No se ha podido reabrir el pedido. Dirígete al vendedor.",
     "stand.numero": "Número de pedido",
-    "stand.suivant": "Siguiente cliente",
+    "stand.suivant": "Listo",
 
     "cookies.texte":
       "Este sitio guarda en tu navegador lo que necesitan la cesta y tus preferencias. Con tu consentimiento, también mide su audiencia y la eficacia de sus anuncios.",
@@ -4267,8 +4277,10 @@ export const ui = {
     "stand.envoi": "保存中…",
     "stand.erreur": "ご注文を保存できませんでした。もう一度お試しください。",
     "stand.merci": "ご注文が確定しました。販売スタッフにお声がけください",
+    "stand.revenir": "注文に戻る",
+    "stand.revenir_erreur": "ご注文を再び開けませんでした。販売スタッフにお声がけください。",
     "stand.numero": "注文番号",
-    "stand.suivant": "次のお客様",
+    "stand.suivant": "完了",
     "cookies.texte": "このサイトは、カートや設定に必要な情報をお使いのブラウザに保存します。ご同意いただいた場合は、アクセス状況や広告の効果も測定します。",
     "cookies.politique": "Cookieポリシーを見る",
     "cookies.accepter": "同意する",
@@ -4912,8 +4924,10 @@ export const ui = {
     "stand.envoi": "正在保存…",
     "stand.erreur": "订单未能保存。请重试。",
     "stand.merci": "您的订单已确认，现在可以前往销售人员处。",
+    "stand.revenir": "返回我的订单",
+    "stand.revenir_erreur": "订单无法重新打开。请联系销售人员。",
     "stand.numero": "订单号",
-    "stand.suivant": "下一位顾客",
+    "stand.suivant": "完成",
     "cookies.texte": "本网站会在您的浏览器中保存购物车和偏好设置所需的信息。经您同意，我们还会统计访问量并衡量广告效果。",
     "cookies.politique": "查看我们的 Cookie 政策",
     "cookies.accepter": "接受",

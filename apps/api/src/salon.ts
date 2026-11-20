@@ -24,7 +24,7 @@
  */
 import type { Hono } from "hono";
 import type { Context } from "hono";
-import { and, asc, count, eq, inArray, isNull, ne, notInArray, sql as raw } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, like, ne, notInArray, sql as raw } from "drizzle-orm";
 import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { randomInt } from "node:crypto";
 import { db, schema } from "./db/client.js";
@@ -133,13 +133,146 @@ export function mountSalonRoutes(app: Hono): void {
    * Le total est calculé et gardé en base — la boutique doit savoir ce qu'elle
    * a vendu, même si l'écran ne l'a jamais montré au client. Ce qui change,
    * c'est uniquement ce qu'on AFFICHE.
-   *
-   * La vente validée est DÉFINITIVE (20/11, Alexandra : « une fois validé
-   * c'est finito ») : la route qui la rouvrait depuis la tablette pour la
-   * corriger (« Revenir à ma commande ») n'existe plus. Rouverte et jamais
-   * revalidée, une vente redevenait un panier, invisible au back-office
-   * (SAL-0003, migration 0105). Une erreur se corrige au back-office.
    */
+  /**
+   * ROUVRIR une vente tout juste validée, pour la corriger.
+   *
+   * Retour de la boutique : un client voit son erreur APRÈS avoir validé, et
+   * la tablette, repartie sur un panier neuf, ne permettait plus d'y revenir.
+   * La vente redevient un panier : son encaissement au grand livre passe en
+   * « annule » (il sort des finances, qui ne comptent que les écritures
+   * réussies), elle garde son numéro — la revalidation le reprend, sans trou
+   * ni doublon —, et le journal de la commande raconte ce qui s'est passé.
+   *
+   * Garde-fous : seule la tablette qui l'a validée (même panier), au même
+   * stand, dans les deux heures, et tant qu'elle n'a pas été remboursée.
+   * Au-delà, c'est une correction de back-office, pas de stand. Depuis le
+   * 19/11, la vente naît remise (« Terminée ») : cette remise s'annule avec
+   * elle, et la revalidation en écrit une nouvelle.
+   */
+  app.post("/salon/commandes/rouvrir", async (c) => {
+    const stand = await standDuCode(codeFourni(c));
+    if (!stand) return c.json({ error: "Code du stand incorrect." }, 403);
+    // Stand fermé : la revalidation serait refusée (« Le stand est fermé »),
+    // et la vente, payée, resterait un panier invisible.
+    if (!stand.ouvert)
+      return c.json({ error: "Le stand est fermé : corrigez la vente au back-office." }, 409);
+    const body = await c.req.json().catch(() => ({}) as Record<string, unknown>);
+    const cartId = String(body.cartId ?? "");
+    const numero = String(body.numero ?? "");
+    if (!cartId || !numero) return c.json({ error: "Commande introuvable." }, 404);
+
+    const resultat = await db.transaction(async (tx) => {
+      const [commande] = await tx
+        .select()
+        .from(schema.orders)
+        .where(
+          and(
+            eq(schema.orders.clientOrderId, cartId),
+            eq(schema.orders.number, numero),
+            eq(schema.orders.standId, stand.id),
+          ),
+        )
+        .for("no key update");
+      if (!commande) return { erreur: "Commande introuvable.", statut: 404 as const };
+      if (commande.status === "draft") return { ok: true as const };
+      // « paid » : une vente du stand, encaissée à la validation (avant le
+      // 17/11, et de nouveau depuis le 19/11). « pending » : une vente du
+      // 17 au 19/11, restée « à encaisser ».
+      if ((commande.status !== "pending" && commande.status !== "paid") || commande.cancelledAt)
+        return { erreur: "Cette commande ne peut plus être modifiée ici.", statut: 409 as const };
+
+      const ecritures = await tx
+        .select()
+        .from(schema.orderTransactions)
+        .where(
+          and(
+            eq(schema.orderTransactions.orderId, commande.id),
+            eq(schema.orderTransactions.status, "success"),
+          ),
+        );
+      if (ecritures.some((e) => e.kind === "refund"))
+        return { erreur: "Cette commande a été remboursée : corrigez-la au back-office.", statut: 409 as const };
+      // Déjà encaissée au BO par Margaux (17/11) : la tablette ne défait pas
+      // un encaissement qu'elle n'a pas écrit.
+      if (ecritures.some((e) => e.kind === "sale" && e.gateway !== "stand"))
+        return { erreur: "Cette vente a déjà été encaissée : corrigez-la au back-office.", statut: 409 as const };
+      const vente = ecritures.find((e) => e.kind === "sale" && e.gateway === "stand");
+      // Validée quand ? L'encaissement d'une vente d'avant le 17/11, sinon la
+      // ligne « Commande prise au stand » de son journal.
+      let valideeLe = vente?.createdAt ?? null;
+      if (!valideeLe) {
+        const [prise] = await tx
+          .select({ le: schema.orderEvents.createdAt })
+          .from(schema.orderEvents)
+          .where(
+            and(
+              eq(schema.orderEvents.orderId, commande.id),
+              like(schema.orderEvents.message, "Commande prise au stand%"),
+            ),
+          )
+          .orderBy(desc(schema.orderEvents.createdAt))
+          .limit(1);
+        valideeLe = prise?.le ?? null;
+      }
+      // Un quart d'heure (19/11) : la vente naît payée et remise, son affiche
+      // part vite à l'impression. Au-delà, un autre client tient sans doute
+      // la tablette : la correction se fait au back-office.
+      if (valideeLe && Date.now() - valideeLe.getTime() > 15 * 60_000)
+        return { erreur: "Validée il y a plus d'un quart d'heure : corrigez-la au back-office.", statut: 409 as const };
+
+      await tx
+        .update(schema.orderTransactions)
+        .set({ status: "annule" })
+        .where(
+          and(
+            eq(schema.orderTransactions.orderId, commande.id),
+            eq(schema.orderTransactions.kind, "sale"),
+            eq(schema.orderTransactions.gateway, "stand"),
+            eq(schema.orderTransactions.status, "success"),
+          ),
+        );
+      // La remise faite à la validation (19/11) tombe avec elle.
+      await tx
+        .update(schema.fulfillments)
+        .set({ status: "cancelled", cancelledAt: new Date() })
+        .where(
+          and(
+            eq(schema.fulfillments.orderId, commande.id),
+            eq(schema.fulfillments.status, "success"),
+          ),
+        );
+      await tx
+        .update(schema.orders)
+        .set({ status: "draft", lastActivityAt: new Date(), fulfilledAt: null })
+        .where(eq(schema.orders.id, commande.id));
+      // Les noms des fichiers d'impression tombent avec la vente : le client
+      // revient justement pour corriger, et un nom déjà retenu ne change plus
+      // (enregistrerFichiersDImpression). Passée en A3 avec un cadre noir, la
+      // vente revalidée s'imprimait encore sous « martin_A4_pas-cadre.pdf » :
+      // mauvais papier, cadre oublié. La revalidation les renomme.
+      await tx.delete(schema.printFiles).where(
+        inArray(
+          schema.printFiles.orderItemId,
+          tx
+            .select({ id: schema.orderItems.id })
+            .from(schema.orderItems)
+            .where(eq(schema.orderItems.orderId, commande.id)),
+        ),
+      );
+      await tx.insert(schema.orderEvents).values({
+        orderId: commande.id,
+        kind: "event",
+        message: vente
+          ? "Commande rouverte au stand pour être corrigée (encaissement annulé)."
+          : "Commande rouverte au stand pour être corrigée.",
+      });
+      return { ok: true as const };
+    });
+    if ("erreur" in resultat) return c.json({ error: resultat.erreur }, resultat.statut);
+    return c.json({ ok: true });
+  });
+
   app.post("/salon/commandes", async (c) => {
     const stand = await standDuCode(codeFourni(c));
     if (!stand) return c.json({ error: "Code du stand incorrect." }, 403);

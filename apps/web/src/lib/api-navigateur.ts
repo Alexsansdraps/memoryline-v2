@@ -98,6 +98,11 @@ export function oublierCartId(): void {
   localStorage.removeItem(CART_ID_KEY);
 }
 
+/** Rend à la tablette le panier d'une vente rouverte (voir ConfirmationStand). */
+export function reprendreCartId(id: string): void {
+  localStorage.setItem(CART_ID_KEY, id);
+}
+
 /**
  * Repart d'un panier VIDE, sans toucher au panier précédent.
  *
