@@ -743,6 +743,13 @@
       "when": 1795185000000,
       "tag": "0105_ventes_du_stand_retrouvees",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1795190000000,
+      "tag": "0106_banniere_toutes_les_pages",
+      "breakpoints": true
     }
   ]
 }
