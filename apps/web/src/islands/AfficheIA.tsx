@@ -328,8 +328,21 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   onMount(() => void lireStyles(props.langue).then(setStyles));
   /** La boutique propose des styles : il faut en choisir un. */
   const choixDuStyle = () => styles().length > 0;
-  /** Un style reste à choisir avant d'envoyer la photo ou de créer. */
+  /** Un style reste à choisir avant de créer l'affiche. */
   const styleManquant = () => choixDuStyle() && styleChoisi() === null;
+  /*
+   * Le rappel du style (20/11, une vente manquée au stand : la photo
+   * restait grisée tant qu'aucun genre n'était choisi, et l'on touchait le
+   * bouton sans que rien ne se passe). La photo — sur la tablette ou par le
+   * téléphone — se choisit désormais à tout moment ; seul « Créer » attend le
+   * style, et un appui sans lui AMÈNE au choix et le dit en rouge.
+   */
+  const [rappelStyle, setRappelStyle] = createSignal(false);
+  let blocStyle: HTMLDivElement | undefined;
+  const rappelerLeStyle = () => {
+    setRappelStyle(true);
+    blocStyle?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
 
   /**
    * Les trois lignes de texte, « comme sur les autres affiches » : mêmes
@@ -663,9 +676,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
      * parfaitement acceptable. Le format, lui, se vérifie toujours — un PDF
      * n'est pas une photo, et aucune réduction n'y changera rien.
      */
-    // Le style d'abord : la zone de dépôt est déjà éteinte tant qu'il manque,
-    // ceci ne couvre qu'un fichier lâché dessus malgré tout.
-    if (styleManquant()) return;
+    // La photo n'attend plus le style (20/11) : elle s'envoie, et c'est
+    // « Créer » qui le demande.
     const refus = verifierFormatPhoto(fichier);
     if (refus) {
       setEchec(refus);
@@ -1144,12 +1156,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               Une carte par style — sa première image, son nom —, assez
               grande pour le doigt sur la tablette du stand. */}
           <Show when={choixDuStyle()}>
-            <div class="mt-5">
+            <div class="mt-5 scroll-mt-4" ref={blocStyle}>
               <p class="flex items-center gap-2 font-medium">
                 <Numero n={1} />
                 {tr("ia.style_titre")}
               </p>
               <p class="mt-1 text-sm text-ink-soft">{tr("ia.style_aide")}</p>
+              <Show when={rappelStyle() && styleManquant()}>
+                <p role="alert" class="mt-2 bg-terracotta/10 px-3 py-2 text-sm font-medium text-terracotta-deep">
+                  {tr("ia.style_manquant")}
+                </p>
+              </Show>
               <div class="mt-3 grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3">
                 <For each={styles()}>
                   {(st) => {
@@ -1163,7 +1180,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                         // Toucher le style déjà choisi le GARDE : il est
                         // obligatoire, et un second appui involontaire sur
                         // la tablette ne doit pas éteindre la suite.
-                        onClick={() => setStyleChoisi(st.id)}
+                        onClick={() => {
+                          setStyleChoisi(st.id);
+                          setRappelStyle(false);
+                        }}
                         // Le choix fait se dessine par `ml-choix` (global.css),
                         // comme tous les choix du site : cadre et coche
                         // rouges. Rien n'est rogné : la coche déborde du coin
@@ -1205,17 +1225,15 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               style reste à choisir, et elle dit pourquoi. */}
           <label
             class={`${choixDuStyle() ? "mt-3" : "mt-5"} flex flex-col items-center justify-center gap-1 border-2 border-dashed p-6 text-center transition-colors ${
-              styleManquant()
-                ? "cursor-not-allowed border-ink/15 opacity-60"
-                : survol()
-                  ? "cursor-pointer border-terracotta bg-terracotta/5"
-                  : "cursor-pointer border-ink/25 hover:border-ink/50"
+              survol()
+                ? "cursor-pointer border-terracotta bg-terracotta/5"
+                : "cursor-pointer border-ink/25 hover:border-ink/50"
             } ${occupe() ? "pointer-events-none opacity-60" : ""}`}
             onDragOver={(e) => {
               // Toujours retenu, même éteinte : une photo lâchée à côté du
               // but ne doit pas remplacer la boutique par l'image seule.
               e.preventDefault();
-              if (!styleManquant()) setSurvol(true);
+              setSurvol(true);
             }}
             onDragLeave={() => setSurvol(false)}
             onDrop={(e) => {
@@ -1230,7 +1248,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               type="file"
               accept={TYPES_PHOTO.join(",")}
               class="sr-only"
-              disabled={occupe() || styleManquant()}
+              disabled={occupe()}
               onChange={(e) => {
                 const f = e.currentTarget.files?.[0];
                 // Remise à zéro : rechoisir LE MÊME fichier doit relancer.
@@ -1239,11 +1257,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               }}
             />
             <span class="text-sm font-medium">
-              {styleManquant()
-                ? tr("ia.style_manquant")
-                : nomPhoto()
-                  ? tr("ia.changer_photo")
-                  : tr("ia.depot")}
+              {nomPhoto() ? tr("ia.changer_photo") : tr("ia.depot")}
             </span>
             {/* Aucune limite de poids à annoncer : la photo est réduite
                 dans le navigateur avant de partir. « 10 Mo maximum » faisait
@@ -1262,7 +1276,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           <Show when={props.stand}>
             <RelaisPhoto
               langue={props.langue}
-              disponible={!styleManquant()}
+              disponible={true}
               occupe={occupe()}
               interrompre={etape() === "generation"}
               onPhoto={(f) => void choisirPhoto(f)}
@@ -1347,7 +1361,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 fallback={
                   <button
                     type="button"
-                    disabled={occupe() || styleManquant()}
+                    disabled={occupe()}
                     onClick={() => champFichier?.click()}
                     class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
                   >
@@ -1358,8 +1372,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 <button
                   ref={boutonCreer}
                   type="button"
-                  disabled={occupe() || styleManquant()}
-                  onClick={() => void lancerGeneration()}
+                  disabled={occupe()}
+                  onClick={() => (styleManquant() ? rappelerLeStyle() : void lancerGeneration())}
                   class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
                 >
                   {tr("ia.generer")}
@@ -1491,8 +1505,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             <div class="mt-6 flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                disabled={occupe() || styleManquant()}
-                onClick={() => void lancerGeneration()}
+                disabled={occupe()}
+                onClick={() => (styleManquant() ? rappelerLeStyle() : void lancerGeneration())}
                 class="rounded-full border border-ink px-6 py-3 text-sm font-medium hover:bg-ink hover:text-paper transition-colors disabled:opacity-60"
               >
                 {tr("ia.regenerer")}
