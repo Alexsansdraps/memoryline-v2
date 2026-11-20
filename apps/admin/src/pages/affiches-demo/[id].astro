@@ -1,0 +1,433 @@
+---
+/**
+ * Un lot d'affiches de démonstration (BO › Atelier › Affiches de
+ * démonstration) : où en est sa fabrication, et ses PDF.
+ *
+ * Chaque carte dit ce qui a été tiré — la scène, les personnages, le décor —
+ * dès la création du lot, AVANT que le PDF existe : une affiche qui ne plaît
+ * pas se refait au hasard sans attendre son rendu, qui peut prendre deux
+ * minutes. L'état de chaque affiche se tient à jour tout seul
+ * (lib/affiches-demo-bo.ts). Les gestes (arrêter, reprendre, refaire,
+ * retirer, supprimer) passent par le serveur du back-office puis reviennent
+ * ici (303) : recharger la page ne les refait pas.
+ */
+import Admin from "../../layouts/Admin.astro";
+import ApercuFlottant from "../../components/ApercuFlottant.astro";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
+import {
+  adminApi,
+  LIBELLES_SCENES_DEMO,
+  type EtatDemo,
+  type LotAffichesDemo,
+  type SceneChoisie,
+} from "../../lib/api.ts";
+import {
+  compter,
+  confirmationSuppression,
+  infobulleEtat,
+  libelleZip,
+  phraseAvancement,
+  phraseDetail,
+  pluriel,
+  reprendrePossible,
+  resteAFaire,
+  texteEtat,
+  texteSansVignette,
+} from "../../lib/affiches-demo-textes.ts";
+import { apiUrl, url } from "../../lib/url.ts";
+
+const api = adminApi(Astro.request);
+const idLot = Number(Astro.params.id);
+const idValide = Number.isInteger(idLot) && idLot > 0;
+
+/**
+ * L'API refuse en français et dit pourquoi. Un code technique (« API GET …
+ * -> 500 ») n'apprend rien à personne : on le tait, l'appelant met sa propre
+ * phrase à la place.
+ */
+function raisonLisible(souci: unknown): string {
+  const brut = (souci instanceof Error ? souci.message : String(souci))
+    .replace(/^Error:\s*/, "")
+    .trim();
+  return brut.startsWith("API ") ? "" : brut;
+}
+
+/** Le nom court d'une scène ; une clé inconnue (une scène ajoutée depuis) se montre telle quelle. */
+const sceneDe = (cle: string) => LIBELLES_SCENES_DEMO[cle as SceneChoisie] ?? cle;
+
+let flash: string | null = null;
+let flashAlerte = false;
+
+if (Astro.request.method === "POST" && idValide) {
+  const champs = await Astro.request.formData();
+  const action = String(champs.get("_action") ?? "");
+  const numero = Number(champs.get("affiche"));
+  // Sans identifiant, le formulaire ne désigne aucune affiche : mieux vaut
+  // ne rien faire que d'agir sur la voisine.
+  const affiche = Number.isInteger(numero) && numero > 0 ? numero : 0;
+  /** Où revenir une fois le geste fait. */
+  let suite: string | null = null;
+  try {
+    if (action === "arreter") {
+      await api.arreterLotAffichesDemo(idLot);
+      suite = `/affiches-demo/${idLot}?fait=arrete`;
+    } else if (action === "reprendre") {
+      await api.reprendreLotAffichesDemo(idLot);
+      suite = `/affiches-demo/${idLot}?fait=repris`;
+    } else if (action === "supprimer") {
+      await api.supprimerLotAffichesDemo(idLot);
+      suite = "/affiches-demo?supprime=1";
+    } else if (!affiche) {
+      throw new Error("Cette affiche n'a pas pu être retrouvée. Rechargez la page.");
+    } else if (action === "refaire") {
+      await api.nouveauTirageAfficheDemo(affiche);
+      suite = `/affiches-demo/${idLot}?fait=refait#affiche-${affiche}`;
+    } else if (action === "retirer") {
+      await api.retirerAfficheDemo(affiche);
+      suite = `/affiches-demo/${idLot}?fait=retire`;
+    } else throw new Error("Cette action n'existe pas. Rechargez la page.");
+  } catch (souci) {
+    flash = raisonLisible(souci) || "L'action n'a pas abouti. Réessayez dans un instant.";
+    flashAlerte = true;
+  }
+  if (suite) return Astro.redirect(url(suite), 303);
+}
+
+/** Ce que la page dit après un geste, revenue par le 303. */
+const FAITS = new Map([
+  ["arrete", "Lot arrêté. Une affiche déjà en fabrication va jusqu'au bout ; les autres attendent « Reprendre »."],
+  ["repris", "Lot repris : ce qui restait à faire repart en fabrication, échecs compris."],
+  ["refait", "Affiche tirée de nouveau : d'autres personnages, d'autres couleurs. Son PDF se refait."],
+  ["retire", "Affiche retirée du lot."],
+]);
+if (!flash) flash = FAITS.get(Astro.url.searchParams.get("fait") ?? "") ?? null;
+
+let donnees: LotAffichesDemo | null = null;
+let erreur: string | null = null;
+if (!idValide) erreur = "Ce lot n'existe pas : l'adresse est incomplète.";
+else {
+  try {
+    donnees = await api.lotAffichesDemo(idLot);
+  } catch (souci) {
+    const brut = souci instanceof Error ? souci.message : String(souci);
+    erreur = / -> 404$/.test(brut)
+      ? "Ce lot n'existe plus : il a été supprimé."
+      : raisonLisible(souci) || "Ce lot n'a pas pu être lu. Rechargez la page dans un instant.";
+  }
+}
+
+/** Juste après « Générer » : le lot est créé, et ce qui n'a pas pu être tiré est nommé. */
+const cree = Astro.url.searchParams.get("cree") === "1";
+const ecartees = Astro.url.searchParams
+  .getAll("ecartee")
+  .map((r) => r.trim())
+  .filter(Boolean)
+  .slice(0, 5);
+const autresEcartees = Math.max(0, Math.trunc(Number(Astro.url.searchParams.get("autres"))) || 0);
+
+const lot = donnees?.lot ?? null;
+const cartes = [...(donnees?.affiches ?? [])]
+  .sort((a, b) => a.rang - b.rang)
+  .map((a) => ({ ...a, sceneNom: sceneDe(a.resume?.scene ?? a.scene) }));
+const av = compter(
+  cartes.map((c) => ({ titre: c.titre, scene: c.sceneNom, etat: c.etat })),
+  lot?.arrete ?? false,
+  null,
+);
+const pourcent = av.total ? Math.round((av.pretes / av.total) * 100) : 0;
+const reste = resteAFaire(av);
+
+/** « 20/11 à 18:42 », à l'heure de la boutique ; l'année seulement si ce n'est pas celle-ci. */
+function quand(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const parties = (date: Date) =>
+    new Intl.DateTimeFormat("fr-FR", {
+      timeZone: FUSEAU_BOUTIQUE,
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).formatToParts(date);
+  const p = (morceaux: Intl.DateTimeFormatPart[], t: Intl.DateTimeFormatPartTypes) =>
+    morceaux.find((m) => m.type === t)?.value ?? "";
+  const ici = parties(d);
+  const annee = p(ici, "year") === p(parties(new Date()), "year") ? "" : `/${p(ici, "year")}`;
+  return `${p(ici, "day")}/${p(ici, "month")}${annee} à ${p(ici, "hour")}:${p(ici, "minute")}`;
+}
+
+/** « Lot du 20/11 à 18:42 · 14 affiches A4 · Varié » */
+const entete = lot
+  ? `Lot du ${quand(lot.creeLe)} · ${pluriel(cartes.length, "affiche")} ${lot.format} · ${sceneDe(lot.scene)}`
+  : "";
+
+const couleurEtat = (e: EtatDemo) =>
+  e.etat === "echec" ? "text-red-700" : e.etat === "prete" ? "text-green-700" : "";
+const vignetteDe = (id: number) => apiUrl(`/admin/affiches-demo/affiches/${id}/apercu.jpg`);
+
+const bouton = "rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg";
+---
+
+<Admin title="Lot d'affiches de démonstration">
+  <ApercuFlottant />
+
+  <p class="mb-4">
+    <a href={url("/affiches-demo")} class="text-sm text-bo-accent hover:underline">
+      ← Tous les lots
+    </a>
+  </p>
+
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashAlerte
+          ? "border-amber-200 bg-amber-50 text-amber-900"
+          : "border-green-200 bg-green-50 text-green-900"
+      }`}
+      role={flashAlerte ? "alert" : "status"}
+    >
+      {flash}
+    </p>
+  )}
+
+  {cree && lot && (
+    <p class="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900" role="status">
+      Lot créé : {pluriel(cartes.length, "affiche tirée", "affiches tirées")} au hasard.
+      {cartes.length > 1
+        ? "Elles se fabriquent une par une, en arrière-plan."
+        : "Elle se fabrique en arrière-plan."}
+    </p>
+  )}
+
+  {ecartees.length > 0 && (
+    <div class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <p>Tout n'a pas pu être tiré :</p>
+      <ul class="mt-1 list-disc pl-5">
+        {ecartees.map((r) => <li>{r}</li>)}
+      </ul>
+      {autresEcartees > 0 && <p class="mt-1">Et {pluriel(autresEcartees, "autre")}, pour la même sorte de raison.</p>}
+    </div>
+  )}
+
+  {erreur && (
+    <p class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+      {erreur}
+    </p>
+  )}
+
+  {lot && (
+    <section
+      data-lot-demo
+      data-url-etat={apiUrl(`/admin/affiches-demo/lots/${lot.id}/etat`)}
+      data-arrete={lot.arrete ? "1" : undefined}
+      data-pretes={av.pretes}
+    >
+      <div class="rounded-lg border border-bo-border bg-bo-surface p-4 md:p-5">
+        <h2 class="text-base font-semibold">{entete}</h2>
+        <div
+          role="progressbar"
+          aria-label="Affiches prêtes"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow={pourcent}
+          class="mt-3 h-2 overflow-hidden rounded-full bg-bo-bg"
+        >
+          <div
+            data-barre
+            class="h-full rounded-full bg-green-600 transition-[width] duration-500"
+            style={`width: ${pourcent}%`}
+          ></div>
+        </div>
+        <p data-avancement class="mt-2 text-sm">{phraseAvancement(av)}</p>
+        <p data-detail class="mt-1 text-sm text-bo-muted">{phraseDetail(av)}</p>
+        <p
+          data-alerte
+          hidden
+          class="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          role="alert"
+        ></p>
+
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          {/* Le .zip ne contient que les affiches PRÊTES, et le bouton dit
+              combien : un lot en cours se télécharge déjà en partie. */}
+          <a
+            data-zip
+            href={apiUrl(`/admin/affiches-demo/lots/${lot.id}/affiches.zip`)}
+            download
+            hidden={av.pretes === 0}
+            class="rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90"
+          >
+            {libelleZip(av.pretes, av.total, av.taille)}
+          </a>
+          <form method="POST" data-si-reste hidden={lot.arrete || reste === 0}>
+            <input type="hidden" name="_action" value="arreter" />
+            <button class={bouton}>Arrêter le lot</button>
+          </form>
+          {/* « Reprendre » relance aussi les échecs, avec la même
+              configuration ; « Refaire au hasard », sur la carte, en tire
+              une autre. */}
+          <form method="POST" data-si-reprendre hidden={!reprendrePossible(av)}>
+            <input type="hidden" name="_action" value="reprendre" />
+            <button class={bouton}>Reprendre</button>
+          </form>
+          <form method="POST" data-supprimer-lot data-confirme={confirmationSuppression(av.pretes)}>
+            <input type="hidden" name="_action" value="supprimer" />
+            <button class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50">
+              Supprimer le lot
+            </button>
+          </form>
+        </div>
+        <p class="mt-3 text-xs text-bo-muted">
+          Chaque PDF est à la taille exacte de la feuille, sans fond perdu :
+          imprimez en « Taille réelle » (100 %), pas « Ajuster à la page ».
+        </p>
+        {/* Une pièce mal réglée au back-office (une coiffure sans calage pour
+            ce personnage, un accessoire en trop) passe le tirage sans erreur :
+            une cliente la verrait à l'aperçu, alors qu'ici personne ne la
+            regarde avant l'imprimante (relecture du 20/11). */}
+        <p class="mt-1 text-xs text-bo-muted">
+          Avant d'imprimer, regardez chaque vignette : une pièce mal réglée au
+          back-office (coiffure décalée, accessoire en trop) se voit sur
+          l'affiche, et « Refaire au hasard » en tire une autre.
+        </p>
+      </div>
+
+      {cartes.length === 0 ? (
+        <p class="mt-4 text-sm text-bo-muted">Ce lot n'a plus d'affiche.</p>
+      ) : (
+        <ul class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {cartes.map((a) => {
+            const prete = a.etat.etat === "prete";
+            return (
+              <li
+                id={`affiche-${a.id}`}
+                data-affiche={a.id}
+                data-titre={a.titre}
+                data-scene={a.sceneNom}
+                data-etat={a.etat.etat}
+                class="bo-vignettes flex gap-3 rounded-lg border border-bo-border bg-bo-surface p-3"
+              >
+                {/* Le cadre garde les proportions d'une affiche (1:√2) :
+                    la vignette arrive après la page, ou après le rendu, et
+                    la carte ne doit pas sauter de hauteur. */}
+                <div
+                  data-vignette
+                  data-src={vignetteDe(a.id)}
+                  class="relative w-24 shrink-0 overflow-hidden rounded border border-bo-border bg-bo-bg"
+                  style="aspect-ratio: 1 / 1.4142"
+                >
+                  {a.etat.etat === "prete" && (
+                    <img
+                      src={`${vignetteDe(a.id)}?v=${a.etat.taille}`}
+                      alt=""
+                      loading="lazy"
+                      data-apercu-largeur="360"
+                      class="bo-vignette h-full w-full object-cover"
+                    />
+                  )}
+                  <span
+                    data-vignette-texte
+                    hidden={prete}
+                    class="absolute inset-0 flex items-center justify-center p-1 text-center text-[11px] leading-tight text-bo-muted"
+                  >
+                    {texteSansVignette(a.etat)}
+                  </span>
+                </div>
+                <div class="min-w-0 flex-1 text-sm">
+                  <p class="font-medium">{a.titre}</p>
+                  {/* « Famille : Femme 2, Homme 1, Fille 1 » */}
+                  <p class="text-bo-muted">
+                    {a.resume?.personnages.length
+                      ? `${a.sceneNom} : ${a.resume.personnages.join(", ")}`
+                      : a.sceneNom}
+                  </p>
+                  {a.resume?.degradee && (
+                    <p class="text-xs text-amber-800">
+                      {a.resume.scene !== a.scene
+                        ? `Scène adaptée : « ${sceneDe(a.scene)} » n'est pas possible sur ce type d'affiche.`
+                        : "Scène adaptée : ce type d'affiche n'a pas tous les personnages qu'elle demande."}
+                    </p>
+                  )}
+                  {a.resume?.decor && <p class="text-bo-muted">Décor : {a.resume.decor}</p>}
+                  <p
+                    data-etat-texte
+                    class={`mt-1 ${couleurEtat(a.etat)}`}
+                    title={infobulleEtat(a.etat) || undefined}
+                  >
+                    {texteEtat(a.etat)}
+                  </p>
+                  <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <a
+                      data-pdf
+                      href={apiUrl(`/admin/affiches-demo/affiches/${a.id}/fichier.pdf`)}
+                      download={a.nomFichier}
+                      hidden={!prete}
+                      class="text-bo-accent hover:underline"
+                    >
+                      Télécharger le PDF
+                    </a>
+                    <form method="POST" data-refaire>
+                      <input type="hidden" name="_action" value="refaire" />
+                      <input type="hidden" name="affiche" value={a.id} />
+                      <button class="text-bo-accent hover:underline">Refaire au hasard</button>
+                    </form>
+                    <form method="POST" data-retirer>
+                      <input type="hidden" name="_action" value="retirer" />
+                      <input type="hidden" name="affiche" value={a.id} />
+                      <button class="text-red-700 hover:underline">Retirer du lot</button>
+                    </form>
+                  </div>
+                  <p class="mt-1 break-all text-[11px] text-bo-muted">{a.nomFichier}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  )}
+
+  <script>
+    import { CONFIRMATION_REFAIRE, confirmationRetrait } from "../../lib/affiches-demo-textes.ts";
+    // L'état de chaque affiche, redemandé tant que le lot se fabrique.
+    import "../../lib/affiches-demo-bo.ts";
+
+    // Ce qui efface ou remplace un PDF s'annonce avant de partir, selon l'état
+    // de l'affiche AU MOMENT du clic (le sondage le tient à jour) : refaire
+    // une affiche sans PDF ne coûte rien, on ne le demande pas. Un geste
+    // confirmé ne part qu'une fois, même cliqué deux fois.
+    document.addEventListener("submit", (e) => {
+      const form = e.target;
+      if (!(form instanceof HTMLFormElement) || !form.closest("[data-lot-demo]")) return;
+      if (form.dataset.envoye === "1") {
+        e.preventDefault();
+        return;
+      }
+      const prete = form.closest<HTMLElement>("[data-affiche]")?.dataset.etat === "prete";
+      const question = form.hasAttribute("data-refaire")
+        ? prete
+          ? CONFIRMATION_REFAIRE
+          : null
+        : form.hasAttribute("data-retirer")
+          ? confirmationRetrait(prete)
+          : (form.dataset.confirme ?? null);
+      if (question && !window.confirm(question)) {
+        e.preventDefault();
+        return;
+      }
+      form.dataset.envoye = "1";
+      form.querySelector("button")?.setAttribute("aria-busy", "true");
+    });
+
+    // Revenu par « Précédent », le navigateur rend la page telle qu'on l'a
+    // quittée : ses boutons doivent redevenir cliquables.
+    window.addEventListener("pageshow", (e) => {
+      if (!e.persisted) return;
+      for (const form of document.querySelectorAll<HTMLFormElement>("form[data-envoye]")) {
+        delete form.dataset.envoye;
+        form.querySelector("button")?.removeAttribute("aria-busy");
+      }
+    });
+  </script>
+</Admin>

@@ -580,6 +580,87 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
     </details>
 
     {/* ------------------------------------------------------------ */}
+    {/* Les affiches de démonstration (20/11) : l'écran, la fabrication sur
+        le serveur, la page d'un lot et l'impression. */}
+    <details id="affiches-demo" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Imprimer des affiches de démonstration
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Des affiches d'exemple, personnalisées au hasard, à imprimer d'avance
+          pour un marché ou une vitrine. Tout se fait dans
+          <a href={url("/affiches-demo")} class="text-bo-accent underline">Atelier › Affiches de démonstration</a>.
+          Aucune commande n'est créée : les ventes, les Finances et les
+          Statistiques n'en voient rien.
+        </p>
+        <ol class="list-decimal space-y-2 pl-5">
+          <li>
+            <strong>Les affiches</strong> : mettez un nombre d'exemplaires, de 0
+            à 10, en face de chaque affiche voulue. Les filtres (nom ou ville,
+            collection, type) et « 1 exemplaire pour chaque affiche affichée »
+            vont plus vite. Seules les affiches personnalisables en ligne sont
+            proposées ; une affiche grisée dit pourquoi elle ne peut pas être
+            tirée, par exemple quand elle n'a aucun décor à elle.
+          </li>
+          <li>
+            <strong>Les personnages</strong> : « Varié », le choix conseillé,
+            fait alterner couples, familles, familles avec leur animal… sur tout
+            le lot, si bien que deux exemplaires d'une même affiche ne se
+            ressemblent pas. Les autres choix imposent une scène. Chaque
+            exemplaire reçoit ses propres personnages, tenues et couleurs,
+            toujours parmi ceux que le site propose aux clients pour ce type
+            d'affiche, de face ou de dos.
+          </li>
+          <li>
+            <strong>Le format</strong> : A4 ou A3, pour tout le lot.
+          </li>
+          <li>
+            <strong>Les textes</strong>, facultatifs : la 1re ligne reprend
+            celle de l'affiche (sinon sa ville), en capitales. Pour la 2e ligne,
+            écrivez quelques noms d'exemple, un par ligne : chaque affiche en
+            tire un au hasard. Le texte est blanc, ou gris anthracite.
+          </li>
+          <li>
+            <strong>« Générer »</strong>, puis confirmez. Un lot compte au plus
+            100 affiches : au-delà, faites-en deux. La page du lot s'ouvre.
+          </li>
+        </ol>
+        <p>
+          <strong>La fabrication</strong> se fait sur le serveur, une affiche à
+          la fois, en arrière-plan : vous pouvez quitter la page et revenir plus
+          tard. Comptez une à deux minutes pour chaque décor encore jamais
+          fabriqué dans ce format, bien moins pour les affiches suivantes. Les
+          ventes du stand et les PDF des commandes passent toujours avant. Le
+          serveur est aussi celui du site et de la tablette : lancez les gros
+          lots en dehors des heures du stand.
+        </p>
+        <p>
+          <strong>La page d'un lot</strong> montre ce qui a été tiré pour chaque
+          affiche (scène, personnages, décor) avant même que son PDF existe.
+          « Refaire au hasard » tire de nouveau une affiche qui ne plaît pas ;
+          « Retirer du lot » l'enlève. Les PDF se téléchargent un par un, ou
+          tous ensemble dans une archive .zip, qui ne contient que les affiches
+          déjà prêtes. « Arrêter le lot » laisse finir l'affiche en cours ;
+          « Reprendre » relance les autres, et refait celles en échec avec les
+          mêmes personnages. « Supprimer le lot » efface ses PDF du serveur,
+          sans retour. Les lots déjà générés restent listés en haut de
+          l'écran.
+        </p>
+        <p>
+          <strong>À l'impression</strong> : chaque PDF est à la taille exacte
+          de la feuille, en haute définition (300 points par pouce), sans fond
+          perdu ni traits de coupe. Imprimez en « Taille réelle » (100 %), pas
+          en « Ajuster à la page ». La signature de la boutique y figure, comme
+          sur les affiches vendues. Regardez les vignettes avant d'imprimer :
+          une pièce mal réglée au back-office (coiffure décalée, accessoire en
+          trop) se voit sur l'affiche, et « Refaire au hasard » en tire une
+          autre.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
     <details id="pages-et-menu" class="group rounded-lg border border-bo-border bg-bo-surface">
       <summary class="cursor-pointer px-4 py-3 font-medium">
         Où sont « Tout voir » et « Thèmes &amp; paysages » ? Comment changer le menu ?

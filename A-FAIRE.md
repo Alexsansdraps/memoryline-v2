@@ -96,6 +96,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 2. Dans le code (Claude)
 
+- **Affiches de démonstration (BO › Atelier, 20/11) : pas encore de « Reprendre les affiches de la page d'un stand »** (décision d'Alexandra pour la première version). À ajouter si Margaux le demande : `api.stands()` donne la page de chaque stand, `api.page(id)` son bloc `produits` de source `affiches`, dont les `references` sont les identifiants des affiches à préremplir dans le formulaire (`ex-<id>`).
 - **Page /mulhouse de la tablette** (fin du 18/11) : elle montre une collection entière de 80 affiches, pas seulement l'Alsace (Neuschwanstein y est). Elle avait déjà sa grille, donc la 0101 n'y a pas mis les 64 affiches d'Alsace. À décider par Alexandra : soit Margaux remplace la grille dans BO › Pages › mulhouse, soit une migration le fait (la liste de 64 est dans 0101_page_mulhouse.sql).
 - **Bouton « tout traduire » des pages du site** : l'éditeur de page propose encore la traduction langue par langue ; il manque un bouton « dans toutes les langues », comme sur la fiche produit (6 langues) et sur les écrans de traduction communs.
 - **Japonais et chinois, encore à faire** :
@@ -127,6 +128,10 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 3. Pour Alexandra
 
+- **Affiches de démonstration (20/11), avant de tirer le lot du marché** : l'outil n'est pas encore en ligne (migration `0110_affiches_demo`, mise en ligne sur le feu vert d'Alexandra). Puis, dans le BO de la prod (constats faits sur les données locales, la prod peut différer) :
+  - **Personnages** : la coiffure position 503 « TEST », calée pour Femme 6 seulement, est aussi liée à Femme 2 (dos), sans calage : la retirer de Femme 2 ou lui donner un calage « hair:503 », puis renommer la pièce. « Femme fauteuil roulant » a l'accessoire 17 « Wheel Chair 1 », un second fauteuil par-dessus le sien : le lui retirer. Archiver les personnages d'essai : les trois « Femme test », « emond » et « ddd » (deux captures d'écran PNG que l'impression ne sait pas dessiner). Le tirage les écarte déjà (nom contenant « test » ou « essai », dessin qui n'est pas un SVG, tenue du BO gardée pour un « Fauteuil roulant »), mais le site les propose encore aux clients.
+  - **Décors** : une affiche sans décor rattaché, dont plusieurs décors de sa ville sont à égalité en tête de liste, reste grisée dans l'outil. En local : COMPIÈGNE Beaux-monts, Beaux-monts sunset et Hotel de ville, CÔTE D'OPALE Plage #2, MONTAGNE Neige, PARIS Tour Eiffel sunset #1. Rattacher son décor sur sa fiche : aujourd'hui, le site leur présélectionne le décor d'une autre affiche de la ville.
+  - **Impression** : une A4 d'essai sur l'imprimante de Margaux, en « Taille réelle », puis regarder les vignettes du lot avant d'imprimer le reste (« Refaire au hasard » pour une affiche ratée).
 - **Webhook Stripe live** : passer son URL à `https://memoryline.fr/api/payments/stripe/webhook` (Stripe ne suit pas les redirections), puis BO › Réglages › Paiements › « Vérifier ».
 - **Search Console** : propriété « Domaine » memoryline.fr (un TXT de plus dans la zone OVH, sans toucher au SPF) et plan du site. Ensuite, rejouer `node apps/web/scripts/verifier-anciennes-adresses.mjs https://memoryline.fr` et suivre les 404 (chaque ancienne adresse en 404 va dans BO › Redirections).
 - **Redirections Shopify** : admin Shopify › Contenu › Menus › Redirections d'URL › Exporter, puis BO › Boutique en ligne › Redirections › Importer.
@@ -181,6 +186,7 @@ ssh -n -i ~/.ssh/memoryline_deploiement debian@51.255.34.187 "tar -xzf ~/memoryl
 - Site : `npx tsc --noEmit -p .` dans `apps/web` (3 erreurs anciennes de StandSalon, tolérées).
 - Configurateur : `tsc` dans `packages/configurator`.
 - Migrations locales : `npm run db:migrate` dans `apps/api`.
+- Migration écrite à la main : son `when` dans `drizzle/meta/_journal.json` doit dépasser le plus grand `when` du journal, et son entrée va en dernier. drizzle 0.38 n'applique que les migrations dont le `when` dépasse celui de la dernière appliquée, et saute les autres sans rien dire (« ✓ Migrations appliquées » quand même) : le 20/11, une entrée glissée au milieu avec un `when` trop grand a dû être renommée et remise en fin de liste (`0110_affiches_demo`). Une autre session peut écrire une migration en même temps : relire la fin du journal juste avant.
 - Essais à l'écran : Chrome sans écran piloté par script (CDP), jamais en prenant la main sur l'écran.
 - Compte d'essai du BO local : le recréer avec `pnpm --filter @memoryline/api run create-admin <email> <mdp> owner`.
 

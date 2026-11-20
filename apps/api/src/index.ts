@@ -96,6 +96,7 @@ import { mountFinances } from "./finances.js";
 import { invaliderCorpusRecherche, mountRecherche } from "./recherche.js";
 import { mountDecors } from "./decors.js";
 import { mountApercus } from "./apercus.js";
+import { demarrerAffichesDemo, mountAffichesDemo } from "./affiches-demo.js";
 import { mountCouleursDessins } from "./couleurs-dessins.js";
 import { mountCourriers } from "./courriers.js";
 import { mountModeEssai } from "./mode-essai.js";
@@ -2514,6 +2515,9 @@ mountRecherche(app);
 // propose, et ce qu'il devine quand une affiche n'a rien à elle.
 mountDecors(app);
 mountApercus(app);
+// Les affiches de démonstration (BO › Atelier) : tirées au hasard, rendues
+// une à une par le même moteur que les fichiers d'impression, après eux.
+mountAffichesDemo(app);
 
 // Les couleurs des dessins téléversés, qu'ils sortent d'Illustrator, de Canva
 // ou d'une vectorisation d'image IA : zones recolorables et nuances groupées.
@@ -3753,6 +3757,10 @@ serve({ fetch: app.fetch, port }, (info) => {
   // quand une mise en ligne a changé le rendu (apps/api/src/fichiers-impression.ts) :
   // sans cela, chacun se refaisait au premier clic de la boutique.
   demarrerPreparationDesImpressions();
+  // Les affiches de démonstration qu'un redémarrage a interrompues reprennent
+  // deux minutes après, une à une, après les fichiers des commandes
+  // (apps/api/src/affiches-demo.ts).
+  demarrerAffichesDemo();
   // La couleur principale des pièces (apps/api/src/couleur-principale.ts) :
   // celles jamais mesurées, ou dont le dessin a changé, le sont en
   // arrière-plan — quelques secondes pour toute la bibliothèque.

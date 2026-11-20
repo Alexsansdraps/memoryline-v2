@@ -117,4 +117,10 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
     "courriel panier abandonné",
   ],
   "/produits/[id]": ["seo", "référencement", "titre google"],
+  // Ce qu'on dit en pensant au marché de Noël : des affiches « de test »,
+  // « d'exemple », imprimées d'avance pour la vitrine du stand.
+  "/affiches-demo": [
+    "affiches de test", "affiches d'exemple", "échantillons", "imprimer d'avance",
+    "marché", "démo", "au hasard", "aléatoire", "vitrine",
+  ],
 };

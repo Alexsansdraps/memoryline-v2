@@ -84,6 +84,17 @@ import { cheminApercu } from "./apercus.js";
 import { bornesDuVendeur } from "./vendeurs.js";
 import { supprimerPourToujours } from "./suppression.js";
 import {
+  avecEtiquetteTest,
+  ETIQUETTE_TEST,
+  lireFiltreTest,
+  miseEnTest,
+  MOTIF_TEST,
+  poseTestALaMain,
+  refusEtiquetteTest,
+  STATUTS_ANNULES,
+  type FiltreTest,
+} from "./ventes-de-test.js";
+import {
   numeroSuivant,
   numerosDuPrefixe,
   type PrefixeNumero,
@@ -773,6 +784,33 @@ function limiterAuStand(c: Context): SQL[] {
   return bornesDuVendeur(c.get("utilisateur"));
 }
 
+/**
+ * Le filtre « test » de la liste et de l'export (20/11, Alexandra : « il
+ * faudrait ajouter "test" comme ça on peut mettre des commandes en test ») :
+ * « seul » ne garde que les ventes de test, « exclure » les écarte.
+ *
+ * La règle de ventes-de-test.ts, `estVenteDeTest` : une vente du stand,
+ * annulée ET étiquetée « test », la casse ignorée — les étiquettes se
+ * relisent en minuscules, le tableau entier repassé par le JSON. Sans
+ * étiquette, une commande n'est pas de test : le `coalesce` le dit, sans quoi
+ * « exclure » l'écarterait aussi (`not null` n'est pas vrai). Le canal y est
+ * depuis la relecture (20/11) : Ventes stand demande de toute façon le sien,
+ * mais une commande du site annulée et étiquetée n'est pas une vente de test.
+ *
+ * Dans la requête, et non après coup comme le filtre « tag » : la liste
+ * s'arrête à cent lignes, et un filtre posé ensuite chercherait les ventes de
+ * test parmi les cent plus récentes seulement — l'onglet « Test » perdrait
+ * les plus anciennes, et « Toutes » montrerait moins de cent ventes.
+ */
+function conditionVentesDeTest(filtre: FiltreTest): SQL {
+  const deTest = and(
+    eq(schema.orders.channel, "salon"),
+    inArray(schema.orders.status, [...STATUTS_ANNULES]),
+    raw`coalesce(lower(${schema.orders.tags}::text)::jsonb @> ${JSON.stringify([ETIQUETTE_TEST])}::jsonb, false)`,
+  )!;
+  return filtre === "seul" ? deTest : raw`not (${deTest})`;
+}
+
 export function mountOrderRoutes(app: Hono): void {
   /**
    * Liste des commandes, filtrable.
@@ -807,6 +845,10 @@ export function mountOrderRoutes(app: Hono): void {
     if (Number.isInteger(stand) && stand > 0)
       conditions.push(eq(schema.orders.standId, stand));
     conditions.push(...limiterAuStand(c));
+    // Les ventes de test (20/11) : « test=seul », « test=exclure ». Sans le
+    // paramètre, rien ne change — les autres écrans voient ce qu'ils voyaient.
+    const test = lireFiltreTest(q.test);
+    if (test) conditions.push(conditionVentesDeTest(test));
     if (q.from) conditions.push(gte(schema.orders.createdAt, debutDuJour(q.from)));
     if (q.to) conditions.push(lte(schema.orders.createdAt, finDuJour(q.to)));
     const cherche = (q.q ?? "").trim();
@@ -1016,6 +1058,11 @@ export function mountOrderRoutes(app: Hono): void {
     conditions.push(...limiterAuStand(c));
     if (q.from) conditions.push(gte(schema.orders.createdAt, debutDuJour(q.from)));
     if (q.to) conditions.push(lte(schema.orders.createdAt, finDuJour(q.to)));
+    // Les ventes de test (20/11), comme la liste : l'onglet « Toutes » de
+    // Ventes stand les écarte, son export aussi. Sans le paramètre, le
+    // fichier reste celui d'avant.
+    const test = lireFiltreTest(q.test);
+    if (test) conditions.push(conditionVentesDeTest(test));
     const ids = (q.ids ?? "")
       .split(",")
       .map((v) => Number(v))
@@ -1146,6 +1193,22 @@ export function mountOrderRoutes(app: Hono): void {
           ...new Set((b.tags as unknown[]).map(etiquette).filter(Boolean)),
         ].slice(0, 30)
       : [];
+    // « test » ne se pose pas à la main sur une vente du stand qui compte
+    // encore (relecture du 20/11, ventes-de-test.ts, `poseTestALaMain`) :
+    // elle afficherait l'étiquette sans sortir des chiffres. La phrase mène à
+    // « Mettre en test », le seul geste qui l'en sort.
+    const [avant] = await db
+      .select({
+        number: schema.orders.number,
+        channel: schema.orders.channel,
+        status: schema.orders.status,
+        tags: schema.orders.tags,
+      })
+      .from(schema.orders)
+      .where(eq(schema.orders.id, id));
+    if (!avant) return c.notFound();
+    if (poseTestALaMain(avant, tags))
+      return c.json({ error: refusEtiquetteTest([avant.number]) }, 400);
     const [row] = await db
       .update(schema.orders)
       .set({ tags })
@@ -1160,6 +1223,8 @@ export function mountOrderRoutes(app: Hono): void {
    *
    * Le rendu du matin, c'est trente commandes à passer en « traitée » : les
    * faire une par une est le genre de corvée qui fait détester un outil.
+   * Les ventes d'essai du stand se mettent en test de la même façon (« test »,
+   * 20/11).
    */
   app.post("/admin/orders/bulk", async (c) => {
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -1216,9 +1281,28 @@ export function mountOrderRoutes(app: Hono): void {
         .filter(Boolean);
       if (!tags.length) return c.json({ error: "aucune étiquette" }, 400);
       const rows = await db
-        .select({ id: schema.orders.id, tags: schema.orders.tags })
+        .select({
+          id: schema.orders.id,
+          tags: schema.orders.tags,
+          number: schema.orders.number,
+          channel: schema.orders.channel,
+          status: schema.orders.status,
+        })
         .from(schema.orders)
         .where(inArray(schema.orders.id, ids));
+      // « test » posé à la main sur des ventes du stand qui comptent encore
+      // (relecture du 20/11, ventes-de-test.ts, `poseTestALaMain`) : refusé
+      // pour toute la sélection, rien n'est posé, et la phrase nomme les
+      // ventes en cause et mène à « Mettre en test ». La moitié d'une
+      // sélection étiquetée laisserait se demander lesquelles l'ont été.
+      if (action === "tag") {
+        const comptent = rows.filter((r) => poseTestALaMain(r, tags));
+        if (comptent.length)
+          return c.json(
+            { error: refusEtiquetteTest(comptent.map((r) => r.number).sort()) },
+            400,
+          );
+      }
       const bas = tags.map((t) => t.toLowerCase());
       for (const r of rows) {
         const actuel = r.tags ?? [];
@@ -1232,6 +1316,45 @@ export function mountOrderRoutes(app: Hono): void {
           .where(eq(schema.orders.id, r.id));
       }
       return c.json({ ok: true, count: rows.length });
+    }
+
+    /*
+     * La mise en test (20/11, Alexandra : « non pour mettre en test à la main
+     * c'est avec sélectionner et une option à la sélection ») : les ventes
+     * cochées dans Ventes stand passent une à une par le chemin d'annulation,
+     * `annulerLaCommande` avec `test: true` — annulées sans courriel, leur
+     * encaissement sur place retiré du grand livre, étiquetées « test »
+     * (ventes-de-test.ts). Ce que la règle refuse (une commande du site, une
+     * reprise de Shopify, un panier) est écarté avec sa raison, sans retenir
+     * les autres : une commande du site annulée écrirait à son client. Une
+     * vente déjà en test l'est aussi, il n'y a rien à refaire. `count` :
+     * celles qui viennent de passer en test.
+     */
+    if (action === "test") {
+      const auteur = typeof b.auteur === "string" ? b.auteur : null;
+      let count = 0;
+      const ecartees: { id: number; raison: string }[] = [];
+      for (const id of new Set(ids)) {
+        // Relue juste avant : une vente annulée depuis l'affichage de la
+        // liste n'est plus qu'à étiqueter.
+        const [order] = await db
+          .select()
+          .from(schema.orders)
+          .where(eq(schema.orders.id, id));
+        if (!order) {
+          ecartees.push({ id, raison: "Une vente cochée n'existe plus : rechargez la liste." });
+          continue;
+        }
+        const r = await annulerLaCommande(order, { test: true, author: auteur });
+        if ("erreur" in r) ecartees.push({ id, raison: r.erreur });
+        else if (r.deja)
+          ecartees.push({
+            id,
+            raison: `La vente ${order.number} était déjà en test : rien n'a été refait.`,
+          });
+        else count++;
+      }
+      return c.json({ ok: true, count, ecartees });
     }
 
     // « archiver » range le lot, « restaurer » le ressort. L'ancienne action
@@ -2443,28 +2566,115 @@ export function mountOrderRoutes(app: Hono): void {
       .where(eq(schema.orders.id, id));
     if (!order) return c.notFound();
 
+    const r = await annulerLaCommande(order, b);
+    if ("erreur" in r) return c.json({ error: r.erreur }, r.code);
+    return c.json(r);
+  });
+
+  /**
+   * L'annulation elle-même : celle de la route ci-dessus, et celle des ventes
+   * mises en test par la sélection (action groupée « test », 20/11).
+   *
+   * Une fonction plutôt que le corps de la route : une vente de test EST une
+   * vente annulée, et ce qui change le statut, le grand livre et le courrier
+   * d'une annulation reste ainsi écrit une seule fois, quel que soit le
+   * chemin qui y mène.
+   *
+   * `b` est le corps de la route : motif, motifLibre, rembourser, restock,
+   * viaPsp, note, author, et `test` (ventes-de-test.ts). Un refus rend sa
+   * phrase et le code HTTP de la route.
+   */
+  async function annulerLaCommande(
+    order: typeof schema.orders.$inferSelect,
+    b: Record<string, unknown>,
+  ): Promise<
+    | { erreur: string; code: 400 | 409 | 502 }
+    | {
+        ok: true;
+        numero: string;
+        annuleeLe: string | null;
+        motif: string | null;
+        rembourseCents: number;
+        /** Ce que l'annulation laisse dû à la cliente. */
+        resteADevoir: number;
+        /** Une mise en test (`test: true`). */
+        test?: true;
+        /** La vente était déjà en test : rien n'a été refait. */
+        deja?: true;
+      }
+  > {
+    const id = order.id;
+
+    /*
+     * La mise en test (20/11, Alexandra : « il faudrait ajouter "test" comme
+     * ça on peut mettre des commandes en test », puis : « non pour mettre en
+     * test à la main c'est avec sélectionner et une option à la sélection ») :
+     * `{ test: true }`, que l'action groupée « test » pose pour chaque vente
+     * cochée. Une vente d'essai du stand s'annule par le chemin ci-dessous,
+     * sans rien de plus — aucun courriel, l'encaissement sur place sort du
+     * grand livre —, avec le motif « Commande de test » et l'étiquette
+     * « test », qui la range dans l'onglet « Test » de Ventes stand
+     * (ventes-de-test.ts). La règle écarte les commandes du site, les
+     * reprises de Shopify et les paniers.
+     */
+    const test = b.test === true ? miseEnTest(order) : null;
+    if (test?.geste === "refuser") return { erreur: test.erreur, code: 400 };
+    if (test?.geste === "rien")
+      return {
+        ok: true,
+        test: true,
+        deja: true,
+        numero: order.number,
+        annuleeLe: order.cancelledAt?.toISOString() ?? null,
+        motif: order.cancelReason,
+        rembourseCents: 0,
+        resteADevoir: 0,
+      };
+    if (test?.geste === "etiqueter") {
+      // Déjà annulée, donc déjà hors des chiffres, et son annulation a soldé
+      // son grand livre : l'étiquette et le motif, rien d'autre. L'ancien
+      // motif reste lisible au journal, sur la ligne de l'annulation.
+      await db
+        .update(schema.orders)
+        .set({ tags: avecEtiquetteTest(order.tags), cancelReason: MOTIF_TEST })
+        .where(eq(schema.orders.id, id));
+      await db.insert(schema.orderEvents).values({
+        orderId: id,
+        kind: "event",
+        author: String(b.author ?? "").trim() || null,
+        message: `Vente mise en test (elle était déjà annulée${
+          order.cancelReason ? `, motif « ${order.cancelReason} »` : ""
+        } ; grand livre inchangé) : hors des chiffres, aucun courriel.`,
+      });
+      return {
+        ok: true,
+        test: true,
+        numero: order.number,
+        annuleeLe: order.cancelledAt?.toISOString() ?? null,
+        motif: MOTIF_TEST,
+        rembourseCents: 0,
+        resteADevoir: 0,
+      };
+    }
+
     if (order.status === "cancelled" || order.status === "voided")
-      return c.json(
-        {
-          error: `La commande ${order.number} est déjà annulée${
-            order.cancelledAt
-              ? ` depuis le ${order.cancelledAt.toLocaleDateString("fr-FR", { timeZone: FUSEAU_BOUTIQUE })}`
-              : ""
-          }. Rien n'a été refait.`,
-        },
-        400,
-      );
+      return {
+        erreur: `La commande ${order.number} est déjà annulée${
+          order.cancelledAt
+            ? ` depuis le ${order.cancelledAt.toLocaleDateString("fr-FR", { timeZone: FUSEAU_BOUTIQUE })}`
+            : ""
+        }. Rien n'a été refait.`,
+        code: 400,
+      };
 
     // Un panier n'est pas une commande : il n'a jamais été passé, il n'y a
     // rien à annuler ni personne à prévenir. Il se supprime, ou il s'oublie.
     if (order.status === "draft")
-      return c.json(
-        {
-          error:
-            "Ceci est un panier abandonné, pas une commande : il n'y a rien à annuler. Supprimez-le si vous voulez qu'il disparaisse.",
-        },
-        400,
-      );
+      return {
+        erreur:
+          "Ceci est un panier abandonné, pas une commande : il n'y a rien à annuler. Supprimez-le si vous voulez qu'il disparaisse.",
+        code: 400,
+      };
 
     const resume = (await resumeCommandes([id])).get(id)!;
     const auStand = order.channel === "salon";
@@ -2477,17 +2687,17 @@ export function mountOrderRoutes(app: Hono): void {
     // quand même — le client n'a pas payé, ou autre (Alexandra : « si elle
     // paie pas ou autre, faut que Margaux puisse annuler »).
     if (resume.expedies > 0 && !auStand)
-      return c.json(
-        {
-          error:
-            resume.expedies >= resume.articles
-              ? `Cette commande est déjà entièrement partie (${resume.expedies} article(s)). On n'annule pas un colis en route : annulez d'abord l'expédition si elle n'est pas réellement partie, sinon enregistrez un remboursement au retour du colis.`
-              : `Cette commande est déjà partie en partie : ${resume.expedies} article(s) sur ${resume.articles} ont quitté l'atelier. Annulez d'abord cette expédition si le colis n'est pas réellement parti ; sinon, remboursez ce qui revient plutôt que d'annuler la commande entière.`,
-        },
-        400,
-      );
+      return {
+        erreur:
+          resume.expedies >= resume.articles
+            ? `Cette commande est déjà entièrement partie (${resume.expedies} article(s)). On n'annule pas un colis en route : annulez d'abord l'expédition si elle n'est pas réellement partie, sinon enregistrez un remboursement au retour du colis.`
+            : `Cette commande est déjà partie en partie : ${resume.expedies} article(s) sur ${resume.articles} ont quitté l'atelier. Annulez d'abord cette expédition si le colis n'est pas réellement parti ; sinon, remboursez ce qui revient plutôt que d'annuler la commande entière.`,
+        code: 400,
+      };
 
-    const motif = motifDAnnulation(b.motif, b.motifLibre);
+    // Une vente de test a son motif à elle, toujours le même : c'est lui qui
+    // la dit essai, au journal comme sur la fiche.
+    const motif = test ? MOTIF_TEST : motifDAnnulation(b.motif, b.motifLibre);
     const auteur = String(b.author ?? "").trim() || null;
     const etaitPayee = order.status === "paid";
 
@@ -2517,12 +2727,10 @@ export function mountOrderRoutes(app: Hono): void {
       try {
         await annulerBordereau(id, auteur ?? undefined);
       } catch (e) {
-        return c.json(
-          {
-            error: `La commande n'a pas été annulée : son bordereau${etiquette.suivi ? ` ${etiquette.suivi}` : ""} n'a pas pu être annulé chez SendCloud (${e instanceof Error ? e.message : String(e)}). Annulez-le depuis le bloc « Bordereau transporteur », puis recommencez.`,
-          },
-          409,
-        );
+        return {
+          erreur: `La commande n'a pas été annulée : son bordereau${etiquette.suivi ? ` ${etiquette.suivi}` : ""} n'a pas pu être annulé chez SendCloud (${e instanceof Error ? e.message : String(e)}). Annulez-le depuis le bloc « Bordereau transporteur », puis recommencez.`,
+          code: 409,
+        };
       }
     }
 
@@ -2534,13 +2742,11 @@ export function mountOrderRoutes(app: Hono): void {
     // bas, 3).
     if (b.rembourser === true && !auStand) {
       if (!etaitPayee)
-        return c.json(
-          {
-            error:
-              "Cette commande n'a jamais été encaissée : il n'y a rien à rembourser. Décochez le remboursement pour l'annuler.",
-          },
-          400,
-        );
+        return {
+          erreur:
+            "Cette commande n'a jamais été encaissée : il n'y a rien à rembourser. Décochez le remboursement pour l'annuler.",
+          code: 400,
+        };
       // Tout ce qui reste encaissé, port compris (la commande entière est
       // annulée, la cliente n'a rien reçu) : le même calcul que « tout
       // rembourser » (enregistrerRemboursement, `tout`), remises et montants
@@ -2570,12 +2776,10 @@ export function mountOrderRoutes(app: Hono): void {
         // laisserait une commande annulée dont l'argent est resté chez nous,
         // et c'est exactement le genre d'écart qu'on ne retrouve jamais.
         if (r.erreur)
-          return c.json(
-            {
-              error: `La commande n'a pas été annulée : le remboursement a échoué. ${r.erreur}`,
-            },
-            r.code ?? 400,
-          );
+          return {
+            erreur: `La commande n'a pas été annulée : le remboursement a échoué. ${r.erreur}`,
+            code: r.code ?? 400,
+          };
         rembourseCents = r.montantCents ?? 0;
       }
     } else if (b.restock === true) {
@@ -2675,6 +2879,9 @@ export function mountOrderRoutes(app: Hono): void {
         // Une commande annulée n'est pas « traitée » : elle n'a plus rien à
         // faire, ce qui n'est pas la même chose que d'avoir tout fait.
         fulfilledAt: null,
+        // L'étiquette d'une vente de test, posée avec le statut : l'une ne va
+        // pas sans l'autre (ventes-de-test.ts, `estVenteDeTest`).
+        ...(test ? { tags: avecEtiquetteTest(order.tags) } : {}),
       })
       .where(eq(schema.orders.id, id));
 
@@ -2720,6 +2927,27 @@ export function mountOrderRoutes(app: Hono): void {
         message: `La facture ${order.invoiceNumber} a déjà été éditée pour cette commande : elle garde son numéro et reste éditable, portant désormais la mention « annulée ». Un avoir reste à établir si elle est partie chez le client.`,
       });
 
+    // Une vente de test s'arrête ici : elle n'a personne à prévenir, et sa
+    // ligne du journal le dit (« aucun courriel »). Les autres ventes du stand
+    // passent par previenirDeLAnnulation, qui ne leur écrit rien non plus.
+    if (test) {
+      await db.insert(schema.orderEvents).values({
+        orderId: id,
+        kind: "event",
+        author: auteur,
+        message: `Vente mise en test (annulée, motif « ${MOTIF_TEST} », étiquette « ${ETIQUETTE_TEST} ») : hors des chiffres, aucun courriel.`,
+      });
+      return {
+        ok: true,
+        test: true,
+        numero: order.number,
+        annuleeLe: annuleeLe.toISOString(),
+        motif,
+        rembourseCents,
+        resteADevoir,
+      };
+    }
+
     /* --- 6. Le courrier ------------------------------------------------ */
 
     await previenirDeLAnnulation(id, {
@@ -2743,7 +2971,7 @@ export function mountOrderRoutes(app: Hono): void {
       auStand,
     });
 
-    return c.json({
+    return {
       ok: true,
       numero: order.number,
       annuleeLe: annuleeLe.toISOString(),
@@ -2753,8 +2981,8 @@ export function mountOrderRoutes(app: Hono): void {
       // boutiquière, qui vient de faire un geste dont elle ne verra plus la
       // conséquence nulle part si personne ne le lui dit.
       resteADevoir,
-    });
-  });
+    };
+  }
 
   /**
    * Les motifs proposés, et leur libellé complet.

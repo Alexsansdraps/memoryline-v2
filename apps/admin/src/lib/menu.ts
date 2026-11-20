@@ -156,6 +156,11 @@ export const MENU: GroupeNav[] = [
           { href: "/ia/styles", label: "Styles proposés", icon: "🎨", owner: true },
         ],
       },
+      // Des affiches tirées au hasard, à imprimer d'avance pour un marché ou
+      // une vitrine (20/11). Dans l'Atelier et pas dans « Commandes » : on n'y
+      // vend rien, on y fabrique des affiches avec les personnages et les
+      // décors réglés juste au-dessus.
+      { href: "/affiches-demo", label: "Affiches de démonstration", icon: "🖨️", owner: true },
     ],
   },
   {

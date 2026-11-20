@@ -2006,6 +2006,149 @@ export interface GroupeArchives {
   elements: ElementArchive[];
 }
 
+/* --- Affiches de démonstration (BO › Atelier › Affiches de démonstration) -- */
+
+/**
+ * Qui pose sur une affiche de démonstration : la « scène » tirée pour un
+ * exemplaire. Mêmes clés que SceneDemo dans apps/api/src/affiches-demo-tirage.ts.
+ */
+export type SceneDemo = "couple" | "famille" | "famille_animal" | "avec_animal" | "amis" | "hasard";
+/** Ce que la boutique choisit pour un lot : une scène, ou « varie », qui les fait tourner sur le lot. */
+export type SceneChoisie = SceneDemo | "varie";
+/** Le rôle d'une catégorie de personnages dans les scènes, lu dans son nom par l'API. */
+export type RoleDemo = "adulte_f" | "adulte_h" | "ado" | "enfant" | "bebe" | "animal" | "autre";
+export type FormatDemo = "A4" | "A3";
+
+/**
+ * Le nom court de chaque scène, pour la page d'un lot et la liste des lots.
+ *
+ * Le formulaire, lui, prend les scènes de l'API (`catalogue.scenes`), avec
+ * leur aide : c'est elle qui sait les tirer. Ces noms-là sont les mêmes que
+ * ceux de SCENES_DEMO (apps/api/src/affiches-demo-tirage.ts), sans le
+ * « (conseillé) » de « Varié », qui ne dit plus rien une fois le lot tiré :
+ * un lot déjà fait n'a plus besoin d'être lu sans le catalogue, plus lent.
+ */
+export const LIBELLES_SCENES_DEMO: Readonly<Record<SceneChoisie, string>> = {
+  varie: "Varié",
+  couple: "Couple",
+  famille: "Famille",
+  famille_animal: "Famille avec animal",
+  avec_animal: "Avec son animal",
+  amis: "Entre amis",
+  hasard: "Au hasard",
+};
+
+/** Ce qu'un exemplaire montre, lisible AVANT le rendu : on peut le refaire sans attendre son PDF. */
+export interface ResumeDemo {
+  /** La scène réellement tirée : une scène « dégradée » (pas d'animal de dos) en diffère. */
+  scene: SceneDemo;
+  degradee: boolean;
+  /** Les personnages, de gauche à droite : « Femme 2 », « Homme 1 »… */
+  personnages: string[];
+  /** Le nom du décor tiré. */
+  decor: string;
+}
+
+/**
+ * Où en est le PDF d'une affiche. « en_attente » et « en_cours » ne vivent
+ * que dans la mémoire du serveur : après un redémarrage ou un arrêt, ce qui
+ * n'était pas fini redevient « a_faire ».
+ */
+export type EtatDemo =
+  | { etat: "prete"; taille: number }
+  | { etat: "en_attente"; devant: number }
+  | { etat: "en_cours"; depuisMs: number }
+  | { etat: "echec"; erreur: string }
+  | { etat: "a_faire" };
+
+/** Une affiche personnalisable en ligne (ni IA, ni prête à imprimer), telle que le formulaire la propose. */
+export interface AfficheCatalogueDemo {
+  productId: number;
+  nom: string;
+  /** Chemin « /assets/… » de sa première image, ou null. */
+  image: string | null;
+  /** Les noms de ses collections. */
+  collections: string[];
+  /** Le type d'affiche (slug), et son nom : « De face », « De dos ». */
+  vue: string;
+  vueNom: string;
+  /**
+   * Combien de décors elle peut recevoir ; `decorsParLeNom` : trouvés d'après
+   * sa ville, le premier seul servant — ou aucun quand plusieurs sont à
+   * égalité en tête (l'affiche n'est alors pas tirable, et `decors` dit
+   * combien on en a trouvé).
+   */
+  decors: number;
+  decorsParLeNom: boolean;
+  /** Combien de personnages son type d'affiche propose. */
+  personnages: number;
+  tirable: boolean;
+  /** Pourquoi elle ne peut pas être tirée, en une phrase. */
+  raison: string | null;
+}
+
+export interface CatalogueAffichesDemo {
+  affiches: AfficheCatalogueDemo[];
+  /** « Varié (conseillé) » en premier ; `aide` dit qui pose sur l'affiche. */
+  scenes: { cle: SceneChoisie; libelle: string; aide: string }[];
+  /** Les catégories de personnages rangées sous chaque rôle : un renommage se voit à l'écran. */
+  roles: { role: RoleDemo; libelle: string; categories: string[] }[];
+  plafonds: { parAffiche: number; parLot: number };
+  /** Le temps moyen d'une affiche, mesuré sur les lots passés ; null tant qu'aucune n'est faite. */
+  dureeMoyenneMs: { A4: number | null; A3: number | null };
+}
+
+/** Un lot dans la liste des lots. `taille` : le poids des PDF prêts, en octets. */
+export interface ResumeLotDemo {
+  id: number;
+  creeLe: string;
+  format: FormatDemo;
+  scene: SceneChoisie;
+  total: number;
+  pretes: number;
+  echecs: number;
+  taille: number;
+  arrete: boolean;
+}
+
+/** Un exemplaire d'un lot. `productId` null : l'affiche a été supprimée du catalogue depuis. */
+export interface AfficheDuLotDemo {
+  id: number;
+  rang: number;
+  productId: number | null;
+  titre: string;
+  scene: SceneDemo;
+  resume: ResumeDemo | null;
+  /** Le nom du PDF téléchargé : « mulhouse-place-de-la-reunion_A4_famille_3.pdf ». */
+  nomFichier: string;
+  etat: EtatDemo;
+}
+
+export interface LotAffichesDemo {
+  lot: {
+    id: number;
+    creeLe: string;
+    format: FormatDemo;
+    scene: SceneChoisie;
+    arrete: boolean;
+    total: number;
+  };
+  affiches: AfficheDuLotDemo[];
+}
+
+/**
+ * L'état d'un lot, que la page d'un lot redemande toute seule
+ * (lib/affiches-demo-bo.ts, par le navigateur et non par adminApi).
+ */
+export interface EtatLotDemo {
+  affiches: Record<string, EtatDemo>;
+  pretes: number;
+  total: number;
+  taille: number;
+  moyenneMs: number | null;
+  arrete: boolean;
+}
+
 export function adminApi(request?: Request) {
   const cookie = request?.headers.get("cookie") ?? undefined;
   return {
@@ -2317,7 +2460,9 @@ export function adminApi(request?: Request) {
         | "tag"
         | "untag"
         | "archiver"
-        | "restaurer",
+        | "restaurer"
+        // Ventes du stand mises en test (20/11) : `ecartees` dit ce qui ne l'a pas été.
+        | "test",
       tags?: string[],
       auteur?: string,
     ) =>
@@ -3897,6 +4042,61 @@ export function adminApi(request?: Request) {
      */
     purgerIa: (simulation = false) =>
       req<BilanPurgeIa>("POST", "/admin/ia/purger", { simulation }, cookie),
+
+    /* --- Affiches de démonstration ---------------------------------------
+     * Le tirage et la fabrication sont dans l'API (apps/api/src/affiches-demo.ts).
+     * Rien ne transite ici que du JSON : les PDF, le ZIP, les vignettes et
+     * l'état qu'une page redemande partent du navigateur, par apiUrl()
+     * (lib/affiches-demo-bo.ts) — un ZIP de 1 Go n'a pas à traverser le
+     * serveur du back-office. */
+
+    /**
+     * Les affiches qu'on peut tirer au hasard, et de quoi remplir le
+     * formulaire : scènes, rôles des catégories, plafonds, durée moyenne.
+     */
+    affichesDemoCatalogue: () =>
+      req<CatalogueAffichesDemo>("GET", "/admin/affiches-demo/catalogue", undefined, cookie),
+    /** Les lots déjà générés. */
+    lotsAffichesDemo: () =>
+      req<{ lots: ResumeLotDemo[] }>("GET", "/admin/affiches-demo/lots", undefined, cookie),
+    /** Un lot et ses affiches, chacune avec son état. */
+    lotAffichesDemo: (id: number) =>
+      req<LotAffichesDemo>("GET", `/admin/affiches-demo/lots/${id}`, undefined, cookie),
+    /**
+     * Tire un lot. Chaque exemplaire reçoit sa configuration sur-le-champ ; le
+     * rendu, lui, part en file sur le serveur. Une affiche devenue impossible
+     * à tirer depuis l'ouverture du formulaire est écartée, avec sa raison.
+     * Une demande refusée en entier (rien de choisi, trop d'affiches) lève la
+     * phrase de l'API.
+     */
+    creerLotAffichesDemo: (corps: {
+      format: FormatDemo;
+      scene: SceneChoisie;
+      affiches: { productId: number; exemplaires: number }[];
+      nomsLigne2?: string[];
+      couleurTexte?: "#FFFFFF" | "#2F3436";
+    }) =>
+      req<{ id: number; total: number; ecartees: { productId: number; raison: string }[] }>(
+        "POST",
+        "/admin/affiches-demo/lots",
+        corps,
+        cookie,
+      ),
+    /** Plus rien ne part en fabrication ; une affiche déjà lancée va jusqu'au bout. */
+    arreterLotAffichesDemo: (id: number) =>
+      req<{ ok: true }>("POST", `/admin/affiches-demo/lots/${id}/arreter`, {}, cookie),
+    /** Remet en fabrication ce qui reste à faire. */
+    reprendreLotAffichesDemo: (id: number) =>
+      req<{ ok: true }>("POST", `/admin/affiches-demo/lots/${id}/reprendre`, {}, cookie),
+    /** Le lot, ses tirages et ses fichiers : sans retour. */
+    supprimerLotAffichesDemo: (id: number) =>
+      req<{ ok: true }>("DELETE", `/admin/affiches-demo/lots/${id}`, undefined, cookie),
+    /** Tire de nouveau une affiche (même scène) ; son PDF se refait. */
+    nouveauTirageAfficheDemo: (id: number) =>
+      req<{ ok: true }>("POST", `/admin/affiches-demo/affiches/${id}/nouveau-tirage`, {}, cookie),
+    /** Retire une affiche de son lot, PDF compris. */
+    retirerAfficheDemo: (id: number) =>
+      req<{ ok: true }>("DELETE", `/admin/affiches-demo/affiches/${id}`, undefined, cookie),
 
     /* --- Cartes cadeaux -------------------------------------------------- */
 

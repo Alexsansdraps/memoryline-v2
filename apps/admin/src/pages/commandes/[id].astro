@@ -33,6 +33,7 @@ import {
   type EtatBordereau,
   type OrderDetail,
 } from "../../lib/api.ts";
+import { estVenteDeTest } from "../../lib/vente-de-test.ts";
 
 const id = Number(Astro.params.id);
 const api = adminApi(Astro.request);
@@ -553,6 +554,17 @@ const resteARembourser = items.reduce((s, it) => s + (it.aRembourser ?? 0), 0);
 const annulee = order?.status === "cancelled" || order?.status === "voided";
 
 /**
+ * Une vente de test du stand (20/11), mise en test par la sélection de Ventes
+ * stand : une vente du stand, annulée, et étiquetée « test »
+ * (lib/vente-de-test.ts, qui vérifie aussi le canal : une commande du site
+ * annulée et étiquetée à la main garde sa phrase d'annulée). Le bloc Statut
+ * la dit « Vente de test : hors des chiffres. », pas « Commande annulée » :
+ * c'est un essai rangé, pas une vente perdue. Rien d'autre ne change sur la
+ * fiche, et aucun geste n'y met en test.
+ */
+const venteDeTest = !!order && estVenteDeTest(order);
+
+/**
  * Le panier n'est pas une commande. Elle ne s'encaisse pas, ne s'annule pas,
  * ne se facture pas — elle se reprend ou elle s'oublie.
  */
@@ -981,7 +993,9 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   : etapeT === "rien_a_expedier"
                     ? "Cette commande ne contient que des cartes cadeaux, parties par e-mail : il n'y a rien à préparer."
                     : etapeT === "annulee"
-                      ? "Commande annulée : plus rien ne se prépare ni ne part."
+                      ? venteDeTest
+                        ? "Vente de test : hors des chiffres."
+                        : "Commande annulée : plus rien ne se prépare ni ne part."
                       : "C'est un panier, pas une commande : il n'y a rien à préparer."}
               </p>
               {estProprietaire && encaissableAuStand && (

@@ -27,13 +27,31 @@ import {
   type FiltresCommandes,
   type OrderRow,
 } from "../lib/api.ts";
+import {
+  faireActionDeLaListe,
+  type ResultatActionListe,
+} from "../lib/actions-liste-commandes.ts";
+
+/**
+ * Les filtres de la liste, plus celui des ventes de test (20/11) : l'API le
+ * lit (commandes.ts, « test=seul » ou « test=exclure »), et `api.orders`
+ * envoie toutes les clés qu'on lui donne, comme le lien d'export.
+ */
+type FiltresDeLaListe = FiltresCommandes & { test?: "seul" | "exclure" };
 
 interface Props {
   channel: "web" | "salon";
   /** Restreint la liste à un seul stand, quand l'écran en regarde un. */
   stand?: number;
+  /**
+   * Le geste de la liste, déjà fait par la page qui la porte (relecture du
+   * 20/11) : Ventes stand le fait avant de lire ses chiffres, pour que la
+   * carte du stand et le bloc des chiffres le montrent déjà. La liste n'en
+   * affiche que le message. Sans lui, elle fait elle-même le geste reçu.
+   */
+  actionFaite?: ResultatActionListe;
 }
-const { channel, stand } = Astro.props;
+const { channel, stand, actionFaite } = Astro.props;
 
 const api = adminApi(Astro.request);
 
@@ -45,107 +63,17 @@ const api = adminApi(Astro.request);
  */
 const estProprietaire = Astro.locals.user?.role === "owner";
 
-let flash: string | null = null;
-let erreurAction: string | null = null;
-if (Astro.request.method === "POST" && estProprietaire) {
-  const f = await Astro.request.formData();
-  const action = f.get("_action");
-  try {
-    if (action === "annuler-vente") {
-      // Une vente du stand que le client n'a pas payée, ou autre (19/11) :
-      // annulée d'ici, sans ouvrir la fiche. Aucun courriel, rien à rendre :
-      // son encaissement sur place sort du grand livre (commandes.ts).
-      const r = await api.annulerCommande(Number(f.get("id")), {
-        motif: String(f.get("motif") ?? "impaye"),
-        motifLibre: "",
-        rembourser: false,
-        author: Astro.locals.user?.email ?? undefined,
-      });
-      flash = `Vente ${r.numero} annulée : elle ne compte plus dans vos chiffres.`;
-    } else if (action === "supprimer-vente") {
-      // Pour les essais (19/11, Alexandra : « faut qu'on puisse supprimer
-      // malgré la loi les commandes […] et pas devoir passer par
-      // archivées ») : une vente du stand part pour de bon, d'un clic.
-      const numero = String(f.get("numero") ?? "");
-      await api.supprimerCommande(Number(f.get("id")));
-      flash = `Vente ${numero} supprimée définitivement, avec ses lignes et son journal.`;
-    } else if (action === "etape") {
-      // L'étape suivante, d'un clic dans la liste (17/11) : la même règle que
-      // la frise de la fiche (courriel compris).
-      const r = await api.changerEtape(Number(f.get("id")), {
-        etape: String(f.get("etape") ?? ""),
-        auteur: Astro.locals.user?.email ?? undefined,
-      });
-      const nom = libelleEtape(r.etape as EtapeTraitement, r.parcours as ParcoursTraitement);
-      flash =
-        `${String(f.get("numero") ?? "Commande")} : « ${nom} ».` +
-        (r.courrier
-          ? r.courrier.parti
-            ? ` Courriel envoyé à ${r.courrier.email}.`
-            : ` Le courriel n'a PAS pu partir vers ${r.courrier.email}.`
-          : "");
-    } else if (action === "masse") {
-      const ids = String(f.get("ids") ?? "")
-        .split(",")
-        .map(Number)
-        .filter(Boolean);
-      const quoi = String(f.get("bulk") ?? "");
-      const tags = String(f.get("tags") ?? "")
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
-      if (quoi === "etape-suivante") {
-        const r = await api.bulkOrders(ids, quoi, undefined, Astro.locals.user?.email ?? undefined);
-        const ecartees = r.ecartees ?? [];
-        flash =
-          `${r.count} commande(s) passée(s) à l'étape suivante` +
-          (r.prevenues ? `, ${r.prevenues} client(s) prévenu(s) par courriel` : "") +
-          "." +
-          (ecartees.length
-            ? ` ${ecartees.length} laissée(s) telle(s) quelle(s) : ${ecartees
-                .map((e) => e.raison)
-                .filter((v, i, t) => t.indexOf(v) === i)
-                .join(" ")}`
-            : "");
-      } else if (quoi === "tag" || quoi === "untag") {
-        const r = await api.bulkOrders(ids, quoi, tags);
-        flash =
-          quoi === "tag"
-            ? `Étiquette ajoutée à ${r.count} commande(s).`
-            : `Étiquette retirée de ${r.count} commande(s).`;
-      } else if (quoi === "archiver" || quoi === "restaurer") {
-        const r = await api.bulkOrders(ids, quoi);
-        const numeros = Array.isArray(r.numeros) ? r.numeros : [];
-        const liste = numeros.length ? ` : ${numeros.join(", ")}.` : ".";
-        flash =
-          quoi === "archiver"
-            ? `${r.count} commande(s) archivée(s)${liste} Rien n'est effacé : elles attendent dans l'onglet « Archivées ».`
-            : `${r.count} commande(s) restaurée(s)${liste}`;
-      } else if (quoi === "supprimer") {
-        // La suppression DÉFINITIVE, par sélection, dans l'onglet
-        // « Archivées » (18/11). Une à une, par la route de la fiche : mêmes
-        // règles (suppression.ts, motifCommandeAGarder). Ce qui a été payé,
-        // facturé, remboursé, expédié ou réglé en carte cadeau reste
-        // archivé, et le message dit pourquoi.
-        let supprimees = 0;
-        const raisons: string[] = [];
-        for (const id of ids) {
-          try {
-            await api.supprimerCommande(id);
-            supprimees++;
-          } catch (e) {
-            raisons.push(String(e).replace(/^Error:\s*/, ""));
-          }
-        }
-        const uniques = raisons.filter((v, i, t) => t.indexOf(v) === i);
-        flash =
-          `${supprimees} commande(s) supprimée(s) définitivement, avec leurs lignes et leur journal.` +
-          (raisons.length ? ` ${raisons.length} gardée(s) : ${uniques.join(" ")}` : "");
-      }
-    }
-  } catch (e) {
-    erreurAction = String(e);
-  }
+// Les gestes de la liste (lib/actions-liste-commandes.ts, relecture du
+// 20/11) : faits ici, sauf si la page qui porte la liste les a déjà faits
+// avant de lire ses chiffres (Ventes stand) — alors seul leur message reste.
+let flash: string | null = actionFaite?.flash ?? null;
+let erreurAction: string | null = actionFaite?.erreurAction ?? null;
+if (!actionFaite && Astro.request.method === "POST" && estProprietaire) {
+  ({ flash, erreurAction } = await faireActionDeLaListe(
+    await Astro.request.formData(),
+    api,
+    Astro.locals.user?.email ?? undefined,
+  ));
 }
 
 /* --- Onglets ------------------------------------------------------------- */
@@ -158,16 +86,32 @@ if (Astro.request.method === "POST" && estProprietaire) {
 const ONGLETS: {
   cle: string;
   label: string;
-  filtres: Partial<FiltresCommandes>;
+  filtres: Partial<FiltresDeLaListe>;
 }[] = [
-  { cle: "toutes", label: "Toutes", filtres: {} },
+  // Au stand, les ventes de test ont leur onglet (20/11) : « Toutes » et
+  // « Annulées » ne les montrent plus. Les commandes du site ne changent pas.
+  {
+    cle: "toutes",
+    label: "Toutes",
+    filtres: channel === "salon" ? { test: "exclure" } : {},
+  },
   // Un seul statut, en étapes (17/11) : les onglets suivent les étapes.
   ...(channel === "salon"
     ? [
         // Une vente du stand naît payée et terminée (19/11) : il ne reste
         // qu'à voir celles qu'on a annulées (Alexandra : « laisse toutes et
         // annulées »).
-        { cle: "annulees", label: "Annulées", filtres: { etape: "annulee" } },
+        {
+          cle: "annulees",
+          label: "Annulées",
+          filtres: { etape: "annulee", test: "exclure" as const },
+        },
+        // Les essais faits sur la tablette, mis en test par la sélection
+        // (20/11, Alexandra : « il faudrait ajouter "test" comme ça on peut
+        // mettre des commandes en test ») : annulés, hors des chiffres, rangés
+        // ici, d'où ils se suppriment à la main (« celles ci pourront être
+        // supp manuellement ») comme toute vente du stand.
+        { cle: "test", label: "Test", filtres: { test: "seul" as const } },
       ]
     : [
         {
@@ -204,8 +148,9 @@ const ongletActif = params.get("onglet") ?? "toutes";
 const onglet = ONGLETS.find((o) => o.cle === ongletActif) ?? ONGLETS[0]!;
 
 // Les filtres saisis à la main l'emportent sur ceux de l'onglet : sinon on ne
-// pourrait pas affiner « À expédier » sans changer d'onglet.
-const filtres: FiltresCommandes = {
+// pourrait pas affiner « À expédier » sans changer d'onglet. Celui des ventes
+// de test vient de l'onglet seul (« Toutes », « Annulées », « Test »).
+const filtres: FiltresDeLaListe = {
   channel,
   stand,
   ...onglet.filtres,
@@ -551,6 +496,26 @@ const filtreActif =
           <button type="button" data-bulk="untag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
             Retirer une étiquette
           </button>
+          {/* Les ventes d'essai de la tablette, mises en test d'un coup
+              (20/11, Alexandra : « non pour mettre en test à la main c'est
+              avec sélectionner et une option à la sélection ») : annulées
+              sans courriel, étiquetées « test », hors des chiffres. Pas dans
+              l'onglet « Test », où elles le sont déjà. La confirmation dit
+              que c'est sans retour (relecture du 20/11) : une vente annulée
+              ne se rouvre ni ici ni sur la tablette, et « se rangent »,
+              comme pour « Archiver », laissait croire qu'elles en
+              ressortiraient. */}
+          {channel === "salon" && onglet.cle !== "test" && !vueArchivees && (
+            <button
+              type="button"
+              data-bulk="test"
+              data-confirme="Mettre en test les ventes sélectionnées ? Elles sont annulées, sans retour possible : elles sortent des chiffres et de la liste, et se rangent dans l'onglet « Test », d'où vous pourrez les supprimer. Aucun courriel."
+              title="Des ventes d'essai : annulées sans courriel, hors des chiffres, rangées dans l'onglet « Test »."
+              class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+            >
+              Mettre en test
+            </button>
+          )}
         </>
       )}
       <button type="button" id="bo-bons" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">

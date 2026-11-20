@@ -21,6 +21,7 @@ import type {
   GroupeCouleur,
   HorairesStand,
   LigneCarteCadeau,
+  PosterConfig,
   RegleParier,
   RemiseAppliquee,
 } from "@memoryline/types";
@@ -2855,4 +2856,104 @@ export const journalPaiement = pgTable(
       sql`${t.action} in ('cle_enregistree', 'cle_archivee', 'verification', 'mode', 'etiquettes')`,
     ),
   ],
+);
+
+/* --- Affiches de démonstration ------------------------------------------- */
+
+/**
+ * Un lot d'affiches de démonstration : des affiches personnalisées au hasard,
+ * à imprimer d'avance pour un marché, un salon ou une vitrine (BO › Atelier ›
+ * Affiches de démonstration, voir apps/api/src/affiches-demo.ts).
+ *
+ * Des tables À ELLES, et non de fausses commandes : une commande fausserait
+ * les numéros WEB-/SAL-, les ventes, les Finances et les Statistiques, et
+ * retiendrait fonds et personnages contre la suppression (usages-commandes.ts).
+ * Rien ici n'est lu par le circuit des commandes.
+ */
+export const lotsAffichesDemo = pgTable(
+  "lot_affiches_demo",
+  {
+    id: serial("id").primaryKey(),
+    creeLe: timestamp("cree_le", { withTimezone: true }).defaultNow().notNull(),
+    /** L'adresse du compte du back-office qui l'a lancé. */
+    creePar: text("cree_par"),
+    /** « A4 » ou « A3 » : un lot sort tout entier dans un format. */
+    format: text("format").notNull(),
+    /** Les personnages demandés : une scène, ou « varie » (elles tournent sur le lot). */
+    scene: text("scene").notNull(),
+    /**
+     * La demande telle que saisie : affiches et exemplaires, noms d'exemple
+     * de la 2e ligne, couleur du texte, départ de la rotation des scènes.
+     * « Refaire au hasard » la relit, pour retirer une affiche dans les mêmes
+     * conditions.
+     */
+    demande: jsonb("demande").notNull(),
+    /**
+     * « Arrêter le lot » : les affiches qui restent ne partent plus, ni à la
+     * reprise au démarrage, ni quand la page du lot est ouverte. « Reprendre »
+     * l'éteint.
+     */
+    arrete: boolean("arrete").notNull().default(false),
+  },
+  (t) => [check("lot_affiches_demo_format_check", sql`${t.format} in ('A4', 'A3')`)],
+);
+
+/**
+ * Une affiche d'un lot : sa configuration TIRÉE, enregistrée, et son fichier.
+ *
+ * La configuration est celle d'une ligne de commande (posterConfigSchema) :
+ * c'est elle qui permet de refaire exactement la même affiche après un ménage
+ * ou un redémarrage — le PDF, lui, n'est qu'un cache sur le disque
+ * (data/assets/cache/affiches-demo/<lot>/<id>.pdf).
+ *
+ * `taille` et `crc32` sont ceux du PDF rangé : nuls, il n'est pas (ou plus)
+ * prêt. Ils permettent d'écrire l'archive .zip du lot en flux, sans relire
+ * chaque fichier avant de l'envoyer (archive-zip.ts).
+ */
+export const affichesDemo = pgTable(
+  "affiche_demo",
+  {
+    id: serial("id").primaryKey(),
+    lotId: integer("lot_id")
+      .notNull()
+      .references(() => lotsAffichesDemo.id, { onDelete: "cascade" }),
+    /** Sa place dans le lot (1, 2, 3…) : l'ordre de fabrication et du .zip. */
+    rang: integer("rang").notNull(),
+    /**
+     * L'affiche du catalogue d'où elle est tirée. SANS clé étrangère, exprès :
+     * une affiche de démonstration ne doit empêcher ni l'archivage ni la
+     * suppression d'un produit.
+     */
+    productId: integer("product_id"),
+    /** Le nom de l'affiche au moment du tirage. */
+    titre: text("titre").notNull(),
+    /** La scène demandée pour elle (jamais « varie ») : « Refaire » la reprend. */
+    scene: text("scene").notNull(),
+    /**
+     * Combien de fois elle a été retirée au hasard (0 : le tirage du lot).
+     * Il change la graine du tirage, et il garde l'ouvrier d'enregistrer le
+     * PDF d'une configuration remplacée pendant son rendu.
+     */
+    tirage: integer("tirage").notNull().default(0),
+    /** Ce qu'on lit sur la carte avant le rendu : scène, personnages, décor. */
+    resume: jsonb("resume").$type<{
+      scene: string;
+      degradee: boolean;
+      personnages: string[];
+      decor: string;
+    }>(),
+    config: jsonb("config").$type<PosterConfig>().notNull(),
+    /** « mulhouse-place-de-la-reunion_A4_famille_3.pdf », en ASCII. */
+    nomFichier: text("nom_fichier").notNull(),
+    /** Octets du PDF rangé ; nul tant qu'il n'est pas prêt. */
+    taille: integer("taille"),
+    /** CRC-32 du PDF rangé (l'en-tête de son entrée dans le .zip). */
+    crc32: bigint("crc32", { mode: "number" }),
+    /** Durée du rendu, de son départ réel à son rangement. */
+    dureeMs: integer("duree_ms"),
+    /** La raison du dernier échec, dite pour la boutique. */
+    erreur: text("erreur"),
+    faitLe: timestamp("fait_le", { withTimezone: true }),
+  },
+  (t) => [index("affiche_demo_lot_idx").on(t.lotId, t.rang)],
 );

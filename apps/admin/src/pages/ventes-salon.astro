@@ -3,6 +3,11 @@ import Admin from "../layouts/Admin.astro";
 import OrderStats from "../components/OrderStats.astro";
 import OrderTable from "../components/OrderTable.astro";
 import { adminApi, formatPrice, type ResumePage, type StandBo } from "../lib/api.ts";
+import {
+  ACTIONS_DE_LA_LISTE,
+  faireActionDeLaListe,
+  type ResultatActionListe,
+} from "../lib/actions-liste-commandes.ts";
 import { url } from "../lib/url.ts";
 import {
   FUSEAU_BOUTIQUE,
@@ -50,14 +55,30 @@ let flashAlerte = false;
 let nouveaute: { id: number; nom: string; code: string } | null = null;
 /** Le stand dont le calendrier vient d'être enregistré : il reste ouvert à l'écran. */
 let calendrierOuvert: number | null = null;
+/**
+ * Le geste envoyé par la liste des ventes, plus bas (« Mettre en test »,
+ * « Annuler la vente », « Supprimer »…), fait ici même (relecture du 20/11) :
+ * avant de lire les stands et les chiffres, pour que la page qui répond les
+ * montre déjà sans ces ventes. Fait par la liste, il passait après : la carte
+ * du stand et le bloc des chiffres comptaient encore les ventes qu'on venait
+ * de mettre en test. La liste n'en reçoit que le message.
+ */
+let actionDeLaListe: ResultatActionListe | undefined;
 
 if (Astro.request.method === "POST" && estProprietaire) {
-  // La liste des commandes, plus bas, relit le corps de la requête pour ses
-  // propres boutons. Un corps ne se lit qu'une fois : on travaille sur une
-  // copie et on lui laisse l'original.
+  // La liste des commandes, plus bas, relit le corps de la requête quand ce
+  // n'est pas l'un de ses gestes (ceux-là sont faits juste après). Un corps
+  // ne se lit qu'une fois : on travaille sur une copie et on lui laisse
+  // l'original.
   const champs = await Astro.request.clone().formData();
   const texte = (nom: string) => String(champs.get(nom) ?? "").trim();
   const action = texte("_action");
+  if (ACTIONS_DE_LA_LISTE.includes(action))
+    actionDeLaListe = await faireActionDeLaListe(
+      champs,
+      api,
+      Astro.locals.user?.email ?? undefined,
+    );
   const numero = Number(texte("id"));
   // Sans identifiant, le formulaire ne désigne aucun stand : mieux vaut ne
   // rien faire que d'agir sur le voisin.
@@ -1313,7 +1334,7 @@ const classeBouton =
             : (stands[0]?.nom ?? "votre stand")
     }
   />
-  <OrderTable channel="salon" stand={standChoisi} />
+  <OrderTable channel="salon" stand={standChoisi} actionFaite={actionDeLaListe} />
   </>
   )}
 

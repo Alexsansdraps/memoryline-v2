@@ -1,0 +1,789 @@
+---
+/**
+ * Affiches de démonstration (BO › Atelier) : des affiches personnalisées au
+ * hasard, à imprimer d'avance pour un marché, un salon ou une vitrine.
+ *
+ * Demandé le 20/11 pour le marché de Noël de Mulhouse — Margaux veut des
+ * affiches à montrer sur le stand —, et pensé pour resservir : rien ici ne
+ * connaît Mulhouse. L'écran ne fait que DEMANDER : combien d'exemplaires de
+ * chaque affiche, qui pose dessus (la scène), le format, deux réglages de
+ * texte. Le tirage et la fabrication sont dans l'API
+ * (apps/api/src/affiches-demo.ts). Le tirage y rejoue les règles du module de
+ * personnalisation — seulement les personnages, pièces et couleurs proposés
+ * aux clients —, et la fabrication passe par le moteur des fichiers
+ * d'impression SANS créer de commande : rien ne fausse les numéros de vente,
+ * les Finances ni les Statistiques.
+ *
+ * L'envoi se traite ici, puis mène à la page du lot (303) : recharger cette
+ * page-là ne crée pas un second lot.
+ */
+import Admin from "../layouts/Admin.astro";
+import ApercuFlottant from "../components/ApercuFlottant.astro";
+import {
+  COULEURS_TEXTE_AFFICHE,
+  COULEUR_TEXTE_DEFAUT,
+  FUSEAU_BOUTIQUE,
+  libelleFormat,
+} from "@memoryline/types";
+import {
+  adminApi,
+  LIBELLES_SCENES_DEMO,
+  type CatalogueAffichesDemo,
+  type FormatDemo,
+  type ResumeLotDemo,
+  type SceneChoisie,
+} from "../lib/api.ts";
+import {
+  ERREUR_RIEN_CHOISI,
+  libelleGenerer,
+  phraseChoix,
+  pluriel,
+  taille,
+} from "../lib/affiches-demo-textes.ts";
+import { apiUrl, url } from "../lib/url.ts";
+
+const api = adminApi(Astro.request);
+
+/**
+ * L'API refuse en français et dit pourquoi (« Un lot compte au plus 100
+ * affiches… »). Un code technique (« API POST … -> 500 ») n'apprend rien à
+ * personne : on le tait, l'appelant met sa propre phrase à la place.
+ */
+function raisonLisible(souci: unknown): string {
+  const brut = (souci instanceof Error ? souci.message : String(souci))
+    .replace(/^Error:\s*/, "")
+    .trim();
+  return brut.startsWith("API ") ? "" : brut;
+}
+
+const FORMATS: readonly FormatDemo[] = ["A4", "A3"];
+const estScene = (v: string): v is SceneChoisie => Object.hasOwn(LIBELLES_SCENES_DEMO, v);
+const minuscule = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+
+let flash: string | null =
+  Astro.url.searchParams.get("supprime") === "1" ? "Lot supprimé, avec ses PDF." : null;
+let flashAlerte = false;
+
+/**
+ * Ce que la boutique venait de demander, gardé si le lot est refusé :
+ * remettre trente nombres d'exemplaires à la main serait le meilleur moyen
+ * de renoncer.
+ */
+let saisie: {
+  exemplaires: Map<number, number>;
+  format: FormatDemo;
+  scene: SceneChoisie;
+  noms: string;
+  couleur: string;
+} | null = null;
+
+if (Astro.request.method === "POST") {
+  const champs = await Astro.request.formData();
+  const texte = (nom: string) => String(champs.get(nom) ?? "").trim();
+  const exemplaires = new Map<number, number>();
+  for (const [nom, valeur] of champs.entries()) {
+    const m = /^ex-(\d+)$/.exec(nom);
+    if (!m) continue;
+    const n = Math.trunc(Number(String(valeur).trim() || 0));
+    if (Number.isFinite(n) && n > 0) exemplaires.set(Number(m[1]), n);
+  }
+  const scene = texte("scene");
+  saisie = {
+    exemplaires,
+    format: FORMATS.find((f) => f === texte("format")) ?? "A4",
+    scene: estScene(scene) ? scene : "varie",
+    noms: String(champs.get("noms") ?? ""),
+    couleur:
+      COULEURS_TEXTE_AFFICHE.find((c) => c.hex === texte("couleur"))?.hex ?? COULEUR_TEXTE_DEFAUT,
+  };
+
+  try {
+    // Les plafonds (10 par affiche, 100 par lot), c'est l'API qui les tient
+    // et qui dit en clair ce qui dépasse : on ne les recopie pas ici.
+    if (!exemplaires.size) throw new Error(ERREUR_RIEN_CHOISI);
+    const nomsLigne2 = saisie.noms
+      .split(/\r?\n/)
+      .map((n) => n.trim())
+      .filter(Boolean);
+    const cree = await api.creerLotAffichesDemo({
+      format: saisie.format,
+      scene: saisie.scene,
+      affiches: [...exemplaires].map(([productId, n]) => ({ productId, exemplaires: n })),
+      ...(nomsLigne2.length ? { nomsLigne2 } : {}),
+      couleurTexte: saisie.couleur === "#2F3436" ? "#2F3436" : "#FFFFFF",
+    });
+
+    // Une affiche devenue impossible à tirer depuis l'ouverture du
+    // formulaire (son décor archivé entre-temps) est écartée : la page du lot
+    // la nomme, avec sa raison. C'est rare, d'où une lecture du catalogue
+    // seulement dans ce cas, pour retrouver les noms.
+    const suite = new URLSearchParams({ cree: "1" });
+    if (cree.ecartees.length) {
+      const noms = new Map(
+        ((await api.affichesDemoCatalogue().catch(() => null))?.affiches ?? []).map((a) => [
+          a.productId,
+          a.nom,
+        ]),
+      );
+      // « « X » : aucun décor à elle. », « « X » : 2 exemplaires sur 5 n'ont
+      // pas pu être tirés… » : l'API donne la raison, la page nomme l'affiche.
+      const raisons = cree.ecartees.map((e) => {
+        const nom = noms.get(e.productId);
+        if (nom && e.raison.includes(nom)) return e.raison;
+        return `${nom ? `« ${nom} »` : `L'affiche n° ${e.productId}`} : ${minuscule(e.raison)}`;
+      });
+      for (const r of raisons.slice(0, 5)) suite.append("ecartee", r);
+      if (raisons.length > 5) suite.set("autres", String(raisons.length - 5));
+    }
+    return Astro.redirect(url(`/affiches-demo/${cree.id}?${suite}`), 303);
+  } catch (souci) {
+    flash = raisonLisible(souci) || "Le lot n'a pas pu être créé. Réessayez dans un instant.";
+    flashAlerte = true;
+  }
+}
+
+/*
+ * Le catalogue (ce qui se tire, et de quoi remplir le formulaire) et les lots
+ * déjà faits, demandés ensemble. Chacun a son repli : sans la liste des lots,
+ * on peut quand même en lancer un ; sans le catalogue, il n'y a rien à
+ * proposer, et on le dit.
+ */
+const lotsDemandes = api
+  .lotsAffichesDemo()
+  .then((r) => r.lots)
+  .catch((): ResumeLotDemo[] | null => null);
+let catalogue: CatalogueAffichesDemo | null = null;
+let erreurCatalogue: string | null = null;
+try {
+  catalogue = await api.affichesDemoCatalogue();
+} catch (souci) {
+  erreurCatalogue = raisonLisible(souci) || "La liste des affiches n'a pas pu être lue.";
+}
+const lots = await lotsDemandes;
+
+const plafonds = catalogue?.plafonds ?? { parAffiche: 10, parLot: 100 };
+const scenes = catalogue?.scenes ?? [];
+const sceneChoisie =
+  saisie?.scene ?? (scenes.some((s) => s.cle === "varie") ? "varie" : scenes[0]?.cle);
+const formatChoisi = saisie?.format ?? "A4";
+const couleurChoisie = saisie?.couleur ?? COULEUR_TEXTE_DEFAUT;
+
+/**
+ * Les affiches dans l'ordre alphabétique, celles qu'on ne peut pas tirer à la
+ * fin : grisées, elles disent pourquoi, mais n'ont rien à recevoir.
+ */
+const affiches = [...(catalogue?.affiches ?? [])].sort(
+  (a, b) => Number(b.tirable) - Number(a.tirable) || a.nom.localeCompare(b.nom, "fr"),
+);
+const tirables = affiches.filter((a) => a.tirable);
+const collections = [...new Set(affiches.flatMap((a) => a.collections))].sort((a, b) =>
+  a.localeCompare(b, "fr"),
+);
+const types = [...new Map(affiches.map((a) => [a.vue, a.vueNom])).entries()].sort((a, b) =>
+  a[1].localeCompare(b[1], "fr"),
+);
+
+/** Ce que le filtre « Nom ou ville » compare : sans accents ni majuscules. */
+const aplati = (s: string) =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+/** Une vignette légère : 200 px de large, servie par l'API. */
+const vignette = (u: string | null) =>
+  !u ? "" : /^https?:\/\//i.test(u) ? u : `${apiUrl(u)}?l=200`;
+
+/** Le nombre d'exemplaires d'une affiche dans le formulaire : 0, ou ce qui venait d'être demandé. */
+const exemplairesDe = (id: number) => saisie?.exemplaires.get(id) ?? 0;
+const dejaChoisies = tirables.filter((a) => exemplairesDe(a.productId) > 0);
+const dejaExemplaires = dejaChoisies.reduce((n, a) => n + exemplairesDe(a.productId), 0);
+
+/** Les rôles des scènes et les catégories rangées sous chacun : un renommage se voit ici. */
+const roles = catalogue?.roles ?? [];
+
+/** « 20/11/2026 à 18:42 », à l'heure de la boutique. */
+function quand(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const morceaux = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: FUSEAU_BOUTIQUE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(d);
+  const p = (t: Intl.DateTimeFormatPartTypes) => morceaux.find((m) => m.type === t)?.value ?? "";
+  return `${p("day")}/${p("month")}/${p("year")} à ${p("hour")}:${p("minute")}`;
+}
+
+/** Ce que la liste dit d'un lot : ses mots, et leur couleur. */
+function etatDuLot(l: ResumeLotDemo): [string, string] {
+  const echecs = l.echecs ? ` · ${pluriel(l.echecs, "échec")}` : "";
+  if (l.total > 0 && l.pretes === l.total)
+    return [l.total > 1 ? "Toutes prêtes" : "Prête", "text-green-700"];
+  if (l.arrete) return [`Arrêté : ${l.pretes} sur ${l.total}${echecs}`, "text-amber-800"];
+  return [
+    `${l.pretes} ${l.pretes > 1 ? "prêtes" : "prête"} sur ${l.total}${echecs}`,
+    l.echecs ? "text-red-700" : "",
+  ];
+}
+
+const champ = "rounded border border-bo-border bg-bo-surface px-2 py-1 text-sm";
+const boutonDiscret =
+  "rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg";
+const carteChoix =
+  "flex cursor-pointer gap-2 rounded border border-bo-border bg-bo-surface p-3 text-sm hover:bg-bo-bg has-[:checked]:border-bo-accent has-[:checked]:ring-1 has-[:checked]:ring-bo-accent";
+---
+
+<Admin title="Affiches de démonstration">
+  <ApercuFlottant />
+
+  {flash && (
+    <p
+      class={`mb-4 whitespace-pre-line rounded border px-3 py-2 text-sm ${
+        flashAlerte
+          ? "border-amber-200 bg-amber-50 text-amber-900"
+          : "border-green-200 bg-green-50 text-green-900"
+      }`}
+      role={flashAlerte ? "alert" : "status"}
+    >
+      {flash}
+    </p>
+  )}
+
+  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
+    Des affiches d'exemple, personnalisées au hasard, à imprimer d'avance pour
+    un marché, un salon ou une vitrine. Indiquez combien d'exemplaires de
+    chaque affiche vous voulez : chacun reçoit ses propres personnages, tenues
+    et couleurs, toujours choisis parmi ceux que le site propose aux clients.
+  </p>
+
+  {/* Les lots déjà faits d'abord : on revient sur cet écran pour retrouver
+      ses PDF bien plus souvent que pour en lancer un nouveau, et le
+      formulaire, lui, peut faire cent cinquante lignes. */}
+  {lots && lots.length > 0 && (
+    <section id="lots" class="mb-8">
+      <h2 class="mb-2 text-base font-semibold">Lots déjà générés</h2>
+      <div class="max-h-[22rem] overflow-auto rounded-lg border border-bo-border bg-bo-surface">
+        <table class="w-full text-sm">
+          <thead class="sticky top-0 z-10 bg-bo-bg text-left text-xs text-bo-muted">
+            <tr>
+              <th class="px-3 py-2">Créé le</th>
+              <th class="px-3 py-2 text-right">Affiches</th>
+              <th class="px-3 py-2">Format</th>
+              <th class="px-3 py-2">Personnages</th>
+              <th class="px-3 py-2">État</th>
+              <th class="px-3 py-2 text-right">Taille</th>
+              <th class="px-3 py-2" data-sans-tri><span class="sr-only">Ouvrir le lot</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {lots.map((l) => {
+              const [etat, couleur] = etatDuLot(l);
+              return (
+                <tr class="border-t border-bo-border">
+                  <td class="whitespace-nowrap px-3 py-2" data-tri={l.creeLe}>
+                    <a href={url(`/affiches-demo/${l.id}`)} class="text-bo-accent hover:underline">
+                      {quand(l.creeLe)}
+                    </a>
+                  </td>
+                  <td class="px-3 py-2 text-right">{l.total}</td>
+                  <td class="px-3 py-2">{l.format}</td>
+                  <td class="px-3 py-2">{LIBELLES_SCENES_DEMO[l.scene] ?? l.scene}</td>
+                  <td class={`px-3 py-2 ${couleur}`}>{etat}</td>
+                  <td class="whitespace-nowrap px-3 py-2 text-right" data-tri={String(l.taille)}>
+                    {l.taille > 0 ? taille(l.taille) : "—"}
+                  </td>
+                  <td class="whitespace-nowrap px-3 py-2 text-right">
+                    <a href={url(`/affiches-demo/${l.id}`)} class="text-bo-accent hover:underline">
+                      Ouvrir
+                    </a>
+                    {l.pretes > 0 && (
+                      <a
+                        href={apiUrl(`/admin/affiches-demo/lots/${l.id}/affiches.zip`)}
+                        download
+                        class="ml-3 text-bo-accent hover:underline"
+                        title="Les affiches prêtes de ce lot, dans une archive .zip"
+                      >
+                        .zip
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+  {!lots && (
+    <p class="mb-6 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      La liste des lots déjà générés n'a pas pu être lue. Vous pouvez quand
+      même en lancer un ; rechargez la page pour la revoir.
+    </p>
+  )}
+
+  {erreurCatalogue && (
+    <p class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+      {erreurCatalogue} Rechargez la page dans un instant.
+    </p>
+  )}
+
+  {/* `novalidate` : un nombre hors limites sur une ligne masquée par les
+      filtres bloquait l'envoi sans rien montrer. Le script vérifie lui-même
+      (et le dit en rouge sous le tableau), l'API vérifie encore derrière. */}
+  {catalogue && (
+    <form
+      method="POST"
+      novalidate
+      data-generer
+      data-par-affiche={plafonds.parAffiche}
+      data-par-lot={plafonds.parLot}
+      data-moyenne-a4={catalogue.dureeMoyenneMs.A4 ?? ""}
+      data-moyenne-a3={catalogue.dureeMoyenneMs.A3 ?? ""}
+      class="space-y-6"
+    >
+      {/* ================================================================ */}
+      <section id="affiches" class="rounded-lg border border-bo-border bg-bo-surface p-4 md:p-5">
+        <h2 class="text-base font-semibold">1. Les affiches</h2>
+        <p class="mt-1 max-w-3xl text-sm text-bo-muted">
+          Seules les affiches personnalisables en ligne sont proposées : les
+          affiches IA et les affiches prêtes à imprimer n'ont rien à tirer au
+          hasard. Jusqu'à {pluriel(plafonds.parAffiche, "exemplaire")} par
+          affiche, {plafonds.parLot} affiches par lot.
+        </p>
+
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <input
+            type="search"
+            data-filtre-texte
+            placeholder="Nom ou ville"
+            aria-label="Rechercher une affiche par son nom ou sa ville"
+            class={`w-56 ${champ}`}
+          />
+          <select data-filtre-collection aria-label="Collection" class={champ}>
+            <option value="">Toutes les collections</option>
+            {collections.map((c) => <option value={c}>{c}</option>)}
+          </select>
+          <select data-filtre-type aria-label="Type d'affiche" class={champ}>
+            <option value="">Tous les types</option>
+            {types.map(([vue, nom]) => <option value={vue}>{nom}</option>)}
+          </select>
+          <label class="flex items-center gap-1.5">
+            <input type="checkbox" data-filtre-choisies />
+            Seulement celles choisies
+          </label>
+          <span class="text-bo-muted" data-filtre-compte></span>
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <button type="button" class={boutonDiscret} data-un-chacune>
+            1 exemplaire pour chaque affiche affichée
+          </button>
+          <button type="button" class={boutonDiscret} data-tout-zero>
+            Tout remettre à 0
+          </button>
+        </div>
+
+        {affiches.length === 0 ? (
+          <p class="mt-3 text-sm text-bo-muted">
+            Aucune affiche personnalisable en ligne pour l'instant : il n'y a
+            rien à tirer au hasard.
+          </p>
+        ) : (
+          <div class="mt-3 max-h-[36rem] overflow-auto rounded border border-bo-border">
+            <table class="w-full text-sm">
+              <thead class="sticky top-0 z-10 bg-bo-bg text-left text-xs text-bo-muted">
+                <tr>
+                  <th class="w-12 px-2 py-1.5" data-sans-tri><span class="sr-only">Image</span></th>
+                  <th class="px-2 py-1.5">Affiche</th>
+                  <th class="px-2 py-1.5">Collections</th>
+                  <th class="px-2 py-1.5">Type</th>
+                  <th class="px-2 py-1.5" data-sans-tri>Exemplaires</th>
+                </tr>
+              </thead>
+              <tbody>
+                {affiches.map((a) => {
+                  const n = exemplairesDe(a.productId);
+                  return (
+                    <tr
+                      data-ligne
+                      data-recherche={aplati(a.nom)}
+                      data-collections={a.collections.join("|")}
+                      data-vue={a.vue}
+                      class={`border-t border-bo-border ${a.tirable ? "" : "text-bo-muted opacity-60"} ${
+                        n > 0 ? "bg-green-50" : ""
+                      }`}
+                    >
+                      <td class="px-2 py-1.5">
+                        {a.image ? (
+                          <img
+                            src={vignette(a.image)}
+                            alt=""
+                            loading="lazy"
+                            data-apercu-largeur="240"
+                            class="bo-vignette h-12 w-[34px] rounded-sm border border-bo-border bg-bo-bg object-cover"
+                          />
+                        ) : (
+                          <span class="block h-12 w-[34px] rounded-sm border border-bo-border bg-bo-bg" />
+                        )}
+                      </td>
+                      <td class="px-2 py-1.5">
+                        {a.tirable ? (
+                          <label for={`ex-${a.productId}`} class="font-medium">
+                            {a.nom}
+                          </label>
+                        ) : (
+                          <span class="font-medium">{a.nom}</span>
+                        )}
+                        <span class="block text-xs text-bo-muted">
+                          {`${pluriel(a.decors, "décor")}${
+                            a.decorsParLeNom
+                              ? a.decors > 1
+                                ? ", trouvés d'après sa ville"
+                                : ", trouvé d'après sa ville"
+                              : ""
+                          } · ${pluriel(a.personnages, "personnage")}`}
+                        </span>
+                      </td>
+                      <td class="px-2 py-1.5 text-bo-muted">
+                        {a.collections.length ? a.collections.join(", ") : "—"}
+                      </td>
+                      <td class="whitespace-nowrap px-2 py-1.5">{a.vueNom}</td>
+                      <td class="px-2 py-1.5">
+                        {a.tirable ? (
+                          <input
+                            type="number"
+                            id={`ex-${a.productId}`}
+                            name={`ex-${a.productId}`}
+                            data-exemplaires
+                            min="0"
+                            max={plafonds.parAffiche}
+                            step="1"
+                            inputmode="numeric"
+                            value={n}
+                            class={`w-16 ${champ}`}
+                          />
+                        ) : (
+                          <span class="text-xs">{a.raison ?? "Ne peut pas être tirée."}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* ================================================================ */}
+      {/* Qui pose sur l'affiche : une scène plutôt qu'un mélange de
+          catégories, pour que chaque tirage reste présentable (un adulte au
+          moins, de deux à cinq personnages). Rien d'autre à régler : le
+          type de l'affiche (de face, de dos) est celui du produit. */}
+      <section id="personnages" class="rounded-lg border border-bo-border bg-bo-surface p-4 md:p-5">
+        <h2 class="text-base font-semibold">2. Les personnages</h2>
+        <fieldset class="mt-3">
+          <legend class="sr-only">Qui pose sur les affiches</legend>
+          <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {scenes.map((s) => (
+              <label class={carteChoix}>
+                <input type="radio" name="scene" value={s.cle} checked={s.cle === sceneChoisie} class="mt-0.5" />
+                <span>
+                  <span class="block font-medium">{s.libelle}</span>
+                  <span class="block text-xs text-bo-muted">{s.aide}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <p class="mt-3 max-w-3xl text-xs text-bo-muted">
+          Les personnages sont ceux du type de l'affiche (de face ou de dos),
+          avec les pièces et les nuanciers proposés aux clients. Les
+          catégories de personnages, rôle par rôle :
+        </p>
+        {/* Le rôle de chaque catégorie vient de son NOM : renommée, une
+            catégorie peut tomber dans « Autres », et cela se voit ici. Un rôle
+            sans catégorie est signalé ; « Autres » vide ne manque à rien. */}
+        {roles.length > 0 && (
+          <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-bo-muted">
+            {roles
+              .filter((r) => r.role !== "autre" || r.categories.length > 0)
+              .map((r) => (
+                <li>
+                  <span class="font-medium text-bo-ink">{r.libelle}</span> :{" "}
+                  {r.categories.length ? (
+                    r.categories.join(", ")
+                  ) : (
+                    <span class="text-amber-800">aucune catégorie</span>
+                  )}
+                </li>
+              ))}
+          </ul>
+        )}
+      </section>
+
+      {/* ================================================================ */}
+      <section id="format" class="rounded-lg border border-bo-border bg-bo-surface p-4 md:p-5">
+        <h2 class="text-base font-semibold">3. Le format</h2>
+        <fieldset class="mt-3">
+          <legend class="sr-only">Format des affiches</legend>
+          <div class="flex flex-wrap gap-2">
+            {FORMATS.map((f) => (
+              <label class={`${carteChoix} items-center`}>
+                <input type="radio" name="format" value={f} checked={f === formatChoisi} />
+                {libelleFormat(f)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <p class="mt-2 text-xs text-bo-muted">
+          Fichiers PDF en haute définition (300 points par pouce), à la taille
+          exacte de la feuille, sans fond perdu.
+        </p>
+      </section>
+
+      {/* ================================================================ */}
+      <section id="textes" class="rounded-lg border border-bo-border bg-bo-surface p-4 md:p-5">
+        <h2 class="text-base font-semibold">4. Les textes</h2>
+        <p class="mt-1 text-sm text-bo-muted">
+          La 1re ligne reprend celle de l'affiche (sinon sa ville), en capitales.
+        </p>
+        <div class="mt-3 grid gap-4 md:grid-cols-2">
+          <label class="block">
+            <span class="block text-sm font-medium">Noms d'exemple pour la 2e ligne (facultatif)</span>
+            <span class="block text-xs text-bo-muted">
+              Un par ligne, tirés au hasard. Vide : la 2e ligne de l'affiche,
+              quand elle en a une.
+            </span>
+            <textarea
+              name="noms"
+              rows="5"
+              maxlength="4000"
+              placeholder={"Famille Muller\nLéa et Tom\nLes Schmitt"}
+              class="mt-1 block w-full rounded border border-bo-border bg-bo-surface px-2 py-1.5 text-sm"
+            >{saisie?.noms ?? ""}</textarea>
+          </label>
+          <fieldset>
+            <legend class="text-sm font-medium">Couleur du texte</legend>
+            <div class="mt-1 flex flex-wrap gap-2">
+              {COULEURS_TEXTE_AFFICHE.map((c) => (
+                <label class={`${carteChoix} items-center`}>
+                  <input type="radio" name="couleur" value={c.hex} checked={c.hex === couleurChoisie} />
+                  <span
+                    class="inline-block h-4 w-4 rounded-full border border-bo-border"
+                    style={`background:${c.hex}`}
+                    aria-hidden="true"
+                  />
+                  {c.libelle}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+      </section>
+
+      {/* Le compteur et le bouton restent sous les yeux pendant qu'on remplit
+          un tableau de cent cinquante lignes. */}
+      <div class="sticky bottom-0 z-20 -mx-3 border-t border-bo-border bg-bo-surface px-3 py-3 md:-mx-6 md:px-6">
+        <div class="flex flex-wrap items-center gap-3">
+          <button
+            class="inline-flex items-center gap-2 rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90"
+            data-bouton-generer
+          >
+            <span
+              data-attente
+              hidden
+              aria-hidden="true"
+              class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+            ></span>
+            <span data-texte>{libelleGenerer(dejaExemplaires)}</span>
+          </button>
+          <span class="text-sm" data-compte>{phraseChoix(dejaChoisies.length, dejaExemplaires)}</span>
+          <span class="text-sm text-red-700" data-erreur role="alert"></span>
+        </div>
+      </div>
+    </form>
+  )}
+
+  <script>
+    import {
+      ERREUR_RIEN_CHOISI,
+      confirmationGeneration,
+      erreurTropParAffiche,
+      erreurTropParLot,
+      libelleGenerer,
+      phraseChoix,
+    } from "../lib/affiches-demo-textes.ts";
+
+    const formulaire = document.querySelector<HTMLFormElement>("form[data-generer]");
+    if (formulaire) brancher(formulaire);
+
+    /**
+     * Le formulaire d'un lot : filtrer le tableau, compter ce qui est choisi,
+     * puis confirmer avant d'envoyer — une seule fois. Le script ne fait que
+     * filtrer et compter : les affiches, leurs exemplaires et les plafonds
+     * sont dans la page et dans l'API.
+     */
+    function brancher(form: HTMLFormElement): void {
+      const parLot = Number(form.dataset.parLot) || 100;
+      const parAffiche = Number(form.dataset.parAffiche) || 10;
+      const lignes = [...form.querySelectorAll<HTMLTableRowElement>("tr[data-ligne]")];
+      const champs = [...form.querySelectorAll<HTMLInputElement>("input[data-exemplaires]")];
+      const filtreTexte = form.querySelector<HTMLInputElement>("[data-filtre-texte]");
+      const filtreCollection = form.querySelector<HTMLSelectElement>("[data-filtre-collection]");
+      const filtreType = form.querySelector<HTMLSelectElement>("[data-filtre-type]");
+      const filtreChoisies = form.querySelector<HTMLInputElement>("[data-filtre-choisies]");
+      const compteFiltre = form.querySelector<HTMLElement>("[data-filtre-compte]");
+      const compte = form.querySelector<HTMLElement>("[data-compte]");
+      const zoneErreur = form.querySelector<HTMLElement>("[data-erreur]");
+      const bouton = form.querySelector<HTMLButtonElement>("[data-bouton-generer]");
+      const texteBouton = bouton?.querySelector<HTMLElement>("[data-texte]");
+
+      const aplati = (s: string) =>
+        s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+      const valeur = (c: HTMLInputElement) => {
+        const n = Math.trunc(Number(c.value));
+        return Number.isFinite(n) && n > 0 ? n : 0;
+      };
+
+      function totaux() {
+        let affiches = 0;
+        let exemplaires = 0;
+        let masquees = 0;
+        let tropPourUne = false;
+        for (const c of champs) {
+          const n = valeur(c);
+          const ligne = c.closest("tr");
+          ligne?.classList.toggle("bg-green-50", n > 0);
+          if (!n) continue;
+          affiches++;
+          exemplaires += n;
+          if (n > parAffiche) tropPourUne = true;
+          if (ligne?.hidden) masquees++;
+        }
+        return { affiches, exemplaires, masquees, tropPourUne };
+      }
+
+      /** Ce qui empêche d'envoyer, dit avec les mots de l'API. */
+      function probleme(t: ReturnType<typeof totaux>): string {
+        if (!t.exemplaires) return ERREUR_RIEN_CHOISI;
+        if (t.exemplaires > parLot) return erreurTropParLot(t.exemplaires, parLot);
+        if (t.tropPourUne) return erreurTropParAffiche(parAffiche);
+        return "";
+      }
+
+      function compter(): void {
+        const t = totaux();
+        if (compte)
+          compte.textContent =
+            phraseChoix(t.affiches, t.exemplaires) +
+            (t.masquees
+              ? ` (dont ${t.masquees} ${t.masquees > 1 ? "masquées" : "masquée"} par les filtres)`
+              : "");
+        if (texteBouton && form.dataset.envoye !== "1") texteBouton.textContent = libelleGenerer(t.exemplaires);
+        // Un dépassement se dit tout de suite ; « rien de choisi », seulement
+        // si l'on essaie d'envoyer.
+        if (zoneErreur) zoneErreur.textContent = t.exemplaires ? probleme(t) : "";
+      }
+
+      function filtrer(): void {
+        const mots = aplati(filtreTexte?.value ?? "").split(/\s+/).filter(Boolean);
+        const collection = filtreCollection?.value ?? "";
+        const vue = filtreType?.value ?? "";
+        const choisies = filtreChoisies?.checked ?? false;
+        let visibles = 0;
+        for (const tr of lignes) {
+          const c = tr.querySelector<HTMLInputElement>("input[data-exemplaires]");
+          const garde =
+            mots.every((m) => (tr.dataset.recherche ?? "").includes(m)) &&
+            (!collection || (tr.dataset.collections ?? "").split("|").includes(collection)) &&
+            (!vue || tr.dataset.vue === vue) &&
+            (!choisies || (!!c && valeur(c) > 0));
+          tr.hidden = !garde;
+          if (garde) visibles++;
+        }
+        if (compteFiltre)
+          compteFiltre.textContent =
+            visibles === lignes.length
+              ? ""
+              : `${visibles} ${visibles > 1 ? "affichées" : "affichée"} sur ${lignes.length}`;
+        compter();
+      }
+
+      filtreTexte?.addEventListener("input", filtrer);
+      // Entrée dans le champ de recherche filtre ; elle n'envoie pas le lot.
+      filtreTexte?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") e.preventDefault();
+      });
+      filtreCollection?.addEventListener("change", filtrer);
+      filtreType?.addEventListener("change", filtrer);
+      filtreChoisies?.addEventListener("change", filtrer);
+      form.addEventListener("input", (e) => {
+        if (e.target instanceof HTMLInputElement && e.target.hasAttribute("data-exemplaires")) compter();
+      });
+
+      // « 1 exemplaire pour chaque affiche affichée » : celles qui en ont déjà
+      // gardent leur nombre.
+      form.querySelector("[data-un-chacune]")?.addEventListener("click", () => {
+        for (const tr of lignes) {
+          if (tr.hidden) continue;
+          const c = tr.querySelector<HTMLInputElement>("input[data-exemplaires]");
+          if (c && valeur(c) === 0) c.value = "1";
+        }
+        compter();
+      });
+      form.querySelector("[data-tout-zero]")?.addEventListener("click", () => {
+        for (const c of champs) c.value = "0";
+        compter();
+      });
+
+      // Un seul écouteur : il vérifie, fait confirmer, et ne marque le
+      // formulaire envoyé que si la boutique a dit oui. Un second clic
+      // pendant le tirage ne crée pas un second lot.
+      form.addEventListener("submit", (e) => {
+        if (form.dataset.envoye === "1") {
+          e.preventDefault();
+          return;
+        }
+        const t = totaux();
+        const souci = probleme(t);
+        if (souci) {
+          e.preventDefault();
+          if (zoneErreur) zoneErreur.textContent = souci;
+          return;
+        }
+        const format =
+          form.querySelector<HTMLInputElement>("input[name='format']:checked")?.value ?? "A4";
+        const moyenne = Number(format === "A3" ? form.dataset.moyenneA3 : form.dataset.moyenneA4) || null;
+        if (!window.confirm(confirmationGeneration(t.exemplaires, format, moyenne))) {
+          e.preventDefault();
+          return;
+        }
+        form.dataset.envoye = "1";
+        if (bouton) {
+          bouton.setAttribute("aria-disabled", "true");
+          bouton.setAttribute("aria-busy", "true");
+          bouton.classList.add("opacity-70", "cursor-wait");
+          bouton.querySelector("[data-attente]")?.removeAttribute("hidden");
+        }
+        if (texteBouton) texteBouton.textContent = "Tirage des affiches…";
+      });
+
+      // Revenu par « Précédent », le navigateur rend la page telle qu'on l'a
+      // quittée : le bouton doit redevenir cliquable.
+      window.addEventListener("pageshow", (e) => {
+        if (!e.persisted) return;
+        delete form.dataset.envoye;
+        if (bouton) {
+          bouton.removeAttribute("aria-disabled");
+          bouton.removeAttribute("aria-busy");
+          bouton.classList.remove("opacity-70", "cursor-wait");
+          bouton.querySelector("[data-attente]")?.setAttribute("hidden", "");
+        }
+        compter();
+      });
+
+      filtrer();
+    }
+  </script>
+</Admin>
