@@ -1,0 +1,442 @@
+---
+/**
+ * Créer un fond (BO › Atelier, 20/11) : des photos de lieux, un nom, et le
+ * modèle d'images d'OpenAI dessine les décors dans le style de la maison.
+ *
+ * Margaux : « Si seulement tu pouvais me faire un programme où j'ai juste à
+ * mettre des photos et qu'il me génère des fonds automatiquement sans que je
+ * discute pendant 2h pour faire un seule fond de ville ». Alexandra a précisé
+ * ensuite : plusieurs photos DIFFÉRENTES déposées d'un coup donnent chacune
+ * leur fond (un lot), le style est celui d'un style des affiches IA lu en
+ * base, et chaque fond a sa petite discussion (pages/fonds/[id].astro).
+ *
+ * Cette page : le formulaire d'un lot, le lot qu'on vient d'envoyer (il se
+ * met à jour tout seul), les fonds déjà faits, et les réglages propres aux
+ * fonds. Le dessin et le coût sont dans l'API (apps/api/src/fonds-ia.ts).
+ */
+import Admin from "../layouts/Admin.astro";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
+import {
+  adminApi,
+  type CatalogueFondsIa,
+  type ResumeFondIa,
+} from "../lib/api.ts";
+import { euros, nouveauJeton, pluriel, texteEtat } from "../lib/fonds-textes.ts";
+import { apiUrl, url } from "../lib/url.ts";
+
+const api = adminApi(Astro.request);
+
+/** L'API refuse en français et dit pourquoi ; un code technique, on le tait. */
+function raisonLisible(souci: unknown): string {
+  const brut = (souci instanceof Error ? souci.message : String(souci)).replace(/^Error:\s*/, "").trim();
+  return brut.startsWith("API ") ? "" : brut;
+}
+
+let flash: string | null = Astro.url.searchParams.get("reglages") === "1" ? "Réglages enregistrés." : null;
+let flashAlerte = false;
+
+if (Astro.request.method === "POST") {
+  const champs = await Astro.request.formData();
+  const action = String(champs.get("action") ?? "");
+  try {
+    if (action === "reglages") {
+      const defaut = String(champs.get("consigneDefaut") ?? "");
+      const consigne = String(champs.get("consigne") ?? "").replace(/\r\n/g, "\n").trim();
+      // Remis au texte d'origine (ou vidé) : on enregistre vide, et c'est le
+      // défaut du code qui s'applique — il suivra ses corrections futures.
+      await api.setSetting(
+        "ia.fondConsigne",
+        champs.get("remettre") === "1" || consigne === defaut.replace(/\r\n/g, "\n").trim() ? "" : consigne,
+      );
+      const cout = Math.round(Number(String(champs.get("coutEuros") ?? "").replace(",", ".")) * 100);
+      if (Number.isFinite(cout) && cout >= 0) await api.setSetting("ia.fondCoutParVersionCents", cout);
+      const versions = Math.trunc(Number(champs.get("versionsDefaut")));
+      if (versions >= 1) await api.setSetting("ia.fondVersions", versions);
+      return Astro.redirect(url("/fonds?reglages=1#reglages"), 303);
+    }
+    // Un lot : le formulaire part tel quel à l'API, photos comprises.
+    const envoi = new FormData();
+    for (const cle of ["jeton", "nomLot", "precision", "versions", "styleId"])
+      envoi.append(cle, String(champs.get(cle) ?? ""));
+    for (const n of champs.getAll("noms")) envoi.append("noms", String(n));
+    for (const e of champs.getAll("exemples")) if (String(e)) envoi.append("exemples", String(e));
+    for (const f of champs.getAll("photos"))
+      if (typeof f !== "string" && f.size > 0) envoi.append("photos", f, f.name);
+    const { lot } = await api.creerLotFondsIa(envoi);
+    return Astro.redirect(url(`/fonds?lot=${encodeURIComponent(lot)}#lot`), 303);
+  } catch (souci) {
+    flash = raisonLisible(souci) || "L'envoi n'a pas abouti. Réessayez dans un instant.";
+    flashAlerte = true;
+  }
+}
+
+let catalogue: CatalogueFondsIa | null = null;
+let erreur: string | null = null;
+try {
+  catalogue = await api.fondsIaCatalogue();
+} catch (souci) {
+  erreur = raisonLisible(souci) || "L'écran n'a pas pu être chargé.";
+}
+
+const lotDemande = Astro.url.searchParams.get("lot");
+let lot: ResumeFondIa[] | null = null;
+if (lotDemande) lot = await api.lotFondsIa(lotDemande).then((r) => r.fonds).catch(() => null);
+const lotEnCours = !!lot?.some((f) => f.etat === "en_cours");
+
+/** Les fonds déjà faits, par lot, du plus récent au plus ancien. */
+const parLot = new Map<string, ResumeFondIa[]>();
+for (const f of catalogue?.fonds ?? []) parLot.set(f.lot, [...(parLot.get(f.lot) ?? []), f]);
+
+const quand = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : new Intl.DateTimeFormat("fr-FR", {
+        timeZone: FUSEAU_BOUTIQUE,
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(d);
+};
+
+const jeton = nouveauJeton();
+const reg = catalogue?.reglages;
+const cout = reg?.coutParVersionCents ?? 0;
+const bouchon = !!catalogue?.bouchon;
+const champ = "rounded border border-bo-border bg-bo-surface px-2 py-1 text-sm";
+const couleurEtat = (e: string) =>
+  e === "echec" ? "text-red-700" : e === "prete" ? "text-green-700" : "text-amber-800";
+---
+
+<Admin title="Créer un fond">
+  <div data-fonds class="space-y-6">
+    {flash && (
+      <p
+        class={`whitespace-pre-line rounded border px-3 py-2 text-sm ${
+          flashAlerte ? "border-amber-200 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-900"
+        }`}
+        role={flashAlerte ? "alert" : "status"}
+      >
+        {flash}
+      </p>
+    )}
+
+    <p class="max-w-3xl text-sm text-bo-muted">
+      Déposez une ou plusieurs photos de lieux, donnez un nom : chaque photo
+      devient son propre fond, dessiné dans le style de la maison, avec le ciel
+      dégagé en haut pour le texte et le bas libre pour les personnages. Le
+      meilleur angle et le nettoyage (voitures, panneaux, fils…) sont demandés
+      d'office. Si un résultat ne va pas, ouvrez le fond et discutez avec lui.
+    </p>
+
+    {bouchon && (
+      <p class="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900" role="status">
+        Mode d'essai : les images sont fabriquées sur ce serveur, sans OpenAI.
+        Rien n'est payé, et chaque image porte « ESSAI ».
+      </p>
+    )}
+    {catalogue && !bouchon && !catalogue.configuree && (
+      <p class="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
+        La génération IA n'est pas configurée sur ce serveur (clé OpenAI absente) :
+        aucun fond ne peut être dessiné.
+      </p>
+    )}
+    {erreur && (
+      <p class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+        {erreur} Rechargez la page dans un instant.
+      </p>
+    )}
+
+    {/* Le lot qu'on vient d'envoyer : il se met à jour tout seul. */}
+    {lotDemande && (
+      <section
+        id="lot"
+        class="rounded-lg border border-bo-border bg-bo-surface p-4 md:p-5"
+        data-sondage={lotEnCours ? apiUrl(`/admin/fonds-ia/lots/${encodeURIComponent(lotDemande)}`) : undefined}
+      >
+        <h2 class="text-base font-semibold">Votre lot</h2>
+        {!lot ? (
+          <p class="mt-2 text-sm text-red-700">Ce lot est introuvable.</p>
+        ) : (
+          <>
+            <p class="mt-1 text-sm text-bo-muted">
+              {pluriel(lot.length, "photo")}, {pluriel(lot.length, "fond")}.
+              {lotEnCours
+                ? " Le dessin prend une à deux minutes par image : la page se met à jour toute seule, vous pouvez aussi la quitter et revenir."
+                : " Ouvrez un fond pour le garder, le retoucher ou en discuter."}
+            </p>
+            <ul class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {lot.map((f) => (
+                <li class="overflow-hidden rounded border border-bo-border bg-bo-bg">
+                  <a href={url(`/fonds/${f.id}`)} class="block">
+                    <div class="relative aspect-[2/3] bg-bo-surface">
+                      <img
+                        src={apiUrl(f.versionCourante?.vignette ?? f.photo)}
+                        alt=""
+                        loading="lazy"
+                        class="h-full w-full object-cover"
+                      />
+                      {f.etat === "en_cours" && (
+                        <span class="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-xs text-white">
+                          {texteEtat(f)}
+                        </span>
+                      )}
+                    </div>
+                    <div class="p-2 text-sm">
+                      <span class="block font-medium">{f.nom}</span>
+                      <span class={`block text-xs ${couleurEtat(f.etat)}`}>
+                        {texteEtat(f)}
+                        {f.backgroundId ? " · enregistré comme décor" : ""}
+                      </span>
+                    </div>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+    )}
+
+    {catalogue && reg && (
+      <form
+        method="POST"
+        enctype="multipart/form-data"
+        data-lot
+        data-cout={cout}
+        data-bouchon={bouchon ? "1" : "0"}
+        data-max-photos={catalogue.limites.photos}
+        class="space-y-4 rounded-lg border border-bo-border bg-bo-surface p-4 md:p-5"
+      >
+        <h2 class="text-base font-semibold">Nouveau lot de photos</h2>
+        <input type="hidden" name="action" value="lot" />
+        <input type="hidden" name="jeton" value={jeton} />
+
+        <div>
+          <label for="photos" class="block text-sm font-medium">Photos des lieux</label>
+          <p class="text-xs text-bo-muted">
+            Jusqu'à {catalogue.limites.photos} photos d'un coup, 12 Mo chacune (JPEG, PNG ou WebP).
+            Chaque photo donne son propre fond.
+          </p>
+          <input
+            id="photos"
+            name="photos"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            required
+            class="mt-2 block text-sm"
+          />
+          <ul data-noms class="mt-3 space-y-2"></ul>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="block text-sm">
+            <span class="font-medium">Nom du lieu</span>
+            <input
+              name="nomLot"
+              required
+              maxlength={catalogue.limites.nom}
+              placeholder="Colmar, la Petite Venise"
+              class={`mt-1 w-full ${champ}`}
+            />
+            <span class="mt-1 block text-xs text-bo-muted">
+              Il nomme chaque fond, et le décor une fois enregistré. Une photo
+              peut recevoir son propre nom, dans la liste ci-dessus.
+            </span>
+          </label>
+          <label class="block text-sm">
+            <span class="font-medium">Précision (facultative)</span>
+            <input
+              name="precision"
+              maxlength={catalogue.limites.precision}
+              placeholder="sous la neige, au coucher du soleil…"
+              class={`mt-1 w-full ${champ}`}
+            />
+            <span class="mt-1 block text-xs text-bo-muted">Elle vaut pour toutes les photos du lot.</span>
+          </label>
+          <label class="block text-sm">
+            <span class="font-medium">Style</span>
+            <select name="styleId" class={`mt-1 w-full ${champ}`}>
+              {catalogue.styles.map((s) => (
+                <option value={s.id} selected={s.id === catalogue!.styleDefaut}>
+                  {s.title}
+                </option>
+              ))}
+              <option value="aucun" selected={catalogue.styleDefaut === null}>
+                Aucun style (seulement les règles des fonds)
+              </option>
+            </select>
+            <span class="mt-1 block text-xs text-bo-muted">
+              La consigne de ce style est celle de
+              <a href={url("/ia/styles")} class="text-bo-accent underline">Affiches IA › Styles proposés</a>,
+              relue à chaque dessin : la modifier là-bas change les fonds suivants.
+            </span>
+          </label>
+          <label class="block text-sm">
+            <span class="font-medium">Versions par photo</span>
+            <select name="versions" class={`mt-1 w-full ${champ}`}>
+              {Array.from({ length: catalogue.limites.versions }, (_, i) => i + 1).map((n) => (
+                <option value={n} selected={n === reg.versions}>
+                  {pluriel(n, "version")}
+                </option>
+              ))}
+            </select>
+            <span class="mt-1 block text-xs text-bo-muted">
+              Chaque version est une image payée{bouchon ? "" : `, environ ${euros(cout)}`}.
+            </span>
+          </label>
+        </div>
+
+        <fieldset>
+          <legend class="text-sm font-medium">Décors d'exemple montrés au modèle</legend>
+          <p class="text-xs text-bo-muted">
+            Deux décors de la bibliothèque, pour le rendu et le cadrage : le
+            modèle en copie le style, jamais le contenu.
+          </p>
+          <div class="mt-1 flex flex-wrap gap-2">
+            {[0, 1].map((i) => (
+              <select name="exemples" aria-label={`Décor d'exemple ${i + 1}`} class={`max-w-xs ${champ}`}>
+                <option value="">Aucun</option>
+                {catalogue!.decors.map((d) => (
+                  <option value={d.id} selected={reg.exemples[i] === d.id}>
+                    {d.nom}
+                  </option>
+                ))}
+              </select>
+            ))}
+          </div>
+        </fieldset>
+
+        <div class="flex flex-wrap items-center gap-3 border-t border-bo-border pt-3">
+          <button class="inline-flex items-center gap-2 rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90">
+            Dessiner les fonds
+          </button>
+          <span class="text-sm" data-resume></span>
+          <span class="text-sm text-red-700" data-erreur role="alert"></span>
+        </div>
+        <p class="text-xs text-bo-muted">
+          Dépense IA du mois : {euros(catalogue.depenseCents)} sur un plafond de {euros(catalogue.plafondCents)}
+          (affiches et fonds ensemble, réglable dans
+          <a href={url("/ia")} class="text-bo-accent underline">Affiches IA</a>).
+        </p>
+      </form>
+    )}
+
+    {parLot.size > 0 && (
+      <section>
+        <h2 class="mb-2 text-base font-semibold">Fonds déjà créés</h2>
+        <div class="overflow-auto rounded-lg border border-bo-border bg-bo-surface">
+          <table class="w-full text-sm">
+            <thead class="bg-bo-bg text-left text-xs text-bo-muted">
+              <tr>
+                <th class="px-3 py-2" data-sans-tri><span class="sr-only">Image</span></th>
+                <th class="px-3 py-2">Fond</th>
+                <th class="px-3 py-2">Créé le</th>
+                <th class="px-3 py-2">État</th>
+                <th class="px-3 py-2">Décor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...parLot.values()].flat().map((f) => (
+                <tr class="border-t border-bo-border">
+                  <td class="px-3 py-1.5">
+                    <img
+                      src={apiUrl(f.versionCourante?.vignette ?? f.photo)}
+                      alt=""
+                      loading="lazy"
+                      class="h-12 w-8 rounded-sm border border-bo-border object-cover"
+                    />
+                  </td>
+                  <td class="px-3 py-1.5">
+                    <a href={url(`/fonds/${f.id}`)} class="font-medium text-bo-accent hover:underline">
+                      {f.nom}
+                    </a>
+                    <span class="block text-xs text-bo-muted">
+                      {pluriel(f.messages, "message")}
+                      {f.depenseCents > 0 ? ` · ${euros(f.depenseCents)}` : ""}
+                    </span>
+                  </td>
+                  <td class="whitespace-nowrap px-3 py-1.5" data-tri={f.creeLe}>{quand(f.creeLe)}</td>
+                  <td class={`px-3 py-1.5 ${couleurEtat(f.etat)}`}>{texteEtat(f)}</td>
+                  <td class="px-3 py-1.5">
+                    {f.backgroundId ? (
+                      <a href={url("/decors")} class="text-bo-accent hover:underline">
+                        Décor n° {f.backgroundId}
+                      </a>
+                    ) : (
+                      <span class="text-bo-muted">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+
+    {catalogue && reg && (
+      <details id="reglages" class="rounded-lg border border-bo-border bg-bo-surface">
+        <summary class="cursor-pointer px-4 py-3 text-sm font-medium">Réglages des fonds</summary>
+        <form method="POST" class="space-y-4 border-t border-bo-border px-4 py-4">
+          <input type="hidden" name="action" value="reglages" />
+          <input type="hidden" name="consigneDefaut" value={reg.consigneDefaut} />
+          <label class="block text-sm">
+            <span class="font-medium">Consigne propre aux fonds</span>
+            <span class="mt-1 block text-xs text-bo-muted">
+              Envoyée APRÈS la consigne du style choisi : le meilleur angle, ce
+              qu'il faut retirer, le cadrage de l'affiche. En anglais, comme les
+              consignes des affiches IA : le modèle la suit mieux. « {"{{LIEU}}"} »
+              devient le nom du lieu.
+              {reg.consigneParDefaut ? " C'est le texte d'origine." : " Vous l'avez modifiée."}
+            </span>
+            <textarea name="consigne" rows="16" class={`mt-1 w-full font-mono text-xs ${champ}`}>{reg.consigne}</textarea>
+          </label>
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class="block text-sm">
+              <span class="font-medium">Coût estimé d'une image (€)</span>
+              <input
+                name="coutEuros"
+                inputmode="decimal"
+                value={(cout / 100).toFixed(2).replace(".", ",")}
+                class={`mt-1 w-32 ${champ}`}
+              />
+              <span class="mt-1 block text-xs text-bo-muted">
+                Une estimation, pour la confirmation et le plafond du mois : la
+                facture fait foi chez OpenAI.
+              </span>
+            </label>
+            <label class="block text-sm">
+              <span class="font-medium">Versions par photo, proposées d'office</span>
+              <select name="versionsDefaut" class={`mt-1 w-32 ${champ}`}>
+                {Array.from({ length: catalogue.limites.versions }, (_, i) => i + 1).map((n) => (
+                  <option value={n} selected={n === reg.versions}>{n}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90">
+              Enregistrer les réglages
+            </button>
+            {!reg.consigneParDefaut && (
+              <button
+                name="remettre"
+                value="1"
+                class="rounded border border-bo-border bg-bo-surface px-3 py-2 text-sm hover:bg-bo-bg"
+              >
+                Remettre la consigne d'origine
+              </button>
+            )}
+          </div>
+        </form>
+      </details>
+    )}
+  </div>
+
+  <script>
+    import "../lib/fonds-bo.ts";
+  </script>
+</Admin>

@@ -928,6 +928,16 @@ try {
       réglages ci-dessous.
     </p>
   )}
+  {/* Créée depuis une image de BO › Affiches IA (20/11) : désactivée, et
+      ce qui lui manque pour paraître en boutique. */}
+  {Astro.url.searchParams.get("depuisIa") === "1" && (
+    <p class="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm">
+      Affiche créée avec l'image comme décor, <strong>désactivée</strong> :
+      elle n'est pas en boutique. Vérifiez son nom et ses prix, remplacez
+      l'image principale par une affiche d'exemple (« Créer une affiche » dans
+      Affiches IA en fabrique une), puis passez-la en « Actif ».
+    </p>
+  )}
   {Astro.url.searchParams.get("copiee") === "1" && (
     <p class="mb-4 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm">
       Copie faite. Vous êtes sur la nouvelle affiche, en brouillon : changez son

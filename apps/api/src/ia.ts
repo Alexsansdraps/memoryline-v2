@@ -231,7 +231,7 @@ async function imagesDuStyle(
  * et la cliente doit voir l'effet d'un réglage immédiatement, pas au prochain
  * redémarrage.
  */
-async function reglages(): Promise<Reglages> {
+export async function reglages(): Promise<Reglages> {
   const rows = await db.select().from(schema.settings);
   const trouves = new Map(rows.map((r) => [r.key, r.value]));
   const sortie = { ...DEFAUTS } as Record<string, unknown>;
@@ -304,7 +304,7 @@ function debutDuMois(): Date {
 }
 
 /** Dépense estimée depuis le 1er du mois, en centimes. */
-async function depenseDuMoisCents(): Promise<number> {
+export async function depenseDuMoisCents(): Promise<number> {
   const [row] = await db
     .select({ total: raw<number>`coalesce(sum(${schema.aiGenerations.costCents}), 0)::int` })
     .from(schema.aiGenerations)
@@ -512,23 +512,56 @@ async function editerImage(
    */
   references: { nom: string; donnees: Buffer }[] = [],
 ): Promise<Buffer> {
+  // L'ORDRE fait le sens : la photo d'abord, c'est elle qui porte la scène.
+  // Une référence en premier ferait recopier son contenu, et le client
+  // recevrait une affiche qui n'est pas la sienne.
+  return editerImages(
+    [
+      { nom: nomPhoto, donnees: photo, type: "image/jpeg" },
+      ...references.map((r) => ({ nom: r.nom, donnees: r.donnees, type: "image/png" })),
+    ],
+    consigne,
+    modele,
+    taille,
+    qualite,
+    fidelite,
+  );
+}
+
+/** Une image envoyée au modèle : son nom, ses octets, son type. */
+export interface ImageEnvoyee {
+  nom: string;
+  donnees: Buffer;
+  type: string;
+}
+
+/**
+ * L'appel au modèle d'images, pour une ou plusieurs images d'entrée, dans
+ * l'ordre où la consigne les nomme (IMAGE 1, IMAGE 2…).
+ *
+ * Sorti d'`editerImage` le 20/11 pour « Créer un fond » (fonds-ia.ts), qui
+ * envoie la photo d'un lieu et deux décors d'exemple, ou, dans la discussion
+ * d'un fond, la version courante et la photo : Margaux
+ * (« un programme où j'ai juste à mettre des photos et qu'il me génère des
+ * fonds automatiquement ») passe par le MÊME appel que les affiches tirées
+ * d'une photo — même clé, même passerelle, même repli sans options.
+ */
+export async function editerImages(
+  images: ImageEnvoyee[],
+  consigne: string,
+  modele: string,
+  taille: string,
+  qualite: string,
+  fidelite: string,
+): Promise<Buffer> {
+  if (!images.length) throw new Error("Aucune image à envoyer au modèle");
   const envoyer = async (avecOptions: boolean): Promise<Response> => {
     const form = new FormData();
-    // L'ORDRE fait le sens : la photo d'abord, c'est elle qui porte la scène.
-    // Une référence en premier ferait recopier son contenu, et le client
-    // recevrait une affiche qui n'est pas la sienne.
-    const champ = references.length ? "image[]" : "image";
-    form.append(
-      champ,
-      new Blob([new Uint8Array(photo)], { type: "image/jpeg" }),
-      nomPhoto,
-    );
-    for (const r of references)
-      form.append(
-        "image[]",
-        new Blob([new Uint8Array(r.donnees)], { type: "image/png" }),
-        r.nom,
-      );
+    // Une image seule part sous « image », plusieurs sous « image[] » : c'est
+    // ce que faisait l'appel des affiches, à l'identique.
+    const champ = images.length > 1 ? "image[]" : "image";
+    for (const im of images)
+      form.append(champ, new Blob([new Uint8Array(im.donnees)], { type: im.type }), im.nom);
     form.append("prompt", consigne);
     form.append("model", modele);
     form.append("size", taille);
@@ -882,6 +915,11 @@ function generationPerimee(limite: Date): SQL {
   return and(
     lt(schema.aiGenerations.createdAt, limite),
     not(generationProtegee(limite)),
+    // Les versions d'un fond (« Créer un fond », 20/11) ne sont pas des
+    // photos de visiteurs : les photos d'un lieu prises par la boutique, et
+    // des décors qu'elle peut vouloir revoir. Elles ont leur dossier à elles
+    // (ia/fonds) ; la purge ne les vide pas, la ligne garde son coût.
+    isNull(schema.aiGenerations.fondId),
   )!;
 }
 

@@ -1,0 +1,334 @@
+---
+/**
+ * Un fond (BO › Atelier › Créer un fond, 20/11) : sa photo, sa version
+ * courante, et sa DISCUSSION.
+ *
+ * Alexandra : « il faut qu'elle puisse discuter quand même si jamais le
+ * résultat est pas top top pour une / des images ! ». Margaux écrit ce qui ne
+ * va pas (« la cathédrale est coupée, recule un peu »), ou choisit une
+ * retouche toute faite ; une nouvelle image est dessinée à partir de la
+ * version courante, avec le style, les règles des fonds et tout le fil des
+ * demandes précédentes. Le fil est gardé en base : on peut fermer la page et
+ * revenir. On revient à une version précédente, ou on la garde comme décor.
+ *
+ * Chaque geste est un formulaire traité ici, puis la page se recharge (303) :
+ * recharger ne renvoie rien. Les gestes payés se confirment avant de partir
+ * (lib/fonds-bo.ts), et portent un jeton contre le double envoi.
+ */
+import Admin from "../../layouts/Admin.astro";
+import { FUSEAU_BOUTIQUE } from "@memoryline/types";
+import { adminApi, type CatalogueFondsIa, type DetailFondIa, type VersionFondIa } from "../../lib/api.ts";
+import { confirmationMessage, euros, nouveauJeton, texteEtat } from "../../lib/fonds-textes.ts";
+import { apiUrl, url } from "../../lib/url.ts";
+
+const api = adminApi(Astro.request);
+const id = Number(Astro.params.id);
+
+function raisonLisible(souci: unknown): string {
+  const brut = (souci instanceof Error ? souci.message : String(souci)).replace(/^Error:\s*/, "").trim();
+  return brut.startsWith("API ") ? "" : brut;
+}
+
+const messagesFlash: Record<string, string> = {
+  envoye: "Message envoyé : la nouvelle image se dessine.",
+  courante: "C'est cette version qui servira de départ au prochain message.",
+  enregistre: "Enregistré comme décor : il est dans la bibliothèque.",
+};
+let flash: string | null = messagesFlash[Astro.url.searchParams.get("ok") ?? ""] ?? null;
+let flashAlerte = false;
+
+if (Astro.request.method === "POST" && Number.isInteger(id)) {
+  const f = await Astro.request.formData();
+  const texte = (n: string) => String(f.get(n) ?? "").trim();
+  try {
+    const action = texte("action");
+    let ok = "";
+    if (action === "message" || action === "zero") {
+      await api.messageFondIa(id, {
+        jeton: texte("jeton"),
+        texte: texte("texte"),
+        retouches: f.getAll("retouche").map(String).filter(Boolean),
+        depuisZero: action === "zero",
+        versions: Number(texte("versions")) || 1,
+      });
+      ok = "envoye";
+    } else if (action === "courante") {
+      await api.versionCouranteFondIa(id, texte("publicId"));
+      ok = "courante";
+    } else if (action === "enregistrer") {
+      const produit = texte("productId");
+      await api.enregistrerFondIa(id, {
+        publicId: texte("publicId"),
+        nom: texte("nom"),
+        productId: produit ? Number(produit) : null,
+      });
+      ok = "enregistre";
+    }
+    return Astro.redirect(url(`/fonds/${id}?ok=${ok}`), 303);
+  } catch (souci) {
+    flash = raisonLisible(souci) || "Cela n'a pas abouti. Réessayez dans un instant.";
+    flashAlerte = true;
+  }
+}
+
+let fond: DetailFondIa | null = null;
+let catalogue: CatalogueFondsIa | null = null;
+let erreur: string | null = null;
+try {
+  [fond, catalogue] = await Promise.all([api.fondIa(id), api.fondsIaCatalogue()]);
+} catch (souci) {
+  erreur = raisonLisible(souci) || "Ce fond n'a pas pu être chargé.";
+}
+
+const quand = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : new Intl.DateTimeFormat("fr-FR", {
+        timeZone: FUSEAU_BOUTIQUE,
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(d);
+};
+
+const courante = fond?.versionCourante ?? null;
+const cout = catalogue?.reglages.coutParVersionCents ?? 0;
+const bouchon = !!catalogue?.bouchon;
+const enCours = fond?.etat === "en_cours";
+const jetonMessage = nouveauJeton();
+const jetonZero = nouveauJeton();
+const champ = "rounded border border-bo-border bg-bo-surface px-2 py-1 text-sm";
+const boutonDiscret = "rounded border border-bo-border bg-bo-surface px-3 py-1.5 text-sm hover:bg-bo-bg";
+const rangDe = new Map((fond?.lotFonds ?? []).map((f, i) => [f.id, i + 1]));
+const estCourante = (v: VersionFondIa) => v.publicId === courante?.publicId;
+---
+
+<Admin title={fond ? fond.nom : "Fond"}>
+  <div data-fonds class="space-y-5">
+    <p class="text-sm">
+      <a href={url("/fonds")} class="text-bo-accent hover:underline">← Créer un fond</a>
+      {fond && fond.lotFonds.length > 1 && (
+        <span class="ml-3 text-bo-muted">
+          Photo {rangDe.get(fond.id)} sur {fond.lotFonds.length} du lot :
+          {fond.lotFonds.map((v) =>
+            v.id === fond!.id ? (
+              <span class="ml-2 font-medium">{rangDe.get(v.id)}</span>
+            ) : (
+              <a href={url(`/fonds/${v.id}`)} class="ml-2 text-bo-accent hover:underline" title={v.nom}>
+                {rangDe.get(v.id)}
+              </a>
+            ),
+          )}
+          <a href={url(`/fonds?lot=${encodeURIComponent(fond.lot)}#lot`)} class="ml-3 text-bo-accent hover:underline">
+            Tout le lot
+          </a>
+        </span>
+      )}
+    </p>
+
+    {flash && (
+      <p
+        class={`rounded border px-3 py-2 text-sm ${
+          flashAlerte ? "border-amber-200 bg-amber-50 text-amber-900" : "border-green-200 bg-green-50 text-green-900"
+        }`}
+        role={flashAlerte ? "alert" : "status"}
+      >
+        {flash}
+      </p>
+    )}
+    {erreur && (
+      <p class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{erreur}</p>
+    )}
+
+    {fond && (
+      <div class="grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+        {/* ============ L'image courante et l'enregistrement ============ */}
+        <section class="space-y-3">
+          <div class="relative aspect-[2/3] overflow-hidden rounded-lg border border-bo-border bg-bo-bg">
+            <img
+              src={apiUrl(courante?.image ?? fond.photo)}
+              alt={courante ? `Version courante du fond « ${fond.nom} »` : `Photo du lieu « ${fond.nom} »`}
+              class="h-full w-full object-cover"
+            />
+            {!courante && (
+              <span class="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-xs text-white">
+                {enCours ? "Photo d'origine — le dessin est en cours…" : "Photo d'origine"}
+              </span>
+            )}
+          </div>
+          <p class="text-xs text-bo-muted">
+            Style : {fond.style?.title ?? "aucun"}
+            {fond.depenseCents > 0 ? ` · dépensé pour ce fond : ${euros(fond.depenseCents)}` : ""}
+            {courante && (
+              <>
+                {" · "}
+                <a href={apiUrl(`${courante.image}?telecharger=1`)} class="text-bo-accent hover:underline">
+                  Télécharger l'image
+                </a>
+              </>
+            )}
+            {" · "}
+            <a href={apiUrl(fond.photo)} target="_blank" rel="noopener" class="text-bo-accent hover:underline">
+              Voir la photo d'origine
+            </a>
+          </p>
+
+          {fond.decor ? (
+            <div class="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900">
+              Enregistré comme décor n° {fond.decor.id} « {fond.decor.nom} »
+              {fond.decor.productId
+                ? <> et rattaché à <a href={url(`/produits/${fond.decor.productId}`)} class="underline">son affiche</a></>
+                : " sans affiche : il remonte par le nom de sa ville"}.
+              <a href={url("/decors")} class="ml-1 underline">Voir la bibliothèque</a>
+            </div>
+          ) : courante && catalogue ? (
+            <form method="POST" class="space-y-2 rounded-lg border border-bo-border bg-bo-surface p-3">
+              <h2 class="text-sm font-semibold">Garder cette version</h2>
+              <input type="hidden" name="action" value="enregistrer" />
+              <input type="hidden" name="publicId" value={courante.publicId} />
+              <label class="block text-sm">
+                <span>Nom du décor</span>
+                <input name="nom" value={fond.nom} maxlength={catalogue.limites.nom} class={`mt-1 w-full ${champ}`} />
+              </label>
+              <label class="block text-sm">
+                <span>Affiche (facultative)</span>
+                <select name="productId" class={`mt-1 w-full ${champ}`}>
+                  <option value="">Aucune : le décor remonte par le nom de sa ville</option>
+                  {catalogue.affiches.map((a) => <option value={a.id}>{a.nom}</option>)}
+                </select>
+              </label>
+              <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90">
+                Enregistrer comme décor
+              </button>
+              <p class="text-xs text-bo-muted">
+                L'image est agrandie en 2048 × 3072 et rangée avec les autres décors.
+              </p>
+            </form>
+          ) : null}
+        </section>
+
+        {/* ============ La discussion ============ */}
+        <section
+          class="space-y-4"
+          data-sondage={enCours ? apiUrl(`/admin/fonds-ia/${fond.id}`) : undefined}
+        >
+          <h2 class="text-base font-semibold">Discussion</h2>
+          <ol class="space-y-4">
+            {fond.fil.map((m) => (
+              <li class="rounded-lg border border-bo-border bg-bo-surface p-3">
+                <p class="text-sm">
+                  <span class="text-xs text-bo-muted">{quand(m.creeLe)} · </span>
+                  {m.rang === 1 ? (
+                    <span>Premier dessin, à partir de la photo{m.texte ? <> : « {m.texte} »</> : "."}</span>
+                  ) : (
+                    <span class="font-medium">
+                      {m.texte || "Recommencer de zéro"}
+                      {m.depuisZero ? "" : <span class="font-normal text-bo-muted"> (à partir de la version courante)</span>}
+                    </span>
+                  )}
+                </p>
+                <ul class="mt-2 flex flex-wrap gap-3">
+                  {m.versions.map((v) => (
+                    <li class={`w-28 text-xs ${estCourante(v) ? "font-medium" : ""}`}>
+                      <div
+                        class={`aspect-[2/3] overflow-hidden rounded border bg-bo-bg ${
+                          estCourante(v) ? "border-bo-accent ring-2 ring-bo-accent" : "border-bo-border"
+                        }`}
+                      >
+                        {v.vignette ? (
+                          <a href={apiUrl(v.image!)} target="_blank" rel="noopener">
+                            <img src={apiUrl(v.vignette)} alt="" loading="lazy" class="h-full w-full object-cover" />
+                          </a>
+                        ) : (
+                          <span class="flex h-full items-center justify-center p-1 text-center text-bo-muted">
+                            {v.statut === "en_cours" ? "Dessin en cours…" : "Échec"}
+                          </span>
+                        )}
+                      </div>
+                      {v.statut === "echec" && v.erreur && <p class="mt-1 text-red-700">{v.erreur}</p>}
+                      {v.statut === "prete" &&
+                        (estCourante(v) ? (
+                          <p class="mt-1 text-bo-accent">Version courante</p>
+                        ) : (
+                          <form method="POST" class="mt-1">
+                            <input type="hidden" name="action" value="courante" />
+                            <input type="hidden" name="publicId" value={v.publicId} />
+                            <button class="text-bo-accent underline">Revenir à celle-ci</button>
+                          </form>
+                        ))}
+                      {v.publicId === fond!.versionGardee && <p class="text-green-700">Gardée comme décor</p>}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+
+          {enCours && (
+            <p class="text-sm text-amber-800" role="status">
+              {texteEtat(fond)} La page se met à jour toute seule.
+            </p>
+          )}
+
+          {catalogue && (
+            <form
+              method="POST"
+              data-confirme={confirmationMessage(1, cout, bouchon)}
+              class="space-y-3 rounded-lg border border-bo-border bg-bo-surface p-3"
+            >
+              <input type="hidden" name="action" value="message" />
+              <input type="hidden" name="jeton" value={jetonMessage} />
+              <input type="hidden" name="versions" value="1" />
+              <label class="block text-sm">
+                <span class="font-medium">Qu'est-ce qui ne va pas ?</span>
+                <textarea
+                  name="texte"
+                  rows="3"
+                  maxlength={catalogue.limites.message}
+                  placeholder="La cathédrale est coupée, recule un peu. Enlève la grue à gauche."
+                  class={`mt-1 w-full ${champ}`}
+                ></textarea>
+              </label>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  name="retouche"
+                  value=""
+                  disabled={!courante}
+                  class="rounded bg-bo-accent px-4 py-2 text-sm text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  Envoyer
+                </button>
+                <span class="text-xs text-bo-muted">ou en un clic :</span>
+                {catalogue.retouches.map((r) => (
+                  <button name="retouche" value={r.cle} disabled={!courante} class={`${boutonDiscret} disabled:opacity-50`}>
+                    {r.libelle}
+                  </button>
+                ))}
+              </div>
+              <p class="text-xs text-bo-muted">
+                Chaque message dessine une nouvelle image à partir de la version
+                courante{bouchon ? " (mode d'essai : rien n'est payé)" : `, payée environ ${euros(cout)}`}.
+                Les demandes déjà faites sont rappelées au modèle, pour qu'elles ne se perdent pas.
+                {!courante && " Attendez qu'une version soit prête."}
+              </p>
+            </form>
+          )}
+
+          {catalogue && (
+            <form method="POST" data-confirme={confirmationMessage(1, cout, bouchon)}>
+              <input type="hidden" name="action" value="zero" />
+              <input type="hidden" name="jeton" value={jetonZero} />
+              <button class={boutonDiscret}>Recommencer de zéro à partir de la photo</button>
+            </form>
+          )}
+        </section>
+      </div>
+    )}
+  </div>
+
+  <script>
+    import "../../lib/fonds-bo.ts";
+  </script>
+</Admin>

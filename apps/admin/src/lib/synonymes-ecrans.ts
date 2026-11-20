@@ -119,6 +119,11 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
   "/produits/[id]": ["seo", "référencement", "titre google"],
   // Ce qu'on dit en pensant au marché de Noël : des affiches « de test »,
   // « d'exemple », imprimées d'avance pour la vitrine du stand.
+  // Ce que dit Margaux d'un décor à faire depuis une photo (20/11).
+  "/fonds": [
+    "générer un fond", "nouveau décor", "fond de ville", "décor depuis une photo",
+    "dessiner un décor", "photo de ville", "créer un décor",
+  ],
   "/affiches-demo": [
     "affiches de test", "affiches d'exemple", "échantillons", "imprimer d'avance",
     "marché", "démo", "au hasard", "aléatoire", "vitrine",

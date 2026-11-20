@@ -6239,6 +6239,11 @@ export function mountConfiguratorRoutes(app: Hono) {
         defaultLine3: b.defaultLine3 ? String(b.defaultLine3) : null,
         defaultView: await typeAfficheValide(b.defaultView),
         foregroundUrl: b.foregroundUrl ? String(b.foregroundUrl) : null,
+        // Désactivée dès sa création quand on le demande (20/11, fiche créée
+        // depuis une image de BO › Affiches IA) : elle n'a encore ni nom
+        // définitif ni visuel d'exemple, et ne doit pas paraître en boutique,
+        // même le temps d'un second appel. Sinon, en ligne comme avant.
+        ...(b.status === "draft" ? { status: "draft" } : {}),
       })
       .returning();
     if (!product) return c.json({ error: "création impossible" }, 500);

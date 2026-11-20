@@ -654,3 +654,10 @@ test("« paiements », « clés stripe », « passer en réel » mènent à l'é
   // Seuls, « stripe » et « paypal » mènent toujours à l'argent (les Finances).
   for (const q of ["paypal", "stripe"]) assert.equal(premier(q)?.id, "ecran:/finances", q);
 });
+
+test("« créer un fond », « fond de ville »… mènent à Créer un fond (20/11), « décors » reste aux Décors", () => {
+  for (const q of ["créer un fond", "creer un fond", "fond de ville", "générer un fond", "nouveau décor"])
+    assert.equal(premier(q)?.id, "ecran:/fonds", q);
+  assert.equal(premier("decors")?.id, "ecran:/decors");
+  assert.ok(ids(chercher("créer un fond").aide).includes("aide:creer-un-fond"));
+});

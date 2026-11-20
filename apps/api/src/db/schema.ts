@@ -348,6 +348,19 @@ export const aiGenerations = pgTable(
       .notNull(),
     /** Date du paiement : au-delà, l'image et la photo sont conservées. */
     paidAt: timestamp("paid_at", { withTimezone: true }),
+    /**
+     * Une version d'un fond (BO › Atelier › Créer un fond, 20/11) : pas une
+     * affiche de visiteur, mais un décor demandé par la boutique. Nul pour
+     * les affiches. La ligne est là pour le coût : un fond se paie comme une
+     * affiche, et doit compter dans le plafond du mois.
+     */
+    fondId: integer("fond_id").references((): AnyPgColumn => fondsIa.id, {
+      onDelete: "set null",
+    }),
+    /** Le message de la discussion du fond d'où sort cette version. */
+    fondMessageId: integer("fond_message_id").references((): AnyPgColumn => fondsIaMessages.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => [
     uniqueIndex("ai_generation_public_id_uniq").on(t.publicId),
@@ -2956,4 +2969,92 @@ export const affichesDemo = pgTable(
     faitLe: timestamp("fait_le", { withTimezone: true }),
   },
   (t) => [index("affiche_demo_lot_idx").on(t.lotId, t.rang)],
+);
+
+/**
+ * Un fond à créer (BO › Atelier › Créer un fond, 20/11) : UNE photo d'un lieu
+ * et l'image qu'on en tire, au fil de sa discussion.
+ *
+ * Margaux : « Si seulement tu pouvais me faire un programme où j'ai juste à
+ * mettre des photos et qu'il me génère des fonds automatiquement sans que je
+ * discute pendant 2h pour faire un seule fond de ville ». Plusieurs photos
+ * déposées d'un coup forment un LOT, et chacune donne son fond à elle
+ * (Alexandra : « ça doit pas créer une photo pour plusieurs uploadées ! »).
+ *
+ * Les versions sont des lignes `ai_generation` (fond_id) : c'est là que vit
+ * le coût, et le plafond du mois les compte avec les affiches.
+ */
+export const fondsIa = pgTable(
+  "fond_ia",
+  {
+    id: serial("id").primaryKey(),
+    creeLe: timestamp("cree_le", { withTimezone: true }).defaultNow().notNull(),
+    creePar: text("cree_par"),
+    /**
+     * Jeton tiré par la page à l'affichage du formulaire, suivi du rang de la
+     * photo : un double clic, ou un formulaire renvoyé par « Précédent »,
+     * retrouve le lot déjà fait au lieu d'en payer un second.
+     */
+    jeton: text("jeton").notNull(),
+    /** Le lot d'envoi : toutes les photos déposées d'un coup. */
+    lot: text("lot").notNull(),
+    /** « Colmar, la Petite Venise » : le nom du décor, à l'enregistrement. */
+    nom: text("nom").notNull(),
+    /** La précision du lot (« sous la neige »), reprise dans le premier message. */
+    precision: text("precision"),
+    /** La photo du lieu, rangée dans data/assets/ia/fonds (« ia/fonds/…jpg »). */
+    photos: jsonb("photos").$type<string[]>().notNull(),
+    /** Les décors de la bibliothèque montrés au modèle comme exemples de style. */
+    exemples: jsonb("exemples").$type<number[]>().notNull().default([]),
+    /**
+     * Le style des affiches IA dont la consigne (« prompt ») est relue en
+     * base à CHAQUE génération : le réécrire au BO change le fond suivant.
+     */
+    styleId: integer("style_id").references(() => aiPrompts.id, { onDelete: "set null" }),
+    /** Versions du premier dessin ; un message en demande une. */
+    versions: integer("versions").notNull(),
+    /** La version d'où repart le prochain message (« revenir à cette version »). */
+    versionCourante: text("version_courante"),
+    /** La version gardée et enregistrée comme décor. */
+    versionGardee: text("version_gardee"),
+    backgroundId: integer("background_id").references(() => backgrounds.id, {
+      onDelete: "set null",
+    }),
+    enregistreLe: timestamp("enregistre_le", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("fond_ia_jeton_uniq").on(t.jeton),
+    index("fond_ia_lot_idx").on(t.lot),
+  ],
+);
+
+/**
+ * La discussion d'un fond (Alexandra, 20/11 : « il faut qu'elle puisse
+ * discuter quand même si jamais le résultat est pas top top »). Un message =
+ * une demande, et le dessin qui en sort, payé comme les autres. Le premier
+ * message est le dessin de départ, à partir de la photo.
+ */
+export const fondsIaMessages = pgTable(
+  "fond_ia_message",
+  {
+    id: serial("id").primaryKey(),
+    fondId: integer("fond_id")
+      .notNull()
+      .references(() => fondsIa.id, { onDelete: "cascade" }),
+    creeLe: timestamp("cree_le", { withTimezone: true }).defaultNow().notNull(),
+    creePar: text("cree_par"),
+    /** Contre le double envoi d'un même message. */
+    jeton: text("jeton").notNull(),
+    /** Ce qu'on lit dans le fil : boutons choisis et texte de Margaux. */
+    texte: text("texte").notNull().default(""),
+    /** Ce qui part au modèle : consignes des boutons, puis son texte. */
+    demande: text("demande").notNull().default(""),
+    /** La version d'où il repart ; nulle : de zéro, à partir de la photo. */
+    baseVersion: text("base_version"),
+    versions: integer("versions").notNull(),
+  },
+  (t) => [
+    uniqueIndex("fond_ia_message_jeton_uniq").on(t.jeton),
+    index("fond_ia_message_fond_idx").on(t.fondId),
+  ],
 );

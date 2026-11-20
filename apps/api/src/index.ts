@@ -97,6 +97,7 @@ import { invaliderCorpusRecherche, mountRecherche } from "./recherche.js";
 import { mountDecors } from "./decors.js";
 import { mountApercus } from "./apercus.js";
 import { demarrerAffichesDemo, mountAffichesDemo } from "./affiches-demo.js";
+import { mountFondsIa } from "./fonds-ia.js";
 import { mountCouleursDessins } from "./couleurs-dessins.js";
 import { mountCourriers } from "./courriers.js";
 import { mountModeEssai } from "./mode-essai.js";
@@ -128,6 +129,7 @@ import {
   ordreManuelDuCatalogue,
 } from "./ordre-affichage.js";
 import { demarrerPurgeIa, mountIaRoutes } from "./ia.js";
+import { mountIaReutiliser } from "./ia-reutiliser.js";
 import { demarrerMenageRelais, mountRelaisPhotoRoutes } from "./ia-relais.js";
 import { demarrerPreparationDesImpressions } from "./fichiers-impression.js";
 import { demarrerMesureDesPieces } from "./couleur-principale.js";
@@ -2518,6 +2520,12 @@ mountApercus(app);
 // Les affiches de démonstration (BO › Atelier) : tirées au hasard, rendues
 // une à une par le même moteur que les fichiers d'impression, après eux.
 mountAffichesDemo(app);
+// « Créer un fond » (BO › Atelier, 20/11) : des photos de lieux, et le modèle
+// d'images dessine les décors ; chaque fond a sa discussion (fonds-ia.ts).
+mountFondsIa(app);
+// Une image de BO › Affiches IA réutilisée comme décor (20/11) : en fiche
+// produit, ou en affiche composée dans le module et sortie en PDF.
+mountIaReutiliser(app);
 
 // Les couleurs des dessins téléversés, qu'ils sortent d'Illustrator, de Canva
 // ou d'une vectorisation d'image IA : zones recolorables et nuances groupées.

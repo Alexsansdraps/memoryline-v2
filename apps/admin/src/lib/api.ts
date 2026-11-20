@@ -2149,6 +2149,90 @@ export interface EtatLotDemo {
   arrete: boolean;
 }
 
+/* --- Créer un fond (BO › Atelier, 20/11) — voir apps/api/src/fonds-ia.ts --- */
+
+/** Une version dessinée d'un fond. */
+export interface VersionFondIa {
+  publicId: string;
+  messageId: number | null;
+  statut: "en_cours" | "prete" | "echec";
+  erreur: string | null;
+  creeLe: string;
+  coutCents: number;
+  /** Adresses de l'API (à passer par apiUrl()). */
+  image: string | null;
+  vignette: string | null;
+}
+
+/** Un fond (une photo d'un lieu), tel que les listes le montrent. */
+export interface ResumeFondIa {
+  id: number;
+  lot: string;
+  nom: string;
+  precision: string | null;
+  creeLe: string;
+  styleId: number | null;
+  photo: string;
+  versionCourante: VersionFondIa | null;
+  versionGardee: string | null;
+  backgroundId: number | null;
+  enregistreLe: string | null;
+  messages: number;
+  depenseCents: number;
+  etat: "en_cours" | "prete" | "echec";
+  pretes: number;
+  echecs: number;
+  enCours: number;
+}
+
+/** Un message de la discussion d'un fond, et les images qui en sont sorties. */
+export interface MessageFondIa {
+  id: number;
+  rang: number;
+  creeLe: string;
+  texte: string;
+  depuisZero: boolean;
+  baseVersion: string | null;
+  versions: VersionFondIa[];
+}
+
+export interface DetailFondIa extends ResumeFondIa {
+  fil: MessageFondIa[];
+  style: { id: number; title: string } | null;
+  lotFonds: { id: number; nom: string }[];
+  decor: { id: number; nom: string | null; url: string; productId: number | null } | null;
+}
+
+export interface CatalogueFondsIa {
+  reglages: {
+    consigne: string;
+    consigneParDefaut: boolean;
+    consigneDefaut: string;
+    versions: number;
+    coutParVersionCents: number;
+    exemples: number[];
+  };
+  limites: {
+    photos: number;
+    versions: number;
+    exemples: number;
+    nom: number;
+    precision: number;
+    message: number;
+  };
+  styles: { id: number; title: string }[];
+  styleDefaut: number | null;
+  retouches: { cle: string; libelle: string }[];
+  configuree: boolean;
+  /** Mode d'essai : le faux dessinateur, jamais en production. */
+  bouchon: boolean;
+  depenseCents: number;
+  plafondCents: number;
+  decors: { id: number; nom: string; url: string }[];
+  affiches: { id: number; nom: string }[];
+  fonds: ResumeFondIa[];
+}
+
 export function adminApi(request?: Request) {
   const cookie = request?.headers.get("cookie") ?? undefined;
   return {
@@ -3981,11 +4065,24 @@ export function adminApi(request?: Request) {
       variants: { format: string; priceCents: number }[];
       images?: string[];
       backgrounds?: string[];
+      /** « draft » : créée désactivée (fiche tirée d'une image IA, 20/11). */
+      status?: "draft";
     }) =>
       req<{ id: number; slug: string; name: string }>(
         "POST",
         "/admin/products",
         data,
+        cookie,
+      ),
+    /**
+     * Recopie une image de BO › Affiches IA parmi les décors (20/11), avec
+     * les prix habituels des affiches personnalisables.
+     */
+    iaEnDecor: (publicId: string) =>
+      req<{ url: string; variants: { format: string; priceCents: number }[] }>(
+        "POST",
+        `/admin/ia/${encodeURIComponent(publicId)}/decor`,
+        {},
         cookie,
       ),
     addProductBackground: (
@@ -4097,6 +4194,61 @@ export function adminApi(request?: Request) {
     /** Retire une affiche de son lot, PDF compris. */
     retirerAfficheDemo: (id: number) =>
       req<{ ok: true }>("DELETE", `/admin/affiches-demo/affiches/${id}`, undefined, cookie),
+
+    /* --- Créer un fond (BO › Atelier, 20/11) -----------------------------
+     * Des photos de lieux, et le modèle d'images dessine les décors
+     * (apps/api/src/fonds-ia.ts). Les images et l'état qu'une page redemande
+     * partent du navigateur, par apiUrl() ; ici, seulement le JSON et l'envoi
+     * des photos, relayé tel quel. */
+
+    /** Réglages, styles, décors d'exemple, affiches et fonds récents. */
+    fondsIaCatalogue: () =>
+      req<CatalogueFondsIa>("GET", "/admin/fonds-ia/catalogue", undefined, cookie),
+    /** Les fonds d'un lot (une photo = un fond), avec leur état. */
+    lotFondsIa: (lot: string) =>
+      req<{ lot: string; fonds: ResumeFondIa[] }>(
+        "GET",
+        `/admin/fonds-ia/lots/${encodeURIComponent(lot)}`,
+        undefined,
+        cookie,
+      ),
+    /** Un fond et toute sa discussion. */
+    fondIa: (id: number) => req<DetailFondIa>("GET", `/admin/fonds-ia/${id}`, undefined, cookie),
+    /**
+     * Envoie un lot de photos. Le formulaire du navigateur est relayé tel
+     * quel (multipart) : les photos ne sont ni lues ni réencodées ici.
+     */
+    creerLotFondsIa: async (corps: FormData) => {
+      const res = await fetch(`${API_URL}/admin/fonds-ia/lots`, {
+        method: "POST",
+        headers: cookie ? { cookie } : {},
+        body: corps,
+      });
+      const lu = (await res.json().catch(() => ({}))) as {
+        lot?: string;
+        deja?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !lu.lot) throw new Error(lu.error || `API POST /admin/fonds-ia/lots -> ${res.status}`);
+      return { lot: lu.lot, deja: !!lu.deja };
+    },
+    /** Un message de la discussion d'un fond (repart de la version courante). */
+    messageFondIa: (
+      id: number,
+      corps: { jeton: string; texte?: string; retouches?: string[]; depuisZero?: boolean; versions?: number },
+    ) =>
+      req<{ messageId: number; deja?: boolean }>("POST", `/admin/fonds-ia/${id}/messages`, corps, cookie),
+    /** Revenir à une version précédente du fond. */
+    versionCouranteFondIa: (id: number, publicId: string) =>
+      req<{ ok: true }>("POST", `/admin/fonds-ia/${id}/courante`, { publicId }, cookie),
+    /** La version gardée devient un décor de la bibliothèque. */
+    enregistrerFondIa: (id: number, corps: { publicId: string; nom: string; productId?: number | null }) =>
+      req<{ backgroundId: number; url?: string; deja?: boolean }>(
+        "POST",
+        `/admin/fonds-ia/${id}/enregistrer`,
+        corps,
+        cookie,
+      ),
 
     /* --- Cartes cadeaux -------------------------------------------------- */
 

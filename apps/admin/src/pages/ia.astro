@@ -24,6 +24,15 @@ const api = adminApi(Astro.request);
 const PUBLIC_API_URL =
   import.meta.env.PUBLIC_API_URL ?? "http://localhost:3000";
 
+/**
+ * L'adresse du site, d'où vient le module de personnalisation de « Créer une
+ * affiche » (20/11). Vide derrière le proxy : site et back-office partagent
+ * alors la même origine, et le chemin suffit.
+ */
+const SITE = String(
+  import.meta.env.PUBLIC_SITE_URL ?? import.meta.env.PUBLIC_ORIGIN ?? "",
+).replace(/\/$/, "");
+
 /** Modèles d'image disponibles sur la clé de la boutique. */
 const MODELES = [
   { valeur: "gpt-image-2", label: "gpt-image-2 — le plus récent" },
@@ -83,6 +92,29 @@ if (Astro.request.method === "POST") {
   try {
     if (f.get("_action") === "purger") {
       flash = bilanDePurge(await api.purgerIa());
+    } else if (f.get("_action") === "fiche") {
+      // « Créer une fiche produit » (20/11, Alexandra) : l'image, un décor
+      // nu, devient le fond d'une affiche PERSONNALISABLE, créée désactivée.
+      // Même chemin que BO › Produits › Nouvelle affiche (createProduct) ;
+      // seule la copie de l'image parmi les décors est propre à cet écran.
+      const nom = String(f.get("nom") ?? "").trim();
+      if (!nom) throw new Error("Donnez un nom à l'affiche.");
+      const ville = String(f.get("ville") ?? "").trim();
+      const decor = await api.iaEnDecor(String(f.get("publicId") ?? ""));
+      const produit = await api.createProduct({
+        name: nom,
+        kind: "personnalisable",
+        // La ville en 1re ligne, comme sur les autres affiches de ville ;
+        // rien si on ne la connaît pas.
+        defaultTitle: ville || null,
+        variants: decor.variants,
+        // Le décor sert aussi de visuel en attendant une affiche d'exemple :
+        // une fiche sans image ne se reconnaît pas dans la liste.
+        images: [decor.url],
+        backgrounds: [decor.url],
+        status: "draft",
+      });
+      return Astro.redirect(url(`/produits/${produit.id}?depuisIa=1`), 303);
     } else {
       // Montants et durées partent en NOMBRES : l'API compare et additionne
       // ces réglages, une chaîne s'y additionnerait bout à bout.
@@ -529,6 +561,27 @@ const derniere = premiere + lignes.length;
                     Image sans filigrane ↗
                   </a>
                 )}
+                {/* Réutiliser l'image (20/11) : tant que sa pleine définition
+                    est là — la purge l'efface, et sans elle ni décor ni PDF. */}
+                {g.aPleine && (
+                  <div class="flex flex-col gap-1 pt-1">
+                    <button
+                      type="button"
+                      class="js-creer-fiche rounded border border-bo-border px-2 py-1 text-left hover:border-bo-accent hover:text-bo-accent"
+                      data-public-id={g.publicId}
+                      data-apercu={apercuSrc(g.apercu)}
+                    >
+                      Créer une fiche produit
+                    </button>
+                    <button
+                      type="button"
+                      class="js-creer-affiche rounded border border-bo-border px-2 py-1 text-left hover:border-bo-accent hover:text-bo-accent"
+                      data-public-id={g.publicId}
+                    >
+                      Créer une affiche
+                    </button>
+                  </div>
+                )}
               </figcaption>
             </figure>
           );
@@ -632,6 +685,167 @@ const derniere = premiere + lignes.length;
       </button>
     </form>
   </section>
+
+  {/* =============================================================== */}
+  {/* Réutiliser une image (20/11)                                    */}
+  {/* =============================================================== */}
+  {/* La fenêtre « Créer une fiche produit » est aussi sa confirmation :
+      rien n'est créé avant « Créer la fiche ». */}
+  <dialog
+    id="dlg-fiche"
+    class="w-[min(34rem,calc(100vw-2rem))] rounded-lg border border-bo-border bg-bo-surface p-0 text-bo-ink shadow-xl backdrop:bg-black/40"
+    aria-labelledby="dlg-fiche-titre"
+  >
+    <form method="POST" class="js-form-fiche flex max-h-[85vh] flex-col">
+      <input type="hidden" name="_action" value="fiche" />
+      <input type="hidden" name="publicId" value="" />
+      <h2 id="dlg-fiche-titre" class="border-b border-bo-border px-4 py-3 font-semibold">
+        Créer une fiche produit avec cette image
+      </h2>
+      <div class="flex gap-4 overflow-y-auto px-4 py-3 text-sm">
+        <img data-fiche-apercu src="" alt="" class="hidden h-36 w-24 shrink-0 rounded border border-bo-border object-cover" />
+        <div class="space-y-3">
+          <p class="text-bo-muted">
+            L'image devient le décor d'une nouvelle affiche
+            <strong>personnalisable</strong> : le client y ajoute ses
+            personnages et ses textes. La fiche est créée
+            <strong>désactivée</strong>, aux prix habituels du catalogue :
+            elle n'apparaît pas en boutique tant que vous ne l'activez pas.
+          </p>
+          <label class="block">
+            <span class="text-bo-muted">Nom de l'affiche *</span>
+            <input
+              name="nom"
+              required
+              maxlength="160"
+              placeholder="COLMAR Petite Venise — Affiche personnalisée"
+              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+            />
+          </label>
+          <label class="block">
+            <span class="text-bo-muted">Ville, en 1re ligne du texte</span>
+            <input
+              name="ville"
+              maxlength="80"
+              placeholder="COLMAR"
+              class="mt-1 w-full rounded border border-bo-border px-3 py-2"
+            />
+            <span class="mt-1 block text-xs text-bo-muted">
+              Laissez vide si l'image n'est pas celle d'une ville : les lignes
+              restent alors vides pour le client.
+            </span>
+          </label>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 border-t border-bo-border px-4 py-3 text-sm">
+        <button type="button" class="js-fermer-dialogue rounded border border-bo-border px-4 py-2">
+          Annuler
+        </button>
+        <button class="rounded bg-bo-accent px-4 py-2 text-white hover:opacity-90">
+          Créer la fiche désactivée
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  {/* « Créer une affiche » : le module de personnalisation du site, dans
+      une fenêtre. C'est une page du SITE (/atelier-affiche), chargée dans un
+      cadre : le module y a ses styles, ses polices et ses dessins, à
+      l'identique de ce que voit le client. Rien n'y est vendu ni enregistré. */}
+  <dialog
+    id="dlg-affiche"
+    class="h-[calc(100vh-2rem)] w-[min(80rem,calc(100vw-1rem))] max-h-none max-w-none rounded-lg border border-bo-border bg-bo-surface p-0 text-bo-ink shadow-xl backdrop:bg-black/50"
+    aria-labelledby="dlg-affiche-titre"
+    data-site={SITE}
+  >
+    <div class="flex h-full flex-col">
+      <div class="flex flex-wrap items-center gap-3 border-b border-bo-border px-4 py-2 text-sm">
+        <h2 id="dlg-affiche-titre" class="font-semibold">Créer une affiche</h2>
+        <span class="text-bo-muted">
+          Composez l'affiche comme un client, puis téléchargez ou imprimez son
+          PDF. Ni panier, ni commande.
+        </span>
+        <a
+          data-affiche-onglet
+          href="#"
+          target="_blank"
+          rel="noopener"
+          class="ml-auto text-bo-accent hover:underline"
+        >
+          Ouvrir dans un onglet ↗
+        </a>
+        <button type="button" class="js-fermer-dialogue rounded border border-bo-border px-3 py-1">
+          Fermer
+        </button>
+      </div>
+      <iframe
+        data-affiche-cadre
+        title="Module de personnalisation"
+        src="about:blank"
+        class="w-full flex-1 border-0 bg-white"
+      ></iframe>
+    </div>
+  </dialog>
+
+  <script is:inline>
+    (function () {
+      var dlgFiche = document.getElementById("dlg-fiche");
+      var dlgAffiche = document.getElementById("dlg-affiche");
+      if (!dlgFiche || !dlgAffiche) return;
+
+      document.querySelectorAll(".js-fermer-dialogue").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var d = b.closest("dialog");
+          if (d) d.close();
+        });
+      });
+
+      document.querySelectorAll(".js-creer-fiche").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var form = dlgFiche.querySelector("form");
+          form.reset();
+          form.querySelector('input[name="publicId"]').value = b.getAttribute("data-public-id") || "";
+          var img = dlgFiche.querySelector("[data-fiche-apercu]");
+          var src = b.getAttribute("data-apercu") || "";
+          img.src = src;
+          img.classList.toggle("hidden", !src);
+          dlgFiche.showModal();
+          form.querySelector('input[name="nom"]').focus();
+        });
+      });
+      // Un seul envoi : deux clics feraient deux fiches.
+      dlgFiche.querySelector("form").addEventListener("submit", function (e) {
+        var bouton = e.target.querySelector("button:not([type])");
+        if (bouton.disabled) return e.preventDefault();
+        bouton.disabled = true;
+        bouton.textContent = "Création…";
+      });
+
+      // L'adresse du module : sur le site, à côté du back-office.
+      var site = dlgAffiche.getAttribute("data-site") || "";
+      var origineDuSite = site ? new URL(site, location.href).origin : location.origin;
+      var cadre = dlgAffiche.querySelector("[data-affiche-cadre]");
+      var onglet = dlgAffiche.querySelector("[data-affiche-onglet]");
+      document.querySelectorAll(".js-creer-affiche").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var adresse =
+            site + "/atelier-affiche?ia=" + encodeURIComponent(b.getAttribute("data-public-id") || "");
+          cadre.src = adresse;
+          onglet.href = adresse;
+          dlgAffiche.showModal();
+        });
+      });
+      // Fermée, la fenêtre oublie l'affiche : la suivante repart de zéro.
+      dlgAffiche.addEventListener("close", function () {
+        cadre.src = "about:blank";
+      });
+      // « Retour » à la première étape du module ferme la fenêtre.
+      window.addEventListener("message", function (e) {
+        if (e.origin !== origineDuSite) return;
+        if (e.data && e.data.type === "ml-atelier-fermer") dlgAffiche.close();
+      });
+    })();
+  </script>
 
   <script is:inline>
     // Effacement irréversible : on redit le nombre avant de lancer.

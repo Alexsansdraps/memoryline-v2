@@ -42,7 +42,6 @@
 
 	# En-têtes de sécurité, posés une fois pour les trois applications.
 	header {
-		Content-Security-Policy "frame-ancestors 'none'"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		# Le navigateur refuse de revenir en clair pendant six mois. À ne
@@ -51,6 +50,18 @@
 		Strict-Transport-Security "max-age=15552000"
 		-Server
 	}
+
+	# Aucune page ne s'affiche dans le cadre d'un autre site (frame-ancestors
+	# 'none')… sauf le module de personnalisation du back-office (20/11,
+	# BO › Affiches IA › « Créer une affiche ») : le back-office l'ouvre dans
+	# une fenêtre, depuis CE domaine seulement ('self'). Deux règles qui ne se
+	# recouvrent pas, plutôt qu'une règle générale qu'une autre écraserait :
+	# deux en-têtes CSP envoyés ensemble s'appliquent TOUS LES DEUX, et le
+	# plus strict gagnerait.
+	@encadrableParLeBo path /atelier-affiche
+	header @encadrableParLeBo Content-Security-Policy "frame-ancestors 'self'"
+	@nonEncadrable not path /atelier-affiche
+	header @nonEncadrable Content-Security-Policy "frame-ancestors 'none'"
 
 	# --- Ce que le navigateur a le droit de garder -----------------------
 	#

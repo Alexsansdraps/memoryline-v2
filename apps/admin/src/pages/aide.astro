@@ -658,6 +658,63 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
     </details>
 
     {/* ------------------------------------------------------------ */}
+    {/* Créer un fond (20/11) : Margaux, « un programme où j'ai juste à
+        mettre des photos et qu'il me génère des fonds automatiquement ». */}
+    <details id="creer-un-fond" class="group rounded-lg border border-bo-border bg-bo-surface">
+      <summary class="cursor-pointer px-4 py-3 font-medium">
+        Créer un fond (décor) à partir de photos
+      </summary>
+      <div class="space-y-3 border-t border-bo-border px-4 py-3 text-sm leading-relaxed">
+        <p>
+          Dans <a href={url("/fonds")} class="text-bo-accent underline">Atelier › Créer un fond</a>,
+          déposez une ou plusieurs photos de lieux (dix au plus) et donnez un
+          nom. <strong>Chaque photo donne son propre fond</strong> : trois
+          photos de trois rues de Colmar font trois fonds. Une photo peut
+          recevoir son propre nom dans la liste qui apparaît sous les photos.
+        </p>
+        <ol class="list-decimal space-y-2 pl-5">
+          <li>
+            <strong>Le style</strong> est celui d'un style des
+            <a href={url("/ia/styles")} class="text-bo-accent underline">Affiches IA</a>
+            (« Bâtiment / paysage » est choisi d'office) : sa consigne est
+            relue à chaque dessin, la modifier là-bas change les fonds suivants.
+            Le modèle reçoit en plus les règles propres aux fonds : le meilleur
+            angle, retirer voitures, panneaux, fils, passants et échafaudages,
+            le ciel dégagé en haut pour le texte, le bas libre pour les
+            personnages et le muret, ni texte ni personne.
+          </li>
+          <li>
+            <strong>« Dessiner les fonds »</strong>, puis confirmez : la question
+            donne le coût estimé, photos × versions. Comptez une à deux minutes
+            par image ; la page se met à jour toute seule, vous pouvez la quitter.
+          </li>
+          <li>
+            <strong>Ouvrez un fond</strong> pour en discuter : écrivez ce qui ne
+            va pas (« la cathédrale est coupée, recule un peu ») ou cliquez une
+            retouche toute faite (« Changer l'angle », « Retirer les voitures et
+            panneaux », « Plus de ciel en haut », « Dégager le bas »). La
+            nouvelle image repart de la version courante, et les demandes déjà
+            faites sont rappelées au modèle. « Revenir à celle-ci » reprend une
+            version précédente ; « Recommencer de zéro » redessine depuis la photo.
+          </li>
+          <li>
+            <strong>« Enregistrer comme décor »</strong> range la version
+            courante dans la <a href={url("/decors")} class="text-bo-accent underline">bibliothèque des décors</a>,
+            agrandie pour l'impression, rattachée à une affiche si vous en
+            choisissez une.
+          </li>
+        </ol>
+        <p>
+          <strong>Le coût</strong> : chaque image dessinée est payée (environ
+          0,25 € par défaut, réglable sous « Réglages des fonds »), y compris
+          chaque message de la discussion. Fonds et affiches IA partagent le
+          même plafond de dépense du mois, réglé dans Affiches IA : au-delà,
+          plus rien ne part.
+        </p>
+      </div>
+    </details>
+
+    {/* ------------------------------------------------------------ */}
     <details id="pages-et-menu" class="group rounded-lg border border-bo-border bg-bo-surface">
       <summary class="cursor-pointer px-4 py-3 font-medium">
         Où sont « Tout voir » et « Thèmes &amp; paysages » ? Comment changer le menu ?

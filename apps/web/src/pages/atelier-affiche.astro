@@ -1,0 +1,39 @@
+---
+import "../styles/global.css";
+import AtelierAffiche from "../islands/AtelierAffiche.tsx";
+
+/**
+ * Le module de personnalisation pour le back-office (20/11) : « Créer une
+ * affiche » de BO › Affiches IA l'ouvre dans une fenêtre, sur une image
+ * générée qui sert de fond (voir islands/AtelierAffiche.tsx).
+ *
+ * Une page du SITE, et non du back-office : le module y a ses styles, ses
+ * polices d'affiche et ses dessins, et se montre exactement comme au client.
+ * Le reprendre dans le back-office aurait demandé d'y recopier tout cela, et
+ * deux copies finissent toujours par diverger.
+ *
+ * Elle ne contient rien en soi : l'image et le PDF viennent de routes de
+ * l'API réservées à la propriétaire. Ni menu, ni bandeau, ni panier — et
+ * hors de Google.
+ */
+export const prerender = false;
+
+const publicId = String(Astro.url.searchParams.get("ia") ?? "")
+  .trim()
+  .slice(0, 64);
+if (!/^[A-Za-z0-9-]+$/.test(publicId)) return new Response(null, { status: 404 });
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="preload" href="/fonts/Inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <title>Créer une affiche — Memory Line</title>
+  </head>
+  <body class="bg-paper text-ink">
+    <AtelierAffiche client:only="solid-js" publicId={publicId} />
+  </body>
+</html>

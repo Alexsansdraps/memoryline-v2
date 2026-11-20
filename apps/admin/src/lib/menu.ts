@@ -144,6 +144,11 @@ export const MENU: GroupeNav[] = [
       // Le libellé garde « des affiches » : c'est le seul mot qui rattache cet
       // écran au catalogue, et on y NOMME un décor, on n'en ajoute pas.
       { href: "/decors", label: "Décors des affiches", icon: "🏞️", owner: true },
+      // Des photos de lieux, et le modèle d'images dessine les décors (20/11).
+      // Margaux : « Si seulement tu pouvais me faire un programme où j'ai juste
+      // à mettre des photos et qu'il me génère des fonds automatiquement ». Juste
+      // sous les décors : ce qu'il fabrique y entre.
+      { href: "/fonds", label: "Créer un fond", icon: "🖌️", owner: true },
       {
         href: "/ia",
         label: "Affiches IA",
