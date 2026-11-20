@@ -367,6 +367,11 @@ export function mountSalonRoutes(app: Hono): void {
           number: /^SAL-\d+$/.test(verrouille.number)
             ? verrouille.number
             : await prochainNumeroDeCommande(tx, "SAL-"),
+          // La date de la vente est celle de sa validation (20/11 : une vente
+          // faite à 10 h 10 s'affichait « le 18 novembre à 09:58 », l'heure où
+          // la tablette avait ouvert son panier). Une vente rouverte puis
+          // revalidée garde la sienne, comme son numéro.
+          ...(/^SAL-\d+$/.test(verrouille.number) ? {} : { createdAt: new Date() }),
           // PAYÉE dès la validation (19/11, Alexandra : « enlève la manip de
           // payer […] on considère que c'est payé et terminé dès que la
           // personne a fini son affiche »). Un client qui ne paie pas, Margaux
