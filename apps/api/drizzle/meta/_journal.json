@@ -785,6 +785,13 @@
       "when": 1795220000000,
       "tag": "0112_date_derniere_validation",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1795230000000,
+      "tag": "0113_relais_photo_du_site",
+      "breakpoints": true
     }
   ]
 }

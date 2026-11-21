@@ -1,5 +1,5 @@
 /**
- * Le relais de photo du stand : du téléphone du client à la tablette.
+ * Le relais de photo : du téléphone du client à l'écran qui crée l'affiche.
  *
  * Au marché de Noël, l'affiche tirée d'une photo se vend sur la tablette du
  * stand — mais la photo, elle, est dans le téléphone du client. La tablette
@@ -7,18 +7,33 @@
  * y envoie sa photo depuis son téléphone, et la tablette la récupère toute
  * seule, comme si elle avait été choisie sur place.
  *
+ * Depuis le 21/11, le site aussi (Alexandra : « tu peux mettre le module de
+ * qr code pour envoyer une image sur le site classique aussi pas que en mode
+ * stand ») : le client qui crée son affiche sur un ordinateur a, lui aussi,
+ * ses photos dans son téléphone. Un relais a donc une ORIGINE : « stand »
+ * (ouvert avec le code d'un stand, `stand_id` renseigné) ou « site » (ouvert
+ * sans code, `stand_id` nul). Une fois ouvert, il marche exactement pareil.
+ *
  * TROIS ACTEURS, TROIS DROITS DIFFÉRENTS :
  *
- *   - OUVRIR un relais demande le code d'un stand OUVERT, le même que celui
- *     qui enregistre les ventes (salon.ts). Sans lui, n'importe quel visiteur
- *     du site pourrait se fabriquer des boîtes de dépôt sur notre disque.
+ *   - OUVRIR un relais. La tablette présente le code d'un stand OUVERT, le
+ *     même que celui qui enregistre les ventes (salon.ts) ; un code faux ou
+ *     un stand fermé est refusé comme avant. Le site, lui, n'en présente
+ *     aucun — et alors n'importe quel visiteur pourrait se fabriquer des
+ *     boîtes de dépôt sur notre disque. D'où deux garde-fous propres au site :
+ *     un frein par adresse IP plus serré que celui des tablettes, et un
+ *     plafond de relais « site » ouverts EN MÊME TEMPS, toutes adresses
+ *     confondues, qui borne ce qu'un script réparti sur mille adresses peut
+ *     occuper. Un relais vide ne coûte qu'une ligne ; une photo n'y entre
+ *     qu'aux conditions de tout dépôt (ci-dessous) et n'y survit pas au code.
  *   - DÉPOSER une photo se fait avec le seul code court : c'est tout l'intérêt,
  *     le client le scanne ou le tape. Ce code ne permet QUE d'envoyer, jamais
  *     de voir ce qui a été envoyé. D'où les freins par adresse IP, le poids
  *     borné et la photo ré-encodée, exactement comme sur la boutique.
- *   - RÉCUPÉRER la photo exige le jeton long remis à la tablette à
- *     l'ouverture, qui ne s'affiche nulle part. Un code court deviné ou
- *     aperçu par-dessus l'épaule ne donne accès au visage de personne.
+ *   - RÉCUPÉRER la photo exige le jeton long remis à l'écran (tablette ou
+ *     page du site) à l'ouverture, qui ne s'affiche nulle part. Un code court
+ *     deviné ou aperçu par-dessus l'épaule ne donne accès au visage de
+ *     personne.
  *
  * La photo d'un client est une donnée personnelle, et c'est souvent un
  * visage : elle quitte le serveur dès que la tablette a CONFIRMÉ l'avoir
@@ -36,7 +51,7 @@
  */
 import type { Context, Hono, Next } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { and, asc, eq, gt, isNotNull, lt, lte, sql as raw } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, isNull, lt, lte, sql as raw } from "drizzle-orm";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -75,6 +90,18 @@ const GARDE_APRES_EXPIRATION_MS = 60 * 60_000;
  * disque.
  */
 const RELAIS_PAR_STAND = 5;
+
+/**
+ * Relais « site » (sans stand) ouverts en même temps, tous visiteurs
+ * confondus (21/11). Un client garde son code un quart d'heure au plus ;
+ * soixante clients qui envoient leur photo dans le même quart d'heure, la
+ * boutique ne les a jamais vus. Au-delà, le site répond « patientez » :
+ * c'est un script, ou une affluence qui supporte d'attendre une minute. Les
+ * relais des stands n'y comptent pas — la tablette du marché ne doit jamais
+ * être bloquée par ce qui se passe sur le site — et ceux du site ne comptent
+ * pas dans le plafond d'un stand.
+ */
+const RELAIS_SITE_EN_MEME_TEMPS = 60;
 
 /**
  * Photos acceptées sur un même code. Se tromper de photo, puis d'une autre
@@ -117,6 +144,13 @@ export function frein(max: number, fenetreMs: number) {
 /** Ouvertures de relais : une tablette en demande une par client. */
 const ouverturesDepassees = frein(20, 10 * 60_000);
 /**
+ * Ouvertures SANS code de stand, depuis le site (21/11), en plus du frein
+ * ci-dessus. Un client en demande une, deux s'il laisse le code expirer ou
+ * change d'avis ; six en dix minutes, c'est déjà beaucoup pour une personne,
+ * et une tablette, elle, présente son code et n'y est pas soumise.
+ */
+const ouverturesSiteDepassees = frein(6, 10 * 60_000);
+/**
  * Consultations d'un code par le téléphone. C'est aussi ce qui rend vaine
  * toute tentative de deviner un code : trente essais sur un milliard de codes
  * possibles, toutes les cinq minutes.
@@ -145,6 +179,28 @@ function codePropre(brut: string | undefined): string | null {
   return code.length === 6 && [...code].every((ch) => ALPHABET.includes(ch))
     ? code
     : null;
+}
+
+/** D'où vient un relais : la tablette d'un stand, ou le site (21/11). */
+export type OrigineRelais = "stand" | "site";
+
+/**
+ * Le chemin d'une ouverture, d'après ce que porte la requête (21/11).
+ *
+ * « site » seulement quand AUCUN code n'accompagne la requête : ni `?code=`
+ * ni en-tête X-Salon-Code. Un code présent mais vide, ou faux, reste sur le
+ * chemin du stand et y est refusé (403) comme avant : une tablette dont le
+ * code s'est perdu doit le redemander à la vendeuse, pas glisser en silence
+ * vers les règles du site — elle y serait freinée au sixième client.
+ *
+ * Les deux valeurs telles que Hono les rend : `undefined` quand le paramètre
+ * ou l'en-tête est absent, une chaîne (même vide) quand il est là.
+ */
+export function origineDeLOuverture(
+  codeEnParametre: string | undefined,
+  codeEnEntete: string | undefined,
+): OrigineRelais {
+  return codeEnParametre === undefined && codeEnEntete === undefined ? "site" : "stand";
 }
 
 /** Secondes restantes avant l'expiration, jamais négatives. */
@@ -239,69 +295,133 @@ export function demarrerMenageRelais(): void {
 /*  Routes                                                                    */
 /* -------------------------------------------------------------------------- */
 
-export function mountRelaisPhotoRoutes(app: Hono): void {
-  /* ------------------------------ tablette ------------------------------ */
+/**
+ * Inscrit un relais neuf et renvoie son code, ou null si aucun code libre n'a
+ * pu être tiré. `standId` nul : un relais du site. Un code déjà pris est
+ * retiré au sort : un milliard de possibilités pour quelques codes en vie, la
+ * boucle ne fait jamais qu'un tour.
+ */
+async function inscrireRelais(
+  executant: Pick<typeof db, "insert">,
+  standId: number | null,
+  jeton: string,
+  expireA: Date,
+): Promise<string | null> {
+  for (let essai = 0; essai < 12; essai++) {
+    const code = nouveauCode();
+    const [ligne] = await executant
+      .insert(relais)
+      .values({ code, jetonHash: empreinte(jeton), standId, expiresAt: expireA })
+      .onConflictDoNothing()
+      .returning({ id: relais.id });
+    if (ligne) return code;
+  }
+  return null;
+}
+
+/**
+ * Réglages des routes. Seuls les essais s'en servent (21/11) : atteindre le
+ * plafond du site avec ses soixante relais demanderait autant de lignes
+ * fabriquées à la main.
+ */
+export type ReglagesRelais = {
+  /** Relais « site » ouverts en même temps (RELAIS_SITE_EN_MEME_TEMPS). */
+  plafondSite?: number;
+};
+
+export function mountRelaisPhotoRoutes(app: Hono, reglages: ReglagesRelais = {}): void {
+  const plafondSite = reglages.plafondSite ?? RELAIS_SITE_EN_MEME_TEMPS;
+
+  /* ----------------------- tablette ou page du site ----------------------- */
 
   /**
-   * Ouvre un relais. En-tête X-Salon-Code : le code d'un stand ouvert.
+   * Ouvre un relais. En-tête X-Salon-Code (ou ?code=) : le code d'un stand
+   * ouvert, pour la tablette. Sans code du tout, un relais du site (21/11),
+   * sous ses garde-fous propres (frein par IP plus serré, plafond global).
    *
    * Renvoie le code court, l'adresse à ouvrir sur le téléphone, le jeton de
-   * la tablette et la durée de validité. `resteSecondes` plutôt qu'une heure
-   * d'expiration seule : l'horloge d'une tablette n'est pas toujours à
-   * l'heure, un compte à rebours ne dépend pas d'elle.
+   * l'écran, la durée de validité et l'origine du relais. `resteSecondes`
+   * plutôt qu'une heure d'expiration seule : l'horloge d'une tablette n'est
+   * pas toujours à l'heure, un compte à rebours ne dépend pas d'elle.
    */
   app.post("/ia/relais", async (c) => {
-    if (ouverturesDepassees(ipDeLaRequete(c)))
+    const ip = ipDeLaRequete(c);
+    const origine = origineDeLOuverture(c.req.query("code"), c.req.header("x-salon-code"));
+    // Chaque chemin n'use QUE son frein (relecture du 21/11) : les demandes
+    // du site, même refusées, ne doivent pas entamer celui de la tablette du
+    // stand quand elles sortent par la même adresse (wifi, partage 4G).
+    if (origine === "stand" ? ouverturesDepassees(ip) : ouverturesSiteDepassees(ip))
       return c.json({ error: "Trop de codes demandés d'affilée. Patientez quelques minutes." }, 429);
-
-    const stand = await standDuCode(codeFourni(c));
-    if (!stand) return c.json({ error: "Code du stand incorrect." }, 403);
-    if (!stand.ouvert) return c.json({ error: "Le stand est fermé." }, 403);
-
-    // Les plus anciens relais encore valables de ce stand sont fermés au-delà
-    // du plafond : c'est le plus récent que la vendeuse montre au client.
-    const ouverts = await db
-      .select({ id: relais.id, photoPath: relais.photoPath })
-      .from(relais)
-      .where(and(eq(relais.standId, stand.id), gt(relais.expiresAt, new Date())))
-      .orderBy(asc(relais.createdAt));
-    for (const vieux of ouverts.slice(0, Math.max(0, ouverts.length - (RELAIS_PAR_STAND - 1))))
-      await fermerRelais(vieux);
-
     const jeton = randomBytes(32).toString("base64url");
     const expireA = new Date(Date.now() + DUREE_MS);
-    // Un code déjà pris est retiré au sort : un milliard de possibilités pour
-    // quelques codes en vie, la boucle ne fait jamais qu'un tour.
-    for (let essai = 0; essai < 12; essai++) {
-      const code = nouveauCode();
-      const [ligne] = await db
-        .insert(relais)
-        .values({
-          code,
-          jetonHash: empreinte(jeton),
-          standId: stand.id,
-          expiresAt: expireA,
-        })
-        .onConflictDoNothing()
-        .returning({ id: relais.id });
-      if (!ligne) continue;
-      const chemin = `/photo/${code}`;
-      return c.json(
-        {
-          code,
-          jeton,
-          chemin,
-          // L'adresse telle que l'API la connaît. La tablette lui préfère la
-          // sienne (le site qu'elle affiche) : c'est celle que le téléphone
-          // est sûr de joindre, tunnel de test compris.
-          adresse: `${ORIGINE}${chemin}`,
-          expireA: expireA.toISOString(),
-          resteSecondes: resteSecondes(expireA),
-        },
-        201,
-      );
+    let code: string | null;
+
+    if (origine === "stand") {
+      const stand = await standDuCode(codeFourni(c));
+      if (!stand) return c.json({ error: "Code du stand incorrect." }, 403);
+      if (!stand.ouvert) return c.json({ error: "Le stand est fermé." }, 403);
+
+      // Les plus anciens relais encore valables de ce stand sont fermés au-delà
+      // du plafond : c'est le plus récent que la vendeuse montre au client.
+      const ouverts = await db
+        .select({ id: relais.id, photoPath: relais.photoPath })
+        .from(relais)
+        .where(and(eq(relais.standId, stand.id), gt(relais.expiresAt, new Date())))
+        .orderBy(asc(relais.createdAt));
+      for (const vieux of ouverts.slice(0, Math.max(0, ouverts.length - (RELAIS_PAR_STAND - 1))))
+        await fermerRelais(vieux);
+
+      code = await inscrireRelais(db, stand.id, jeton, expireA);
+    } else {
+      // Une page d'un AUTRE site ne peut pas ouvrir de relais depuis le
+      // navigateur de ses visiteurs (relecture du 21/11) : sans en-tête
+      // propre, sa requête part sans pré-vérification et remplirait le
+      // plafond. Le navigateur pose Sec-Fetch-Site, aucune page ne l'écrit.
+      if (String(c.req.header("sec-fetch-site") ?? "").toLowerCase() === "cross-site")
+        return c.json({ error: "Demande refusée." }, 403);
+      // Plafond déjà atteint : réponse tout de suite, sans prendre le verrou
+      // ni garder une connexion de la base en attente.
+      const [avant] = await db
+        .select({ n: raw<number>`count(*)::int` })
+        .from(relais)
+        .where(and(isNull(relais.standId), gt(relais.expiresAt, new Date())));
+      if ((avant?.n ?? 0) >= plafondSite)
+        return c.json({ error: "Trop de codes en cours. Patientez quelques minutes." }, 429);
+      // Compter puis inscrire SOUS UN MÊME VERROU : deux visiteurs qui
+      // demandent un code au même instant liraient sinon le même compte, et
+      // le plafond se franchirait d'autant. Le verrou est rendu au COMMIT ;
+      // les tablettes ne le prennent jamais.
+      const issue = await db.transaction(async (tx) => {
+        await tx.execute(raw`select pg_advisory_xact_lock(hashtext(${"relais-photo-site"}))`);
+        const [compte] = await tx
+          .select({ n: raw<number>`count(*)::int` })
+          .from(relais)
+          .where(and(isNull(relais.standId), gt(relais.expiresAt, new Date())));
+        if ((compte?.n ?? 0) >= plafondSite) return { plein: true as const };
+        return { code: await inscrireRelais(tx, null, jeton, expireA) };
+      });
+      if ("plein" in issue)
+        return c.json({ error: "Trop de codes en cours. Patientez quelques minutes." }, 429);
+      code = issue.code;
     }
-    return c.json({ error: "Impossible de tirer un code libre. Réessayez." }, 500);
+
+    if (!code) return c.json({ error: "Impossible de tirer un code libre. Réessayez." }, 500);
+    const chemin = `/photo/${code}`;
+    return c.json(
+      {
+        code,
+        jeton,
+        chemin,
+        // L'adresse telle que l'API la connaît. L'écran lui préfère la
+        // sienne (le site qu'il affiche) : c'est celle que le téléphone
+        // est sûr de joindre, tunnel de test compris.
+        adresse: `${ORIGINE}${chemin}`,
+        expireA: expireA.toISOString(),
+        resteSecondes: resteSecondes(expireA),
+        origine,
+      },
+      201,
+    );
   });
 
   /**
@@ -418,6 +538,11 @@ export function mountRelaisPhotoRoutes(app: Hono): void {
   /**
    * Le téléphone vérifie le code avant de proposer l'envoi : un code expiré
    * doit se dire AVANT que le client ait cherché sa photo, pas après.
+   *
+   * `origine` (21/11) dit au téléphone d'où vient le code, même expiré : « la
+   * tablette du stand » n'a pas de sens pour un client qui crée son affiche
+   * sur son ordinateur. Ce n'est pas un secret — le code ne permet toujours
+   * que d'envoyer —, et un code inconnu ne dit rien de plus qu'avant.
    */
   app.get("/ia/relais/:code", async (c) => {
     if (consultationsDepassees(ipDeLaRequete(c)))
@@ -426,10 +551,11 @@ export function mountRelaisPhotoRoutes(app: Hono): void {
     if (!code) return c.json({ error: "Code inconnu." }, 404);
     const [ligne] = await db.select().from(relais).where(eq(relais.code, code));
     if (!ligne) return c.json({ error: "Code inconnu." }, 404);
+    const origine: OrigineRelais = ligne.standId === null ? "site" : "stand";
     if (ligne.expiresAt.getTime() <= Date.now())
-      return c.json({ error: "Ce code a expiré." }, 410);
+      return c.json({ error: "Ce code a expiré.", origine }, 410);
     return c.json(
-      { resteSecondes: resteSecondes(ligne.expiresAt), envois: ligne.envois },
+      { resteSecondes: resteSecondes(ligne.expiresAt), envois: ligne.envois, origine },
       200,
       { "Cache-Control": "no-store" },
     );

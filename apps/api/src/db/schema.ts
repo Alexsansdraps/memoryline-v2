@@ -2717,7 +2717,8 @@ export const aiPrompts = pgTable(
 );
 
 /**
- * Une photo qui voyage du téléphone du client à la tablette du stand
+ * Une photo qui voyage du téléphone du client à la tablette du stand, ou,
+ * depuis le 21/11, à la page du site où il crée son affiche
  * (apps/api/src/ia-relais.ts).
  *
  * Au marché de Noël, la photo à mettre en affiche est dans le téléphone du
@@ -2749,10 +2750,13 @@ export const aiPhotoRelays = pgTable(
      * que l'empreinte.
      */
     jetonHash: text("jeton_hash").notNull(),
-    /** Le stand dont la tablette a ouvert le relais. */
-    standId: integer("stand_id")
-      .notNull()
-      .references(() => stands.id, { onDelete: "cascade" }),
+    /**
+     * Le stand dont la tablette a ouvert le relais ; NUL pour un relais ouvert
+     * depuis le site, sans code de stand (21/11, migration 0113). C'est ce qui
+     * donne l'origine du relais (« stand » ou « site ») et ce que comptent les
+     * deux plafonds : celui de chaque stand, celui du site (ia-relais.ts).
+     */
+    standId: integer("stand_id").references(() => stands.id, { onDelete: "cascade" }),
     /**
      * La dernière photo reçue (« ia/relais-….jpg »), tant que la tablette n'a
      * pas confirmé l'avoir reçue.

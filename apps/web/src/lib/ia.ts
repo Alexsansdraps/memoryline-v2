@@ -303,9 +303,17 @@ export function apercuAbsolu(url: string): string {
  * Au stand, la photo est dans le téléphone du client. La tablette ouvre un
  * relais (un code court, montré en QR et en adresse), le téléphone y dépose
  * la photo, la tablette la relève. Voir apps/api/src/ia-relais.ts.
+ *
+ * Depuis le 21/11, le site aussi, sur un écran d'ordinateur : la photo est
+ * souvent dans le téléphone, pas dans l'ordinateur qui affiche la fiche. Ce
+ * relais-là s'ouvre SANS code de stand ; l'API le note « site » et le borne
+ * à sa manière (frein par IP plus serré, plafond global).
  */
 
-/** Un relais ouvert par la tablette. */
+/** D'où vient un relais : la tablette d'un stand, ou un écran du site. */
+export type OrigineRelais = "stand" | "site";
+
+/** Un relais ouvert par la tablette (ou par un écran du site). */
 export interface RelaisOuvert {
   /** Le code court de l'adresse : /photo/K7M2QX. */
   code: string;
@@ -314,7 +322,13 @@ export interface RelaisOuvert {
   /** Ce qui permet à la tablette, et à elle seule, de relever la photo. */
   jeton: string;
   resteSecondes: number;
+  /** Absente d'une API d'avant le 21/11, qui n'ouvrait que des relais de stand. */
+  origine?: OrigineRelais;
 }
+
+/** L'origine annoncée par l'API, si elle est lisible. */
+const origineLue = (v: unknown): OrigineRelais | undefined =>
+  v === "stand" || v === "site" ? v : undefined;
 
 /**
  * Pourquoi un relais n'a pas pu s'ouvrir : le code du stand refusé (fermé,
@@ -331,13 +345,19 @@ export class ErreurRelais extends Error {
   }
 }
 
-/** Ouvre un relais. Le code du stand voyage dans un en-tête, comme au panier. */
-export async function ouvrirRelais(codeStand: string): Promise<RelaisOuvert> {
+/**
+ * Ouvre un relais. Le code du stand voyage dans un en-tête, comme au panier.
+ *
+ * `null` (21/11) : un relais du site. AUCUN en-tête alors, pas même vide —
+ * c'est son absence qui dit à l'API « site » ; un code vide ou faux reste un
+ * code de stand, refusé (403) comme avant.
+ */
+export async function ouvrirRelais(codeStand: string | null): Promise<RelaisOuvert> {
   let reponse: Response;
   try {
     reponse = await fetch(`${PUBLIC_API_URL}/ia/relais`, {
       method: "POST",
-      headers: { "X-Salon-Code": codeStand },
+      ...(codeStand === null ? {} : { headers: { "X-Salon-Code": codeStand } }),
     });
   } catch {
     throw new ErreurRelais("injoignable");
@@ -352,6 +372,7 @@ export async function ouvrirRelais(codeStand: string): Promise<RelaisOuvert> {
     chemin: d.chemin,
     jeton: d.jeton,
     resteSecondes: Number(d.resteSecondes) || 0,
+    origine: origineLue(d.origine),
   };
 }
 
@@ -455,20 +476,36 @@ export async function fermerRelais(jeton: string): Promise<void> {
 /** Ce que le téléphone apprend de son code avant de proposer l'envoi. */
 export type EtatCodeRelais = "valide" | "inconnu" | "expire" | "rafale" | "injoignable";
 
-export async function verifierCodeRelais(code: string): Promise<EtatCodeRelais> {
+/**
+ * L'état du code, et (21/11) d'où vient le relais : la page du téléphone
+ * parle alors de « la tablette du stand » ou de « votre écran ». L'API la
+ * donne pour un code valable ou expiré ; sans elle (code inconnu, API
+ * d'avant le 21/11), `origine` est absente.
+ */
+export async function verifierCodeRelais(
+  code: string,
+): Promise<{ etat: EtatCodeRelais; origine?: OrigineRelais }> {
   let reponse: Response;
   try {
     reponse = await fetch(`${PUBLIC_API_URL}/ia/relais/${encodeURIComponent(code)}`, {
       cache: "no-store",
     });
   } catch {
-    return "injoignable";
+    return { etat: "injoignable" };
   }
-  if (reponse.ok) return "valide";
-  if (reponse.status === 404) return "inconnu";
-  if (reponse.status === 410) return "expire";
-  if (reponse.status === 429) return "rafale";
-  return "injoignable";
+  const etat: EtatCodeRelais = reponse.ok
+    ? "valide"
+    : reponse.status === 404
+      ? "inconnu"
+      : reponse.status === 410
+        ? "expire"
+        : reponse.status === 429
+          ? "rafale"
+          : "injoignable";
+  if (etat !== "valide" && etat !== "expire") return { etat };
+  // Un corps illisible ne change rien à l'état : seule l'origine manque.
+  const d = (await reponse.json().catch(() => null)) as { origine?: unknown } | null;
+  return { etat, origine: origineLue(d?.origine) };
 }
 
 /** Pourquoi une photo n'est pas partie du téléphone. */
