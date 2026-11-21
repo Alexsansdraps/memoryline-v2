@@ -231,7 +231,14 @@ export function brancherRechercheInstantanee(): void {
   // recouvrait le panneau. Le champ reste un vrai formulaire — Entrée, ou sa
   // loupe, mène à la page de recherche — et la loupe des petits écrans y
   // mène tout droit, sans l'écran plein.
-  if (document.documentElement.dataset.stand === "1") return;
+  //
+  // LE SITE NON PLUS (21/11, Alexandra : « enlever le truc de la barre de
+  // recherche comme on avait fait en stand mais pour le mode site, les
+  // recherches qui s'affichent au typing, faut pas ») : partout, la frappe
+  // n'affiche plus rien, et Entrée ou la loupe mènent à la page de
+  // recherche. Le code reste, éteint ici, pour le rallumer d'un mot.
+  const SUGGESTIONS_EN_TAPANT = false;
+  if (!SUGGESTIONS_EN_TAPANT || document.documentElement.dataset.stand === "1") return;
 
   // Grands écrans : le champ de l'en-tête, le panneau dessous.
   const champ = document.getElementById("ml-q") as HTMLInputElement | null;
