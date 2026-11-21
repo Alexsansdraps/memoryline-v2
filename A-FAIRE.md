@@ -4,6 +4,15 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 0. État au 21/11, 6 h : tout `main` est en ligne
 
+### 0.0 PAS ENCORE EN LIGNE : `6d7fda8`, relais photo par QR code sur le site classique
+- **À mettre en ligne le 21/11 après 20 h** (marché fermé), avec l'accord d'Alexandra. La migration 0113 part avec l'API et le site, en une seule fois.
+- **Après la mise en ligne, essayer** :
+  - sur un ordinateur, l'affiche photo puis « Envoyer la photo depuis votre téléphone » : le QR code s'affiche sans code de stand, et la photo arrive ;
+  - sur la tablette du stand, le relais comme avant.
+- **Restes mineurs** :
+  - « code inconnu » sur la page du téléphone parle encore de la tablette (l'origine n'est pas connue) ;
+  - une poignée d'adresses IP peut occuper les 60 places du site pendant un quart d'heure. Le stand n'est pas touché.
+
 ### 0.1 En ligne
 - **Tout `main` jusqu'à `4b6889d`**, mis en ligne le 21/11 à 5 h 54, marché fermé (aucune commande, création IA ni panier en cours depuis la veille au soir). Pas de migration : la prod reste à 0112.
   - `4b6889d` : les restes du matin (voir 0.2), demandés par Alexandra (« finis tout », « met en prod »).
