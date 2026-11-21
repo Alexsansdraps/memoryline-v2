@@ -410,7 +410,13 @@ async function lireLesFonds(): Promise<FondLu[]> {
       position: schema.backgrounds.position,
     })
     .from(schema.backgrounds)
-    .where(isNull(schema.backgrounds.archivedAt))
+    .where(
+      and(
+        isNull(schema.backgrounds.archivedAt),
+        // Ni le décor d'une fiche en brouillon (même règle que /backgrounds).
+        sql`not exists (select 1 from ${schema.products} p where p.id = ${schema.backgrounds.productId} and p.status = 'draft')`,
+      ),
+    )
     .orderBy(asc(schema.backgrounds.position), asc(schema.backgrounds.id));
   return fonds.filter((b) => !fichierDAssetManquant(b.url));
 }

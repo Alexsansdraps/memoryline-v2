@@ -221,6 +221,41 @@ export const ui = {
     "ia.err.attente":
       "L'affiche met plus longtemps que prévu. Relancez la génération.",
     "ia.err.inconnu": "Quelque chose s'est mal passé. Relancez la génération.",
+    /* Les personnages et le muret sur l'affiche tirée d'une photo (20/11,
+       AfficheIA.tsx et PersonnagesIA.tsx). Aucun prix : ils ne changent pas
+       celui de l'affiche. */
+    "ia.perso.titre": "Personnages (facultatif)",
+    "ia.perso.aide": "Ajoutez des personnages dessinés, habillés à votre goût.",
+    "ia.perso.muret": "Assis sur le muret",
+    "ia.perso.muret_detail": "Vus de dos",
+    "ia.perso.face": "Debout, de face",
+    "ia.perso.face_detail": "Sans muret",
+    "ia.perso.valider": "Valider les personnages",
+    "ia.perso.modifier": "Modifier",
+    "ia.perso.retirer": "Retirer",
+    // {nombre} : « 3 personnages » (panier.personnage[s]) ; {vue} : l'une des
+    // deux suivantes, écrites pour se lire après le nombre.
+    "ia.perso.resume": "{nombre}, {vue}",
+    "ia.perso.resume_muret": "assis sur le muret",
+    "ia.perso.resume_face": "debout, de face",
+    "ia.perso.paysage":
+      "Les personnages s'ajoutent aux affiches en portrait. Pour en ajouter, choisissez « Portrait » plus haut, puis générez une autre version.",
+    "ia.perso.chargement": "Chargement des personnages…",
+    "ia.perso.erreur":
+      "Les personnages n'ont pas pu être chargés. Vérifiez la connexion, puis réessayez.",
+    /* Le panier refuse une affiche AVEC personnages : un code de l'API par
+       phrase (ia_indisponible, ia_autre_affiche, ia_personnages_paysage). */
+    "ia.refus.indisponible":
+      "Cette affiche ne peut pas recevoir de personnages pour l'instant. Réessayez dans un instant, ou retirez les personnages pour l'ajouter au panier.",
+    "ia.refus.autre_affiche":
+      "Cette création vient d'une autre affiche : elle ne peut pas recevoir de personnages ici. Générez une nouvelle version sur cette page.",
+    "ia.refus.personnages_paysage":
+      "Les personnages s'ajoutent seulement aux affiches en portrait. Retirez-les, ou générez une version en portrait.",
+    /* Le même refus au panier et à la caisse (21/11), au changement de
+       quantité : la ligne y est déjà, sans « Modifier » — la consigne de la
+       fiche n'y a pas de sens. Une seule phrase pour les trois codes. */
+    "ia.refus.panier":
+      "La quantité de cette affiche ne peut pas être changée pour l'instant. Réessayez dans un instant ; si cela continue, retirez-la du panier, puis recréez-la depuis sa page.",
     /* Le relais de photo, au stand : la photo part du téléphone du client et
        arrive sur la tablette (RelaisPhoto.tsx). */
     "ia.relais.ouvrir": "Envoyer la photo depuis votre téléphone",
@@ -1038,6 +1073,31 @@ export const ui = {
     "ia.err.attente":
       "The poster is taking longer than expected. Start the creation again.",
     "ia.err.inconnu": "Something went wrong. Start the creation again.",
+    "ia.perso.titre": "Characters (optional)",
+    "ia.perso.aide": "Add illustrated characters, dressed the way you like.",
+    "ia.perso.muret": "Sitting on the wall",
+    "ia.perso.muret_detail": "Seen from behind",
+    "ia.perso.face": "Standing, facing forward",
+    "ia.perso.face_detail": "No wall",
+    "ia.perso.valider": "Confirm characters",
+    "ia.perso.modifier": "Edit",
+    "ia.perso.retirer": "Remove",
+    "ia.perso.resume": "{nombre}, {vue}",
+    "ia.perso.resume_muret": "sitting on the wall",
+    "ia.perso.resume_face": "standing, facing forward",
+    "ia.perso.paysage":
+      "Characters can only be added to portrait posters. To add some, choose “Portrait” above, then create another version.",
+    "ia.perso.chargement": "Loading characters…",
+    "ia.perso.erreur":
+      "The characters couldn't be loaded. Check your connection, then try again.",
+    "ia.refus.indisponible":
+      "Characters can't be added to this poster right now. Try again in a moment, or remove the characters to add it to your basket.",
+    "ia.refus.autre_affiche":
+      "This creation belongs to another poster, so characters can't be added to it here. Create a new version on this page.",
+    "ia.refus.personnages_paysage":
+      "Characters can only be added to portrait posters. Remove them, or create a portrait version.",
+    "ia.refus.panier":
+      "The quantity of this poster can't be changed right now. Try again in a moment; if it keeps happening, remove it from your basket, then create it again from its page.",
     "ia.relais.ouvrir": "Send the photo from your phone",
     "ia.relais.ouvrir_aide":
       "Is your photo on your phone? Scan a code and it arrives here.",
@@ -1816,6 +1876,31 @@ export const ui = {
       "Das Poster dauert länger als erwartet. Starten Sie die Erstellung erneut.",
     "ia.err.inconnu":
       "Etwas ist schiefgelaufen. Starten Sie die Erstellung erneut.",
+    "ia.perso.titre": "Figuren (optional)",
+    "ia.perso.aide": "Fügen Sie gezeichnete Figuren hinzu, ganz nach Ihrem Geschmack gekleidet.",
+    "ia.perso.muret": "Auf der Mauer sitzend",
+    "ia.perso.muret_detail": "Von hinten gesehen",
+    "ia.perso.face": "Stehend, von vorne",
+    "ia.perso.face_detail": "Ohne Mauer",
+    "ia.perso.valider": "Figuren bestätigen",
+    "ia.perso.modifier": "Bearbeiten",
+    "ia.perso.retirer": "Entfernen",
+    "ia.perso.resume": "{nombre}, {vue}",
+    "ia.perso.resume_muret": "auf der Mauer sitzend",
+    "ia.perso.resume_face": "stehend, von vorne",
+    "ia.perso.paysage":
+      "Figuren gibt es nur auf Postern im Hochformat. Wählen Sie dafür oben „Hochformat“ und erstellen Sie dann eine andere Version.",
+    "ia.perso.chargement": "Figuren werden geladen…",
+    "ia.perso.erreur":
+      "Die Figuren konnten nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
+    "ia.refus.indisponible":
+      "Diesem Poster können gerade keine Figuren hinzugefügt werden. Versuchen Sie es gleich noch einmal, oder entfernen Sie die Figuren, um es in den Warenkorb zu legen.",
+    "ia.refus.autre_affiche":
+      "Diese Kreation gehört zu einem anderen Poster und kann hier keine Figuren erhalten. Erstellen Sie auf dieser Seite eine neue Version.",
+    "ia.refus.personnages_paysage":
+      "Figuren gibt es nur auf Postern im Hochformat. Entfernen Sie sie, oder erstellen Sie eine Version im Hochformat.",
+    "ia.refus.panier":
+      "Die Menge dieses Posters kann gerade nicht geändert werden. Versuchen Sie es gleich noch einmal; wenn es weiterhin nicht klappt, entfernen Sie es aus dem Warenkorb und erstellen Sie es auf seiner Seite neu.",
     "ia.relais.ouvrir": "Foto vom Handy senden",
     "ia.relais.ouvrir_aide":
       "Ist Ihr Foto auf Ihrem Handy? Scannen Sie einen Code – es erscheint hier.",
@@ -2598,6 +2683,31 @@ export const ui = {
     "ia.err.attente":
       "Il poster sta impiegando più tempo del previsto. Rilancia la creazione.",
     "ia.err.inconnu": "Qualcosa è andato storto. Rilancia la creazione.",
+    "ia.perso.titre": "Personaggi (facoltativo)",
+    "ia.perso.aide": "Aggiungi personaggi disegnati, vestiti come preferisci.",
+    "ia.perso.muret": "Seduti sul muretto",
+    "ia.perso.muret_detail": "Visti di spalle",
+    "ia.perso.face": "In piedi, di fronte",
+    "ia.perso.face_detail": "Senza muretto",
+    "ia.perso.valider": "Conferma i personaggi",
+    "ia.perso.modifier": "Modifica",
+    "ia.perso.retirer": "Rimuovi",
+    "ia.perso.resume": "{nombre}, {vue}",
+    "ia.perso.resume_muret": "sul muretto",
+    "ia.perso.resume_face": "in piedi, di fronte",
+    "ia.perso.paysage":
+      "I personaggi si aggiungono solo ai poster in verticale. Per aggiungerne, scegli «Verticale» qui sopra, poi crea un'altra versione.",
+    "ia.perso.chargement": "Caricamento dei personaggi…",
+    "ia.perso.erreur":
+      "Non è stato possibile caricare i personaggi. Controlla la connessione, poi riprova.",
+    "ia.refus.indisponible":
+      "Per ora non è possibile aggiungere personaggi a questo poster. Riprova tra un istante, oppure rimuovi i personaggi per aggiungerlo al carrello.",
+    "ia.refus.autre_affiche":
+      "Questa creazione appartiene a un altro poster: qui non può ricevere personaggi. Crea una nuova versione in questa pagina.",
+    "ia.refus.personnages_paysage":
+      "I personaggi si aggiungono solo ai poster in verticale. Rimuovili, oppure crea una versione in verticale.",
+    "ia.refus.panier":
+      "Per ora non è possibile cambiare la quantità di questo poster. Riprova tra un istante; se continua, rimuovilo dal carrello, poi ricrealo dalla sua pagina.",
     "ia.relais.ouvrir": "Invia la foto dal tuo telefono",
     "ia.relais.ouvrir_aide":
       "La tua foto è sul telefono? Scansiona un codice: arriva qui.",
@@ -3374,6 +3484,31 @@ export const ui = {
     "ia.err.attente":
       "La lámina tarda más de lo previsto. Vuelve a lanzar la creación.",
     "ia.err.inconnu": "Algo ha salido mal. Vuelve a lanzar la creación.",
+    "ia.perso.titre": "Personajes (opcional)",
+    "ia.perso.aide": "Añade personajes dibujados, vestidos a tu gusto.",
+    "ia.perso.muret": "Sentados en el murete",
+    "ia.perso.muret_detail": "Vistos de espaldas",
+    "ia.perso.face": "De pie, de frente",
+    "ia.perso.face_detail": "Sin murete",
+    "ia.perso.valider": "Confirmar los personajes",
+    "ia.perso.modifier": "Editar",
+    "ia.perso.retirer": "Quitar",
+    "ia.perso.resume": "{nombre}, {vue}",
+    "ia.perso.resume_muret": "en el murete",
+    "ia.perso.resume_face": "de pie, de frente",
+    "ia.perso.paysage":
+      "Los personajes solo se añaden a las láminas en vertical. Para añadirlos, elige «Vertical» más arriba y crea otra versión.",
+    "ia.perso.chargement": "Cargando los personajes…",
+    "ia.perso.erreur":
+      "No se han podido cargar los personajes. Comprueba la conexión y vuelve a intentarlo.",
+    "ia.refus.indisponible":
+      "Ahora mismo no se pueden añadir personajes a esta lámina. Vuelve a intentarlo en un momento, o quita los personajes para añadirla a la cesta.",
+    "ia.refus.autre_affiche":
+      "Esta creación pertenece a otra lámina: aquí no puede llevar personajes. Crea una nueva versión en esta página.",
+    "ia.refus.personnages_paysage":
+      "Los personajes solo se añaden a las láminas en vertical. Quítalos, o crea una versión en vertical.",
+    "ia.refus.panier":
+      "Ahora mismo no se puede cambiar la cantidad de esta lámina. Vuelve a intentarlo en un momento; si sigue pasando, quítala de la cesta y vuelve a crearla desde su página.",
     "ia.relais.ouvrir": "Enviar la foto desde tu móvil",
     "ia.relais.ouvrir_aide":
       "¿Tu foto está en el móvil? Escanea un código: llegará aquí.",
@@ -4124,6 +4259,25 @@ export const ui = {
     "ia.err.generation": "作成できませんでした。もう一度お試しください。2回目でうまくいくことがよくあります。それでも難しい場合は、別の写真をお試しください。",
     "ia.err.attente": "ポスターの作成に予想より時間がかかっています。もう一度作成してください。",
     "ia.err.inconnu": "問題が発生しました。もう一度作成してください。",
+    "ia.perso.titre": "キャラクター（任意）",
+    "ia.perso.aide": "イラストのキャラクターを、お好みの服装で追加できます。",
+    "ia.perso.muret": "塀に座る",
+    "ia.perso.muret_detail": "後ろ姿",
+    "ia.perso.face": "立ち姿・正面",
+    "ia.perso.face_detail": "塀なし",
+    "ia.perso.valider": "キャラクターを確定",
+    "ia.perso.modifier": "編集",
+    "ia.perso.retirer": "削除",
+    "ia.perso.resume": "{nombre}・{vue}",
+    "ia.perso.resume_muret": "塀に座る",
+    "ia.perso.resume_face": "立ち姿・正面",
+    "ia.perso.paysage": "キャラクターは縦向きのポスターにのみ追加できます。追加するには、上で「縦向き」を選んでから、別のバージョンを作ってください。",
+    "ia.perso.chargement": "キャラクターを読み込み中…",
+    "ia.perso.erreur": "キャラクターを読み込めませんでした。接続を確認して、もう一度お試しください。",
+    "ia.refus.indisponible": "現在、このポスターにはキャラクターを追加できません。しばらくしてからもう一度お試しいただくか、キャラクターを削除してからカートに入れてください。",
+    "ia.refus.autre_affiche": "この作品は別のポスターのものなので、ここではキャラクターを追加できません。このページで新しいバージョンを作ってください。",
+    "ia.refus.personnages_paysage": "キャラクターは縦向きのポスターにのみ追加できます。キャラクターを削除するか、縦向きのバージョンを作ってください。",
+    "ia.refus.panier": "現在、このポスターの数量を変更できません。しばらくしてからもう一度お試しください。解決しない場合は、カートから削除し、ポスターのページで作り直してください。",
     "ia.relais.ouvrir": "スマートフォンから写真を送る",
     "ia.relais.ouvrir_aide": "写真はスマートフォンの中ですか？コードを読み取ると、ここに届きます。",
     "ia.relais.code_stand_aide": "コードを表示するには、先にスタンドのコードを入力してください。以後はタブレットが記憶します。",
@@ -4771,6 +4925,25 @@ export const ui = {
     "ia.err.generation": "制作未能完成。请重试：通常第二次就能成功。否则请换一张照片。",
     "ia.err.attente": "海报制作时间比预期更长。请重新生成。",
     "ia.err.inconnu": "出了点问题。请重新生成。",
+    "ia.perso.titre": "人物（可选）",
+    "ia.perso.aide": "添加手绘人物，服装随您搭配。",
+    "ia.perso.muret": "坐在矮墙上",
+    "ia.perso.muret_detail": "背影",
+    "ia.perso.face": "站立，正面",
+    "ia.perso.face_detail": "无矮墙",
+    "ia.perso.valider": "确认人物",
+    "ia.perso.modifier": "修改",
+    "ia.perso.retirer": "移除",
+    "ia.perso.resume": "{nombre}，{vue}",
+    "ia.perso.resume_muret": "坐在矮墙上",
+    "ia.perso.resume_face": "站立，正面",
+    "ia.perso.paysage": "人物只能添加到竖版海报上。如需添加，请在上方选择“竖版”，然后生成另一个版本。",
+    "ia.perso.chargement": "正在加载人物…",
+    "ia.perso.erreur": "人物未能加载。请检查网络连接后重试。",
+    "ia.refus.indisponible": "此海报暂时无法添加人物。请稍后重试，或移除人物后再加入购物车。",
+    "ia.refus.autre_affiche": "此作品属于另一款海报，无法在此添加人物。请在本页生成新版本。",
+    "ia.refus.personnages_paysage": "人物只能添加到竖版海报上。请移除人物，或生成竖版版本。",
+    "ia.refus.panier": "暂时无法更改此海报的数量。请稍后重试；如果仍然不行，请将其从购物车中移除，再到海报页面重新制作。",
     "ia.relais.ouvrir": "从手机发送照片",
     "ia.relais.ouvrir_aide": "照片在手机里？扫描二维码，照片就会传到这里。",
     "ia.relais.code_stand_aide": "要显示二维码，请先输入摊位代码，平板之后会记住它。",

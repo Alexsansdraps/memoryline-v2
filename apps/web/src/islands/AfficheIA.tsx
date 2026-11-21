@@ -10,11 +10,14 @@ import {
 import {
   createSignal,
   createMemo,
+  createEffect,
+  ErrorBoundary,
   onCleanup,
   onMount,
   For,
   Index,
   Show,
+  Suspense,
   type JSX,
 } from "solid-js";
 import {
@@ -38,6 +41,7 @@ import {
   policesDeLaLigne,
   sousLignes,
   tailleDeLigneCqw,
+  type Character,
   type PoliceAffiche,
   type PosterConfig,
   type TextBlock,
@@ -57,6 +61,51 @@ import {
   type EchecIA,
 } from "../lib/ia.ts";
 import RelaisPhoto from "./RelaisPhoto.tsx";
+import type { CompositionIA } from "./PersonnagesIA.tsx";
+
+/*
+ * Les personnages et le muret (20/11) : leur écran ne vient qu'au besoin,
+ * comme le configurateur sur les autres fiches (ProductConfigurator.tsx) —
+ * la plupart des clients n'en ajoutent pas, et ni ce code ni la
+ * bibliothèque des personnages n'ont à partir avec la fiche. Ils sont
+ * demandés au repos dès la première création prête (voir
+ * `personnagesDemandes`) : à l'ouverture, ils sont presque toujours là.
+ *
+ * Le module est gardé une fois arrivé, et redemandé à chaque besoin tant
+ * qu'il n'est pas là (21/11). lazy() de solid-js gardait son PREMIER import
+ * pour toute la vie de la page, échec compris : un morceau qui n'arrivait pas
+ * (4G du marché) rendait « Les personnages n'ont pas pu être chargés » à
+ * chaque nouvel essai, réseau revenu ou pas, jusqu'à un rechargement — qui
+ * perd les textes tapés. Le navigateur, lui, redemande un module qui a échoué
+ * (vérifié sur Chrome 156 et 158) : rouvrir suffit désormais. Et le grand
+ * aperçu montre les personnages dès que le module arrive, par quelque chemin
+ * que ce soit.
+ */
+type ModulePersonnages = typeof import("./PersonnagesIA.tsx");
+const [modulePersonnages, setModulePersonnages] = createSignal<ModulePersonnages>();
+const chargerPersonnages = (): Promise<ModulePersonnages> =>
+  import("./PersonnagesIA.tsx").then((m) => {
+    setModulePersonnages(() => m);
+    return m;
+  });
+
+/**
+ * Les refus du panier pour une affiche AVEC personnages (20/11) : le serveur
+ * revérifie la création avant d'accepter la ligne, et répond par l'un de ces
+ * codes (400 { error }). Une ligne sans personnage n'en reçoit jamais.
+ */
+const REFUS_PANIER = ["ia_indisponible", "ia_autre_affiche", "ia_personnages_paysage"] as const;
+type RefusPanier = (typeof REFUS_PANIER)[number];
+
+/**
+ * Le code d'un refus du panier, lu dans l'erreur levée par l'ajout
+ * (api-navigateur.ts : « API POST … -> 400 {"error":"ia_indisponible"} »).
+ * Null pour toute autre panne.
+ */
+function refusDuPanier(e: unknown): RefusPanier | null {
+  const texte = String(e);
+  return REFUS_PANIER.find((code) => texte.includes(`"${code}"`)) ?? null;
+}
 
 /**
  * Parcours des affiches IA : le client choisit un style (quand la boutique en
@@ -70,6 +119,12 @@ import RelaisPhoto from "./RelaisPhoto.tsx";
  *
  * Les routes /ia/* peuvent ne pas encore répondre : chaque échec se termine
  * par une phrase en français et un geste à faire, jamais par une page cassée.
+ *
+ * Une affiche obtenue en portrait peut recevoir des personnages, de dos sur
+ * un muret ou debout de face (20/11) : composés avec le module des affiches
+ * personnalisables (PersonnagesIA.tsx), gardés avec leur création, envoyés
+ * avec elle au panier. Sans personnage, rien ne change, ligne de panier
+ * comprise.
  */
 export interface AfficheIAProps {
   langue?: Langue;
@@ -178,6 +233,33 @@ const TRAITS_STYLE: Record<SujetStyle, () => JSX.Element> = {
   ),
 };
 
+/**
+ * Le dessin des deux boutons des personnages (20/11), au même trait et sur
+ * la même grille : deux bustes vus de dos derrière le muret, ou deux
+ * silhouettes debout, de face. Des fonctions, pour la même raison.
+ */
+const TRAITS_PERSONNAGES: Record<"back" | "front", () => JSX.Element> = {
+  back: () => (
+    <>
+      <circle cx="17" cy="14" r="4.5" />
+      <path d="M10 31v-4c0-4 3.1-7 7-7s7 3 7 7v4" />
+      <circle cx="31" cy="16.5" r="4" />
+      <path d="M25 31v-3.5c0-3.4 2.7-6.2 6-6.2s6 2.8 6 6.2V31" />
+      <rect x="5" y="31" width="38" height="10" rx="1" />
+      <path d="M5 36h38M17 31v5M31 36v5" />
+    </>
+  ),
+  front: () => (
+    <>
+      <circle cx="18" cy="11" r="4.5" />
+      <path d="M11 41V26c0-4 3.1-7 7-7s7 3 7 7v15" />
+      <circle cx="32" cy="15" r="3.8" />
+      <path d="M26.5 41V28.5c0-3.2 2.5-5.8 5.5-5.8s5.5 2.6 5.5 5.8V41" />
+      <path d="M6 41h36" />
+    </>
+  ),
+};
+
 /** La case d'un style qui n'a pas encore d'image d'exemple. */
 function AttenteStyle(props: { titre: string }): JSX.Element {
   return (
@@ -269,7 +351,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const locale = LOCALE_COMPLETE[props.langue ?? LANGUE_DEFAUT];
 
   const [etape, setEtape] = createSignal<Etape>("depot");
-  const [echec, setEchec] = createSignal<EchecIA | null>(null);
+  const [echec, setEchec] = createSignal<EchecIA | RefusPanier | null>(null);
   const [survol, setSurvol] = createSignal(false);
   const [precision, setPrecision] = createSignal("");
   /**
@@ -536,6 +618,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     sens: "portrait" | "paysage";
     /** La photo côté serveur dont elle est tirée. */
     source: string;
+    /**
+     * Ses personnages et son muret (20/11), en portrait seulement. Absente :
+     * l'affiche part au panier exactement comme avant. Gardée avec la
+     * création, elle survit au retour sur une autre création et au
+     * rechargement de la page.
+     */
+    compo?: CompositionIA;
   };
   /** Lue dans le navigateur seulement : le panier n'existe pas au rendu serveur. */
   let cleCreations = "";
@@ -572,6 +661,31 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   function basculerAjout(id: string) {
     setAAjouter((liste) =>
       liste.includes(id) ? liste.filter((x) => x !== id) : [...liste, id],
+    );
+  }
+
+  /**
+   * Les personnages d'une création, s'il y en a. Une composition vide n'en
+   * est pas une : jamais de muret sans personnage (décision du 20/11), ni à
+   * l'écran ni au panier.
+   */
+  const compoDe = (id: string | null | undefined): CompositionIA | undefined => {
+    const compo = id ? creations().find((c) => c.publicId === id)?.compo : undefined;
+    return compo && Array.isArray(compo.personnages) && compo.personnages.length > 0
+      ? compo
+      : undefined;
+  };
+  /** Ceux de la création montrée — en portrait seulement (décision du 20/11). */
+  const compoMontree = () =>
+    orientationApercu() === "portrait" ? compoDe(publicId()) : undefined;
+  /** Pose (ou retire, sans personnage) la composition d'une création. */
+  function poserCompo(id: string, compo: CompositionIA | null) {
+    memoriserCreations(
+      creations().map((c) => {
+        if (c.publicId !== id) return c;
+        const { compo: _ancienne, ...sansCompo } = c;
+        return compo && compo.personnages.length > 0 ? { ...sansCompo, compo } : sansCompo;
+      }),
     );
   }
 
@@ -626,6 +740,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         return tr("ia.err.attente");
       case "inconnu":
         return tr("ia.err.inconnu");
+      // Une affiche avec personnages que le panier refuse (20/11).
+      case "ia_indisponible":
+        return tr("ia.refus.indisponible");
+      case "ia_autre_affiche":
+        return tr("ia.refus.autre_affiche");
+      case "ia_personnages_paysage":
+        return tr("ia.refus.personnages_paysage");
       default:
         return null;
     }
@@ -727,6 +848,11 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     // Le sens demandé À CE MOMENT : s'il change pendant la génération,
     // l'aperçu garde celui dans lequel il a été fabriqué.
     const sens = orientation();
+    // « Générer une autre version » reprend les personnages de la création
+    // montrée, si la nouvelle est en portrait (décision du 20/11) : c'est
+    // gratuit, et ils se retirent d'un geste. Leurs places ne dépendent pas
+    // de l'image, elles valent telles quelles sur la nouvelle.
+    const compoAReprendre = sens === "portrait" ? compoDe(publicId()) : undefined;
     try {
       const gen = await genererAffiche({
         productId: props.product.id,
@@ -747,7 +873,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       // Elle rejoint les précédentes au lieu de les effacer.
       memoriserCreations([
         ...creations().filter((c) => c.publicId !== gen.publicId),
-        { publicId: gen.publicId, apercuChemin: gen.apercuUrl, apercu: prete, sens, source },
+        {
+          publicId: gen.publicId,
+          apercuChemin: gen.apercuUrl,
+          apercu: prete,
+          sens,
+          source,
+          ...(compoAReprendre ? { compo: compoAReprendre } : {}),
+        },
       ]);
     } catch (e) {
       setEchec(causeDe(e));
@@ -806,8 +939,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         lien(props.langue ?? LANGUE_DEFAUT, "/commande"),
         lien(props.langue ?? LANGUE_DEFAUT, "/panier"),
       );
-    } catch {
-      setEchec("inconnu");
+    } catch (e) {
+      // Une affiche avec personnages refusée par le serveur (20/11) reçoit
+      // sa phrase ; toute autre panne, le message d'avant.
+      setEchec(refusDuPanier(e) ?? "inconnu");
       setAjout(false);
     }
   }
@@ -818,12 +953,19 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     apercuChemin: string | null;
     sens: "portrait" | "paysage";
   }) {
+    // Les personnages de CETTE création (20/11), en portrait seulement. Sans
+    // eux, la ligne est exactement celle d'avant, au caractère près : vue de
+    // face, aucun personnage, aucun décor.
+    const compo = a.sens === "portrait" ? (compoDe(a.publicId) ?? null) : null;
     const config: PosterConfig = {
       schemaVersion: 1,
       productId: props.product.id,
       format: format() === "A3" ? "A3" : "A4",
       ...(a.sens === "paysage" ? { orientation: "paysage" as const } : {}),
-      view: "front",
+      view: compo ? compo.vue : "front",
+      // Le muret, de dos seulement, et jamais sans personnage : c'est le
+      // décor que le fichier d'impression pose derrière eux.
+      ...(compo && compo.vue === "back" && compo.decor ? { foregroundUrl: compo.decor } : {}),
       // Compacte, sans trou : l'API refuse une entrée vide au milieu, et
       // le rendu ne lit de toute façon que la suite des lignes remplies.
       texts: {
@@ -838,12 +980,16 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           }),
         ),
       },
-      characters: [],
+      // Tels que le module les a rendus : places, échelles, tenues,
+      // couleurs. Le fichier d'impression les pose à ces places-là.
+      characters: compo ? compo.personnages : [],
       // C'est CE champ qui rattache la ligne à la génération retenue : le
       // serveur y retrouve le fichier sans filigrane à imprimer une fois la
       // commande payée.
       aiPublicId: a.publicId,
-      aiApercuUrl: a.apercuChemin ?? undefined,
+      // Avec personnages, l'adresse de l'aperçu telle que le serveur la
+      // contrôle (20/11) ; sans, celle d'avant, inchangée.
+      aiApercuUrl: compo ? `/ia/apercu/${a.publicId}` : (a.apercuChemin ?? undefined),
     };
     await browserApi.addCartItem(getCartId(), {
       productId: props.product.id,
@@ -882,13 +1028,202 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     verrouillerDefilement(false);
   }
   function surTouche(e: KeyboardEvent) {
-    if (e.key === "Escape" && ouverte()) fermer();
+    if (e.key !== "Escape" || !ouverte()) return;
+    // Pendant la composition des personnages, Échap vaut « Retour » (20/11) :
+    // il ramène à l'affiche sans rien garder, et ne ferme pas la fenêtre.
+    if (composer()) {
+      fermerComposition();
+      return;
+    }
+    fermer();
   }
   onMount(() => window.addEventListener("keydown", surTouche));
   onCleanup(() => {
     window.removeEventListener("keydown", surTouche);
     verrouillerDefilement(false);
   });
+
+  /* ------------------------------------------------------------------------
+   * Les personnages (20/11 : « faut pouvoir ajouter personnages et murets si
+   * les gens veulent pour les images à partir de leurs photos ! »).
+   *
+   * La composition se fait dans la même fenêtre : l'écran de l'affiche est
+   * masqué — pas démonté : ses calques de texte et le relais de photo restent
+   * tels quels —, et le module de personnalisation prend sa place, sur sa
+   * seule étape « Personnages » (PersonnagesIA.tsx). « Retour », Échap et la
+   * croix ramènent à l'affiche sans rien garder ; un clic à côté de la
+   * fenêtre ne fait rien, comme sur les affiches personnalisables.
+   * ---------------------------------------------------------------------- */
+
+  /**
+   * La composition en cours : la création qui reçoit les personnages, la vue
+   * choisie et les personnages de départ (ceux de « Modifier »). Null hors
+   * composition.
+   */
+  const [composer, setComposer] = createSignal<{
+    publicId: string;
+    vue: "back" | "front";
+    personnages: Character[];
+  } | null>(null);
+  /** La boîte qui défile dans la fenêtre : on y retrouve sa place au retour. */
+  let corpsModale: HTMLDivElement | undefined;
+  let hautAvantComposition = 0;
+
+  /*
+   * Une entrée d'historique pendant la composition : sur la tablette, le
+   * geste « retour » d'Android quitterait sinon la fiche, et l'affiche en
+   * cours avec elle. Il ne fait que « Retour ». Même procédé que la fenêtre
+   * des affiches personnalisables (ProductConfigurator.tsx).
+   */
+  const MARQUE_COMPOSITION = "mlPersoIA";
+  const entreeComposition = () =>
+    typeof history !== "undefined" &&
+    Boolean((history.state as Record<string, unknown> | null)?.[MARQUE_COMPOSITION]);
+  /**
+   * Les reculs dans l'historique que fermerComposition a demandés et dont
+   * l'événement n'est pas encore arrivé : ceux-là ne sont pas un geste du
+   * client, surPopstate les laisse passer.
+   */
+  let reculsAttendus = 0;
+
+  /**
+   * Ouvre la composition sur la création montrée : « Assis sur le muret »
+   * (vue de dos), « Debout, de face », ou « Modifier » (la même vue, ses
+   * personnages). Jamais en paysage, ni pendant une création ou un ajout.
+   */
+  function ouvrirComposition(vue: "back" | "front") {
+    const id = publicId();
+    if (!id || orientationApercu() !== "portrait" || occupe() || ajout() || composer()) return;
+    const deja = compoDe(id);
+    hautAvantComposition = corpsModale?.scrollTop ?? 0;
+    setComposer({
+      publicId: id,
+      vue,
+      personnages: deja && deja.vue === vue ? deja.personnages : [],
+    });
+    corpsModale?.scrollTo({ top: 0 });
+    // Le second coup d'un double appui tomberait sur le module, qui vient de
+    // prendre la place des boutons.
+    avalerLesClicsUnInstant();
+    if (!entreeComposition())
+      history.pushState(
+        { ...((history.state as object | null) ?? {}), [MARQUE_COMPOSITION]: true },
+        "",
+      );
+  }
+
+  /**
+   * Referme la composition — « Retour », Échap, la croix, le geste retour du
+   * téléphone, ou après « Valider ». L'écran de l'affiche revient où on
+   * l'avait laissé, sur le bloc des personnages.
+   */
+  function fermerComposition() {
+    if (!composer()) return;
+    setComposer(null);
+    // L'entrée posée à l'ouverture s'en va avec elle : le geste retour
+    // suivant ramène à la page d'avant, comme sans composition.
+    if (entreeComposition()) {
+      reculsAttendus++;
+      history.back();
+    }
+    avalerLesClicsUnInstant();
+    const haut = hautAvantComposition;
+    requestAnimationFrame(() => corpsModale?.scrollTo({ top: haut }));
+  }
+
+  /**
+   * Un double appui sur « Valider les personnages » (au doigt, sur la
+   * tablette) tomberait, au second coup, sur ce qui revient à sa place sous
+   * le doigt : « Ajouter au panier », ou « Générer une autre version » — une
+   * création payée que personne n'a demandée. Les clics du court instant qui
+   * suit l'ouverture ou la fermeture de la composition sont donc avalés.
+   */
+  function avalerLesClicsUnInstant() {
+    const avaler = (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    window.addEventListener("click", avaler, true);
+    window.setTimeout(() => window.removeEventListener("click", avaler, true), 400);
+  }
+
+  /** « Valider les personnages » : la composition rejoint SA création. */
+  function validerComposition(compo: CompositionIA) {
+    const encours = composer();
+    if (!encours) return;
+    // Validée sans personnage, elle n'existe plus : c'est « Retirer ».
+    poserCompo(encours.publicId, compo);
+    // Un refus du panier visait peut-être les personnages d'avant.
+    setEchec(null);
+    fermerComposition();
+  }
+
+  /** « Retirer » : la création repart sans personnage ni muret. */
+  function retirerComposition() {
+    const id = publicId();
+    if (!id || occupe() || ajout()) return;
+    poserCompo(id, null);
+    setEchec(null);
+  }
+
+  function surPopstate() {
+    if (reculsAttendus > 0) {
+      reculsAttendus--;
+      return;
+    }
+    // Le geste retour du téléphone pendant la composition : comme « Retour ».
+    if (composer() && !entreeComposition()) fermerComposition();
+  }
+  onMount(() => {
+    window.addEventListener("popstate", surPopstate);
+    // Une marque retrouvée au chargement (page rechargée en pleine
+    // composition) : on la retire, sinon la prochaine fermeture reculerait
+    // d'une page de trop.
+    if (entreeComposition()) {
+      const reste = { ...(history.state as Record<string, unknown>) };
+      delete reste[MARQUE_COMPOSITION];
+      history.replaceState(reste, "");
+    }
+  });
+  onCleanup(() => window.removeEventListener("popstate", surPopstate));
+
+  /** « 3 personnages, assis sur le muret » : leur nombre, puis la vue. */
+  const resumeCompo = (compo: CompositionIA): string => {
+    const n = compo.personnages.length;
+    return tr("ia.perso.resume")
+      .replace("{nombre}", () => `${n} ${n > 1 ? tr("panier.personnages") : tr("panier.personnage")}`)
+      .replace("{vue}", () =>
+        tr(compo.vue === "back" ? "ia.perso.resume_muret" : "ia.perso.resume_face"),
+      );
+  };
+
+  /**
+   * Le module des personnages et leur bibliothèque, demandés au repos dès la
+   * première création prête : sur la tablette du stand, en 4G, la première
+   * ouverture attendait sinon tout cela d'un coup. Une seule fois ; un échec
+   * se rattrape à l'ouverture.
+   */
+  let personnagesDemandes = false;
+  createEffect(() => {
+    if (etape() !== "pret" || personnagesDemandes) return;
+    personnagesDemandes = true;
+    const auRepos =
+      window.requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 2000));
+    auRepos(() => {
+      void chargerPersonnages()
+        .then((m) => m.chargerBibliotheque(props.langue))
+        .catch(() => {});
+    });
+  });
+
+  /** L'image seule dans le grand aperçu : sans personnage, ou en les attendant. */
+  const imageApercu = () => (
+    <img
+      src={apercu()!}
+      alt={tr("ia.apercu_alt")}
+      class="absolute inset-0 h-full w-full object-contain"
+    />
+  );
 
   return (
     <>
@@ -911,20 +1246,92 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       aria-modal="true"
       aria-label={tr("ia.titre")}
       onClick={(e) => {
-        if (e.target === e.currentTarget) fermer();
+        // Pendant la composition des personnages, un clic à côté ne ferme
+        // rien (20/11) : un doigt qui glisse hors de la fenêtre, sur la
+        // tablette, emporterait sinon les personnages en cours.
+        if (e.target === e.currentTarget && !composer()) fermer();
       }}
     >
     <div class="ml-modal-panel">
       <header class="ml-modal-head">
         <h2 class="text-xl sm:text-2xl">{tr("ia.titre")}</h2>
-        <button type="button" class="ml-modal-close" aria-label={tr("cfg.fermer")} onClick={fermer}>
+        {/* Pendant la composition, la croix vaut « Retour » : elle ramène à
+            l'affiche, sans rien garder. */}
+        <button
+          type="button"
+          class="ml-modal-close"
+          aria-label={tr("cfg.fermer")}
+          onClick={() => (composer() ? fermerComposition() : fermer())}
+        >
           ✕
         </button>
       </header>
-    <div class="ml-modal-body">
+    <div class="ml-modal-body" ref={corpsModale}>
+      {/* La composition des personnages (20/11), à la place de l'écran de
+          l'affiche, qui reste monté mais masqué. Le module qui n'arrive pas
+          (réseau du marché) ou qui casse ne fait pas tomber la fenêtre : une
+          phrase, et « Retour » ramène à l'affiche, intacte. */}
+      <Show when={composer()} keyed>
+        {(c) => {
+          // Chaque ouverture redemande le module s'il n'est pas là (21/11) :
+          // après un échec, « Retour » puis un nouvel appui réessaie vraiment.
+          const [moduleManquant, setModuleManquant] = createSignal(false);
+          if (!modulePersonnages())
+            chargerPersonnages().catch(() => setModuleManquant(true));
+          const erreur = () => (
+            <div class="py-12 text-center">
+              <p role="alert" class="text-terracotta-deep">
+                {tr("ia.perso.erreur")}
+              </p>
+              <button
+                type="button"
+                onClick={fermerComposition}
+                class="mt-5 rounded-full border border-ink px-6 py-3 text-sm font-medium hover:bg-ink hover:text-paper transition-colors"
+              >
+                {tr("cfg.retour")}
+              </button>
+            </div>
+          );
+          const attente = () => (
+            <p class="flex items-center justify-center gap-2 py-16 text-ink-soft" role="status">
+              <span class="ml-spinner" aria-hidden="true" />
+              {tr("ia.perso.chargement")}
+            </p>
+          );
+          return (
+            <ErrorBoundary fallback={erreur()}>
+              <Suspense fallback={attente()}>
+                <Show
+                  when={modulePersonnages()}
+                  fallback={moduleManquant() ? erreur() : attente()}
+                >
+                  {(m) => {
+                    const ComposerPersonnages = m().default;
+                    return (
+                      <ComposerPersonnages
+                        langue={props.langue}
+                        product={props.product}
+                        publicId={c.publicId}
+                        format={format() === "A3" ? "A3" : "A4"}
+                        vue={c.vue}
+                        personnages={c.personnages}
+                        onValider={validerComposition}
+                        onRetour={fermerComposition}
+                      />
+                    );
+                  }}
+                </Show>
+              </Suspense>
+            </ErrorBoundary>
+          );
+        }}
+      </Show>
       {/* Dans la modale (1040 px au plus) : l'aperçu à gauche à une taille où
           l'on juge une affiche, les réglages à droite. */}
-      <div class="grid gap-8 items-start md:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+      <div
+        class="grid gap-8 items-start md:grid-cols-[minmax(0,380px)_minmax(0,1fr)]"
+        style={{ display: composer() ? "none" : undefined }}
+      >
         {/* ------------------------------ Aperçu ------------------------- */}
         {/* Collé en haut dès qu'il y a deux colonnes : sur la tablette, la
             colonne des réglages dépasse l'écran, et l'aperçu — la photo, la
@@ -962,11 +1369,40 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   les pixels de l'image. Il protège donc mieux que le nôtre —
                   qui disparaîtrait si on enregistrait l'image seule — et deux
                   filigranes superposés rendaient l'affiche illisible. */}
-              <img
-                src={apercu()!}
-                alt={tr("ia.apercu_alt")}
-                class="absolute inset-0 h-full w-full object-contain"
-              />
+              {/* Avec des personnages (20/11) : l'image, le muret et les
+                  personnages, dessinés par l'aperçu du module — sans son
+                  filigrane ni son texte. Les calques de texte ci-dessous
+                  restent par-dessus, déplaçables comme avant. En attendant
+                  le module, ou s'il ne vient pas, l'image seule. */}
+              <Show when={compoMontree()} fallback={imageApercu()}>
+                {(compo) => {
+                  // Le module, s'il n'est pas là, est redemandé (21/11) : les
+                  // personnages paraissent dès qu'il arrive, par ce chemin ou
+                  // par un autre (préchargement, composition).
+                  if (!modulePersonnages()) void chargerPersonnages().catch(() => {});
+                  return (
+                    <ErrorBoundary fallback={imageApercu()}>
+                      <Suspense fallback={imageApercu()}>
+                        <Show when={modulePersonnages()} fallback={imageApercu()}>
+                          {(m) => {
+                            const ApercuPersonnages = m().ApercuPersonnages;
+                            return (
+                              <ApercuPersonnages
+                                langue={props.langue}
+                                publicId={publicId()!}
+                                format={format() === "A3" ? "A3" : "A4"}
+                                compo={compo()}
+                                alt={tr("ia.apercu_alt")}
+                                repli={imageApercu}
+                              />
+                            );
+                          }}
+                        </Show>
+                      </Suspense>
+                    </ErrorBoundary>
+                  );
+                }}
+              </Show>
             </Show>
 
             {/* Le texte, posé sur l'affiche comme sur les autres : même
@@ -1113,13 +1549,25 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                     const vue = () => publicId() === c.publicId;
                     const gardee = () => aAjouter().includes(c.publicId);
                     const nom = () => tr("ia.creation_n").replace("{n}", String(i() + 1));
+                    /**
+                     * Ses personnages (20/11) : cochée avec d'autres, chacune
+                     * part avec les siens, ou sans. Le nombre se lit sur la
+                     * vignette, pour qu'on sache lesquelles en ont.
+                     */
+                    const nbPersonnages = () => compoDe(c.publicId)?.personnages.length ?? 0;
                     return (
                       <li class="relative">
                         <button
                           type="button"
                           disabled={occupe()}
                           onClick={() => revoir(c)}
-                          aria-label={nom()}
+                          aria-label={
+                            nbPersonnages()
+                              ? `${nom()} — ${nbPersonnages()} ${
+                                  nbPersonnages() > 1 ? tr("panier.personnages") : tr("panier.personnage")
+                                }`
+                              : nom()
+                          }
                           aria-current={vue() ? "true" : undefined}
                           class={`relative block w-full overflow-hidden border-2 bg-paper-deep transition-colors disabled:opacity-60 ${
                             vue() ? "border-ink" : "border-ink/15 hover:border-ink/45"
@@ -1127,6 +1575,18 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           style={{ "aspect-ratio": c.sens === "paysage" ? "1.4142 / 1" : "1 / 1.4142" }}
                         >
                           <img src={c.apercu} alt="" loading="lazy" class="h-full w-full object-contain" />
+                          <Show when={nbPersonnages()}>
+                            <span
+                              aria-hidden="true"
+                              class="absolute bottom-1 right-1 inline-flex items-center gap-0.5 bg-ink px-1 py-0.5 text-[10px] font-medium leading-none text-paper"
+                            >
+                              <svg viewBox="0 0 12 12" class="h-2.5 w-2.5" fill="currentColor">
+                                <circle cx="6" cy="3.5" r="2.3" />
+                                <path d="M1.6 11.5c0-2.7 2-4.8 4.4-4.8s4.4 2.1 4.4 4.8z" />
+                              </svg>
+                              {nbPersonnages()}
+                            </span>
+                          </Show>
                         </button>
                         <label class="mt-1 flex cursor-pointer items-center gap-1.5 text-xs">
                           <input
@@ -1273,12 +1733,15 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           {/* Au stand, la photo est souvent dans le téléphone du client : la
               tablette montre un QR code, la photo arrive ici. Même règle que
               la zone de dépôt — éteinte tant qu'un style reste à choisir. */}
+          {/* Pendant la composition des personnages (20/11), le relais est
+              occupé puis fermé : une photo arrivée du téléphone effacerait
+              l'affiche qu'on est en train de composer (choisirPhoto). */}
           <Show when={props.stand}>
             <RelaisPhoto
               langue={props.langue}
               disponible={true}
-              occupe={occupe()}
-              interrompre={etape() === "generation"}
+              occupe={occupe() || !!composer()}
+              interrompre={etape() === "generation" || !!composer()}
               onPhoto={(f) => void choisirPhoto(f)}
             />
           </Show>
@@ -1493,6 +1956,93 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               on a lu ses textes et choisi son format, reste à recommencer ou
               à la garder. */}
           <Show when={apercu()}>
+            {/* Les personnages (20/11), facultatifs, sous les formats. En
+                portrait seulement : en paysage, l'aperçu et l'impression ne
+                savent pas les placer, une phrase le dit à la place des
+                boutons. Ils ne changent pas le prix : aucun montant ici, au
+                stand comme sur le site. */}
+            <div class="mt-5">
+              <p class="text-sm font-medium">{tr("ia.perso.titre")}</p>
+              <Show
+                when={orientationApercu() === "portrait"}
+                fallback={<p class="mt-1 text-sm text-ink-soft">{tr("ia.perso.paysage")}</p>}
+              >
+                {/* Avec des personnages : ce qu'il y a, et les deux gestes.
+                    Pour passer de dos à face, on retire puis on rechoisit :
+                    on ne mélange jamais les deux sur une affiche. */}
+                <Show
+                  when={compoMontree()}
+                  fallback={
+                    <>
+                      <p class="mt-1 text-sm text-ink-soft">{tr("ia.perso.aide")}</p>
+                      {/* Deux gros boutons, le muret d'abord (décision du
+                          20/11) : assez grands pour le doigt, et l'on voit
+                          d'un coup d'œil ce que chacun donne. */}
+                      <div class="mt-3 grid grid-cols-2 gap-3">
+                        <For each={["back", "front"] as const}>
+                          {(vue) => (
+                            <button
+                              type="button"
+                              disabled={occupe() || ajout()}
+                              onClick={() => ouvrirComposition(vue)}
+                              class="flex flex-col items-center justify-center gap-1 border border-ink/15 px-3 py-3.5 text-center transition-colors hover:border-ink/45 disabled:opacity-60"
+                            >
+                              <svg
+                                viewBox="0 0 48 48"
+                                class="h-10 w-10 text-ink/60"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="1.6"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                aria-hidden="true"
+                              >
+                                {TRAITS_PERSONNAGES[vue]()}
+                              </svg>
+                              <span class="text-sm font-semibold">
+                                {tr(vue === "back" ? "ia.perso.muret" : "ia.perso.face")}
+                              </span>
+                              <span class="text-xs text-ink-soft">
+                                {tr(vue === "back" ? "ia.perso.muret_detail" : "ia.perso.face_detail")}
+                              </span>
+                            </button>
+                          )}
+                        </For>
+                      </div>
+                    </>
+                  }
+                >
+                  {(compo) => (
+                    <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                      <span>{resumeCompo(compo())}</span>
+                      <span aria-hidden="true" class="text-ink-soft">
+                        ·
+                      </span>
+                      <button
+                        type="button"
+                        disabled={occupe() || ajout()}
+                        onClick={() => ouvrirComposition(compo().vue)}
+                        class="underline underline-offset-4 transition-colors hover:text-terracotta disabled:opacity-60"
+                      >
+                        {tr("ia.perso.modifier")}
+                      </button>
+                      <span aria-hidden="true" class="text-ink-soft">
+                        ·
+                      </span>
+                      <button
+                        type="button"
+                        disabled={occupe() || ajout()}
+                        onClick={retirerComposition}
+                        class="underline underline-offset-4 transition-colors hover:text-terracotta disabled:opacity-60"
+                      >
+                        {tr("ia.perso.retirer")}
+                      </button>
+                    </p>
+                  )}
+                </Show>
+              </Show>
+            </div>
+
             <Show when={messageEchec()}>
               <p
                 role="status"

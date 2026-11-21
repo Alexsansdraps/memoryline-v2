@@ -941,6 +941,20 @@ export interface CharacterLibrary {
   nuanciersBase?: Partial<Record<"peau" | "cheveux" | "vetements" | "pantalon", string[]>>;
 }
 
+/**
+ * Un type d'affiche, tel que GET /views le rend (table poster_view). Seuls
+ * les champs que le site lit sont décrits ici.
+ */
+export interface TypeAfficheDTO {
+  id: number;
+  /** « front », « back », ou un type créé au back-office. */
+  slug: string;
+  name: string;
+  /** Décor de premier plan (muret, banc…), chemin /assets/… ; null sans décor. */
+  foregroundUrl: string | null;
+  position: number;
+}
+
 /** Client API navigateur (configurateur, panier, commande). */
 export const browserApi = {
   /** La bibliothèque de personnages ; les noms de catégories dans la langue du visiteur. */
@@ -1038,6 +1052,13 @@ export const browserApi = {
     }),
   backgrounds: (productId: number | string) =>
     browserGet<BackgroundDTO[]>(`/backgrounds?productId=${productId}`),
+  /**
+   * Les types d'affiche actifs (« de face », « de dos »…), dans l'ordre du
+   * back-office, avec leur décor de premier plan (route publique GET /views).
+   * L'affiche tirée d'une photo y lit le muret du type « de dos »
+   * (PersonnagesIA.tsx, 20/11).
+   */
+  views: () => browserGet<TypeAfficheDTO[]>("/views"),
 
   /**
    * Le panier, ou un panier neuf si celui-ci est déjà payé.

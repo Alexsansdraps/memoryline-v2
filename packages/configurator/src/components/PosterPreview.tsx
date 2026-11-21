@@ -99,6 +99,17 @@ export function PosterPreview(props: {
    */
   filigrane?: boolean;
   /**
+   * Aperçu SANS texte : ni la couche des lignes, ni la roue qui attend leurs
+   * polices, ni « Memory Line » à leur place (20/11). Absent : le texte, comme
+   * toujours.
+   *
+   * Pour l'affiche tirée d'une photo (apps/web, AfficheIA) : son écran pose
+   * lui-même ses textes au-dessus de cet aperçu, chacun à la place (x/y) où
+   * le client l'a mis, ce que la couche de texte d'ici ne sait pas faire. Au
+   * panier, sa vignette se montre sans texte, comme avant les personnages.
+   */
+  sansTexte?: boolean;
+  /**
    * Cadre choisi, dessiné autour de l'affiche. Absent ou nul = affiche nue.
    *
    * On ne prend que ce qui se dessine : la couleur d'aperçu et le nom, pour
@@ -169,6 +180,9 @@ export function PosterPreview(props: {
    */
   const [policesPretes, setPolicesPretes] = createSignal(true);
   createEffect(() => {
+    // Sans texte, aucune police à attendre : rien ne les montrera, inutile
+    // de les faire venir (au stand, en 4G).
+    if (props.sansTexte) return;
     if (typeof document === "undefined" || !document.fonts) return;
     const familles = new Set<string>();
     lignesADessiner().forEach((ligne, rang) => {
@@ -238,11 +252,23 @@ export function PosterPreview(props: {
         Math.max(CADRE_MIN_PX, largeurAffiche() * PART_CADRE),
       ),
     );
-  /** Fond affichable : le chemin stocké est brut, on le préfixe ici. */
-  const srcFond = () =>
+  /**
+   * Fond affichable : le chemin stocké est brut, on le préfixe ici.
+   *
+   * Une valeur MÉMORISÉE (21/11) : le chargement ci-dessous ne doit revenir
+   * que si l'ADRESSE du fond change. L'aperçu des personnages de l'affiche
+   * tirée d'une photo (PersonnagesIA.tsx) reçoit un état recalculé — un objet
+   * neuf, même fond — à chaque format choisi ou « Valider » : le chargement
+   * revenait, l'image, inchangée, ne se rechargeait pas, et l'aperçu restait
+   * sur « Chargement de l'affiche… », sans fin. Le module, le panier et la
+   * commande, eux, ne changent pas d'état sans changer de fond : rien n'y
+   * bouge.
+   */
+  const srcFond = createMemo(() =>
     props.state.backgroundUrl
       ? aLaLargeur(urlAsset(props.assetBaseUrl ?? "", props.state.backgroundUrl), 1400)
-      : undefined;
+      : undefined,
+  );
 
   /**
    * Le fond est-il arrivé ? Tant qu'il ne l'est pas, l'aperçu montre un
@@ -260,10 +286,11 @@ export function PosterPreview(props: {
    * image que la vignette du fond qu'on vient de toucher : le navigateur l'a
    * souvent déjà.
    */
-  const srcFondLeger = () =>
+  const srcFondLeger = createMemo(() =>
     props.state.backgroundUrl
       ? aLaLargeur(urlAsset(props.assetBaseUrl ?? "", props.state.backgroundUrl), 400)
-      : undefined;
+      : undefined,
+  );
   const [legerCharge, setLegerCharge] = createSignal(false);
   createEffect(
     on(
@@ -645,90 +672,93 @@ export function PosterPreview(props: {
           Toute la mise en page — haut du bloc, marges, tailles, interlignes,
           espace avant chaque ligne, espacement des lettres — vient de
           packages/types (mise-en-page-texte.ts) : le fichier d'impression
-          lit les mêmes nombres et refait le calcul du navigateur. */}
-      <div
-        ref={coucheTexte}
-        style={{
-          position: "absolute",
-          left: "0",
-          right: "0",
-          top: `${HAUT_DU_TEXTE * 100}%`,
-          "text-align": "center",
-          "pointer-events": "none",
-          padding: `0 ${MARGE_DU_TEXTE * 100}%`,
-          "container-type": "inline-size",
-          "z-index": "200",
-          visibility: policesPretes() ? "visible" : "hidden",
-        }}
-      >
-        <For each={lignesADessiner()}>
-          {(ligne, rang) => {
-            const police = () => policeParId(ligne.font, policeDefautLigne(rang()));
-            return (
-              <div
-                data-rang-texte={rang()}
-                style={{
-                  "font-family": familleCss(police()),
-                  color: props.state.textStyle.color,
-                  // Ce qui distingue la ligne de tête, c'est sa TAILLE, et
-                  // l'air entre ses capitales. Pas de gras : aucune des
-                  // polices d'affiche n'a de graisse, et le gras qu'imitait
-                  // le navigateur n'avait pas l'épaisseur de celui
-                  // qu'imitait le PDF.
-                  "font-size": `${tailleDeLigneCqw(rang()) * reductionDeLigne(rang())}cqw`,
-                  "line-height": String(interligneDeLigne(rang())),
-                  "letter-spacing": `${espacementDeLigne(rang())}em`,
-                  "margin-top": `${espaceAvantLigne(rang())}em`,
-                  // Jamais repliée : trop longue, la ligne est réduite
-                  // (reductionDeLigne), comme à l'impression.
-                  "white-space": "nowrap",
-                  opacity: texteVide() ? "0.5" : "1",
-                }}
-              >
-                {/* Un retour à la ligne tapé par le client (touche Entrée)
-                    coupe la ligne ici comme à l'impression ; les morceaux
-                    vides ne laissent pas de trou (sousLignes). Chaque bout
-                    s'écrit dans la police qui sait l'écrire : la manuscrite
-                    ne connaît pas les chiffres, ils s'écrivent alors en
-                    Caveat — ici comme à l'impression. */}
-                <For each={sousLignes(ligne.value)}>
-                  {(sousLigne) => (
-                    <div data-sous-ligne>
-                      <For each={morceauxDeTexte(sousLigne, police())}>
-                        {(morceau) => (
-                          <span style={{ "font-family": familleCss(morceau.police) }}>
-                            {morceau.texte}
-                          </span>
-                        )}
-                      </For>
-                    </div>
-                  )}
-                </For>
-              </div>
-            );
-          }}
-        </For>
-      </div>
-
-      {/* La police de l'affiche arrive : une roue à la place du texte. */}
-      <Show when={!policesPretes()}>
+          lit les mêmes nombres et refait le calcul du navigateur.
+          Avec `sansTexte`, ni cette couche ni sa roue (20/11). */}
+      <Show when={!props.sansTexte}>
         <div
-          role="status"
-          aria-label="Chargement de la police"
+          ref={coucheTexte}
           style={{
             position: "absolute",
             left: "0",
             right: "0",
             top: `${HAUT_DU_TEXTE * 100}%`,
-            display: "flex",
-            "justify-content": "center",
-            "padding-top": "4%",
+            "text-align": "center",
             "pointer-events": "none",
-            "z-index": "201",
+            padding: `0 ${MARGE_DU_TEXTE * 100}%`,
+            "container-type": "inline-size",
+            "z-index": "200",
+            visibility: policesPretes() ? "visible" : "hidden",
           }}
         >
-          <span class="ml-spinner" aria-hidden="true" />
+          <For each={lignesADessiner()}>
+            {(ligne, rang) => {
+              const police = () => policeParId(ligne.font, policeDefautLigne(rang()));
+              return (
+                <div
+                  data-rang-texte={rang()}
+                  style={{
+                    "font-family": familleCss(police()),
+                    color: props.state.textStyle.color,
+                    // Ce qui distingue la ligne de tête, c'est sa TAILLE, et
+                    // l'air entre ses capitales. Pas de gras : aucune des
+                    // polices d'affiche n'a de graisse, et le gras qu'imitait
+                    // le navigateur n'avait pas l'épaisseur de celui
+                    // qu'imitait le PDF.
+                    "font-size": `${tailleDeLigneCqw(rang()) * reductionDeLigne(rang())}cqw`,
+                    "line-height": String(interligneDeLigne(rang())),
+                    "letter-spacing": `${espacementDeLigne(rang())}em`,
+                    "margin-top": `${espaceAvantLigne(rang())}em`,
+                    // Jamais repliée : trop longue, la ligne est réduite
+                    // (reductionDeLigne), comme à l'impression.
+                    "white-space": "nowrap",
+                    opacity: texteVide() ? "0.5" : "1",
+                  }}
+                >
+                  {/* Un retour à la ligne tapé par le client (touche Entrée)
+                      coupe la ligne ici comme à l'impression ; les morceaux
+                      vides ne laissent pas de trou (sousLignes). Chaque bout
+                      s'écrit dans la police qui sait l'écrire : la manuscrite
+                      ne connaît pas les chiffres, ils s'écrivent alors en
+                      Caveat — ici comme à l'impression. */}
+                  <For each={sousLignes(ligne.value)}>
+                    {(sousLigne) => (
+                      <div data-sous-ligne>
+                        <For each={morceauxDeTexte(sousLigne, police())}>
+                          {(morceau) => (
+                            <span style={{ "font-family": familleCss(morceau.police) }}>
+                              {morceau.texte}
+                            </span>
+                          )}
+                        </For>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              );
+            }}
+          </For>
         </div>
+
+        {/* La police de l'affiche arrive : une roue à la place du texte. */}
+        <Show when={!policesPretes()}>
+          <div
+            role="status"
+            aria-label="Chargement de la police"
+            style={{
+              position: "absolute",
+              left: "0",
+              right: "0",
+              top: `${HAUT_DU_TEXTE * 100}%`,
+              display: "flex",
+              "justify-content": "center",
+              "padding-top": "4%",
+              "pointer-events": "none",
+              "z-index": "201",
+            }}
+          >
+            <span class="ml-spinner" aria-hidden="true" />
+          </div>
+        </Show>
       </Show>
 
       {/* Pas de signature de la boutique ici : elle n'est posée que sur le

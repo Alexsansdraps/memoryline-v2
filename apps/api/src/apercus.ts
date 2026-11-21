@@ -47,16 +47,26 @@ import { renderPosterPng } from "./pdf.js";
 import { donneesDImpression, enFile } from "./fichiers-impression.js";
 import { lignesRemplies, type PosterConfig, type TextesAffiche } from "@memoryline/types";
 
+/** Le nombre de personnages d'une configuration lue en base, quelle qu'elle soit. */
+function nombreDePersonnages(config: unknown): number {
+  const personnages = (config as { characters?: unknown } | null)?.characters;
+  return Array.isArray(personnages) ? personnages.length : 0;
+}
+
 /**
- * Une affiche IA qui porte du texte : son aperçu ne peut pas être l'image du
- * modèle telle quelle (20/11, Alexandra : « le texte ne s'affiche pas sur ma
- * photo personnalisée ») — le texte se pose par-dessus, au fichier
- * d'impression comme sur le site.
+ * Une affiche IA COMPOSÉE : elle porte du texte (20/11, Alexandra : « le texte
+ * ne s'affiche pas sur ma photo personnalisée »), ou des personnages et leur
+ * muret (20/11 : « faut pouvoir ajouter personnages et murets si les gens
+ * veulent pour les images à partir de leurs photos ! »). Son aperçu ne peut
+ * pas être l'image du modèle telle quelle : le reste se pose par-dessus, au
+ * fichier d'impression comme sur le site.
  */
-function iaAvecTexte(config: unknown): boolean {
+export function iaComposee(config: unknown): boolean {
   const c = config as Partial<PosterConfig> | null;
   return (
-    !!c?.aiPublicId && lignesRemplies(c.texts as TextesAffiche | undefined).length > 0
+    !!c?.aiPublicId &&
+    (lignesRemplies(c.texts as TextesAffiche | undefined).length > 0 ||
+      nombreDePersonnages(c) > 0)
   );
 }
 
@@ -145,8 +155,10 @@ function jetonValide(orderItemId: number, fourni: string): boolean {
 export function versionApercu(config: unknown): string {
   const h = createHash("sha1").update(JSON.stringify(config ?? null));
   // Les vignettes d'affiches IA avec texte rangées avant le 20/11 n'avaient
-  // pas leur texte : elles changent d'adresse, donc se refont.
-  if (iaAvecTexte(config)) h.update("ia-avec-texte");
+  // pas leur texte : elles changent d'adresse, donc se refont. Celles qui
+  // portent des personnages (20/11) prennent le MÊME sel : une vignette
+  // « texte seul » garde ainsi l'adresse déjà partie dans les courriels.
+  if (iaComposee(config)) h.update("ia-avec-texte");
   return h.digest("base64url").slice(0, 10);
 }
 
@@ -319,24 +331,33 @@ async function fabriquerApercu(
   }
 
   let config = (ligne.config ?? null) as PosterConfig | null;
+  /** Vrai : la ligne se montre par l'image de sa fiche, sans rien composer. */
+  let imageDeLaFiche = false;
 
   /*
    * Affiche générée : son visuel n'est PAS une pile de calques, c'est l'image
    * produite par le modèle. Sans texte, l'aperçu filigrané existe déjà sur le
    * disque — le refabriquer coûterait un rendu complet pour un résultat
-   * identique. AVEC du texte (20/11), l'image du modèle devient le fond et
-   * les lignes se composent par-dessus, comme au fichier d'impression
-   * (configAImprimer, fichiers-impression.ts) : on regarde ce qui part à
-   * l'atelier. Le fond reste l'aperçu FILIGRANÉ, pas la pleine définition :
-   * la vignette d'un panier pas encore payé ne doit pas livrer l'affiche.
+   * identique. AVEC du texte ou des personnages (20/11), l'image du modèle
+   * devient le fond et le reste se compose par-dessus — muret et personnages
+   * compris —, comme au fichier d'impression (configAImprimer,
+   * fichiers-impression.ts) : on regarde ce qui part à l'atelier. Le fond
+   * reste l'aperçu FILIGRANÉ, pas la pleine définition : la vignette d'un
+   * panier pas encore payé ne doit pas livrer l'affiche.
    */
   if (config?.aiPublicId) {
     const [gen] = await db
       .select({ previewPath: schema.aiGenerations.previewPath })
       .from(schema.aiGenerations)
       .where(eq(schema.aiGenerations.publicId, config.aiPublicId));
-    if (gen?.previewPath && iaAvecTexte(config)) {
+    if (gen?.previewPath && iaComposee(config)) {
       config = { ...config, backgroundUrl: gen.previewPath };
+    } else if (!gen?.previewPath && nombreDePersonnages(config) > 0) {
+      // Aperçu purgé (ou génération introuvable) : composer poserait le muret
+      // et les personnages sur une page blanche. La ligne se montre alors par
+      // l'image de sa fiche, comme une affiche IA sans personnage dont
+      // l'aperçu a disparu.
+      imageDeLaFiche = true;
     } else if (gen?.previewPath) {
       try {
         const brut = await readFile(resolve(ASSETS_DIR, gen.previewPath.replace(/^\/+/, "")));
@@ -358,6 +379,7 @@ async function fabriquerApercu(
    * vide.
    */
   const composee =
+    !imageDeLaFiche &&
     config &&
     (Boolean(config.backgroundUrl) || (config.characters?.length ?? 0) > 0);
 

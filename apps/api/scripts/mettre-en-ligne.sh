@@ -18,7 +18,9 @@
 # fichier maintenance/ACTIVE existe — voir Caddyfile.prod). Le fichier est
 # posé en premier et retiré en dernier, QUOI QU'IL ARRIVE (trap EXIT) : une
 # mise en ligne qui échoue rend le site tel qu'il était, sans le laisser en
-# maintenance. L'API et le back-office n'y passent pas.
+# maintenance. L'API et le back-office n'y passent pas. Seule exception : une
+# nouvelle version déjà lancée qui ne répond pas — le script le dit alors en
+# toutes lettres, jusque dans sa dernière ligne.
 #
 # Il s'arrête à la première erreur (set -e) : une migration qui échoue ne
 # laisse pas redémarrer un site qui chercherait une colonne absente.
@@ -47,7 +49,11 @@ sed -i 's/\r$//' apps/api/scripts/*.sh
 # La page de maintenance, jusqu'à la fin du script, quelle qu'elle soit.
 mkdir -p maintenance
 touch maintenance/ACTIVE
-trap 'rm -f "$HOME/memoryline/maintenance/ACTIVE"; echo "Page de maintenance retirée : le site est de retour."' EXIT
+# MISE_EN_LIGNE_RATEE : posée quand la NOUVELLE version, déjà lancée, ne
+# répond pas (plus bas). La dernière ligne ne dit plus alors « le site est de
+# retour » : en pleine nuit, c'est celle qu'on lit (relecture du 21/11).
+MISE_EN_LIGNE_RATEE=0
+trap 'rm -f "$HOME/memoryline/maintenance/ACTIVE"; if [ "$MISE_EN_LIGNE_RATEE" = 1 ]; then echo "Page de maintenance retirée. ATTENTION : la nouvelle version ne répond pas (voir plus haut) : le site est EN PANNE."; else echo "Page de maintenance retirée : le site est de retour."; fi' EXIT
 echo "0/5 · Page de maintenance affichée."
 
 echo "1/5 · Sauvegarde de la base et des fichiers…"
@@ -97,12 +103,41 @@ $COMPOSE ps
 pret() {
   $COMPOSE exec -T "$1" node -e "fetch('$2').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))" 2>/dev/null
 }
+REPONDENT=0
 for _ in $(seq 1 45); do
   if pret web http://localhost:4321/ && pret api http://localhost:3000/health; then
+    REPONDENT=1
     break
   fi
   sleep 2
 done
+
+# Toujours muets au bout de la minute et demie : la mise en ligne a ÉCHOUÉ,
+# et le script le dit (21/11). Avant, il écrivait quand même « Mise en ligne
+# terminée ». Or une API qui meurt au démarrage passe toutes les étapes
+# d'avant : l'image se construit sans rien compiler (tsx src/index.ts), et
+# les migrations n'importent pas les routes. Un fichier nouveau oublié dans
+# le commit suffit : elle redémarre en boucle, et panier, paiement et ventes
+# du stand tombent sans un mot. On montre donc la fin du journal du service
+# qui ne répond pas, et l'on sort en erreur. La page de maintenance part
+# quand même (trap EXIT), comme pour toute autre erreur.
+if [ "$REPONDENT" -ne 1 ]; then
+  EN_PANNE=""
+  pret web http://localhost:4321/ || EN_PANNE="$EN_PANNE web"
+  pret api http://localhost:3000/health || EN_PANNE="$EN_PANNE api"
+  if [ -n "$EN_PANNE" ]; then
+    for service in $EN_PANNE; do
+      echo
+      echo "--- $service ne répond pas : fin de son journal ---"
+      $COMPOSE logs --tail 40 "$service" 2>&1 || true
+    done
+    echo
+    echo "ÉCHEC DE LA MISE EN LIGNE : ne répond toujours pas après une minute et demie :$EN_PANNE."
+    echo "C'est pourtant la nouvelle version qui tourne. Lire le journal ci-dessus (un fichier nouveau oublié dans le commit ?), corriger, puis remettre en ligne."
+    MISE_EN_LIGNE_RATEE=1
+    exit 1
+  fi
+fi
 
 echo
 echo "Mise en ligne terminée."

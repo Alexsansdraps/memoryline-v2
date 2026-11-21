@@ -88,6 +88,26 @@ const ERREURS_PAR_CODE: Record<string, CleUi> = {
 };
 
 /**
+ * Les refus d'une affiche IA AVEC personnages (21/11), et leur phrase : celle
+ * du panier, pas celle de la fiche (AfficheIA) — ici la ligne est déjà là,
+ * sans « Modifier ». Le serveur recontrôle une telle ligne à chaque
+ * changement de quantité (ia-composition.ts) et met son code dans `error`,
+ * pas dans `code` : sans ceci, la caisse affichait le code brut,
+ * « ia_indisponible ». Un switch plutôt qu'une table : `error` porte aussi des
+ * phrases libres, qu'aucune clé d'objet ne doit attraper.
+ */
+function refusIA(erreur: unknown): CleUi | undefined {
+  switch (erreur) {
+    case "ia_indisponible":
+    case "ia_autre_affiche":
+    case "ia_personnages_paysage":
+      return "ia.refus.panier";
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Un encaissement qui n'aboutit pas, par carte comme par PayPal : 402, le
  * paiement n'est pas complet ; 502, le prestataire n'a pas répondu.
  */
@@ -299,6 +319,7 @@ export default function CheckoutIsland(props: {
     }
     const cle =
       (typeof corps.code === "string" ? ERREURS_PAR_CODE[corps.code] : undefined) ??
+      refusIA(corps.error) ??
       parStatut[statut];
     if (cle) return tr(cle);
     const refus =
@@ -442,6 +463,24 @@ export default function CheckoutIsland(props: {
       () => browserApi.changerMontantCarte(getCartId(), it.id, euros * 100, langue),
       it.id,
     );
+  };
+  /**
+   * Une affiche IA où le client a posé des personnages (20/11) : sa vignette
+   * les dessine sur l'image, comme au panier. Jamais en paysage — le site
+   * n'en compose pas, et l'aperçu du module ne sait dessiner qu'en portrait.
+   */
+  const aDesPersonnagesIA = (it: OrderItem): boolean =>
+    !!it.config?.aiPublicId &&
+    (it.config.characters?.length ?? 0) > 0 &&
+    it.config.orientation !== "paysage";
+  /**
+   * « · 3 personnages » après le format et le prix d'une affiche IA qui en a
+   * (20/11) : sur une vignette aussi petite, on les devine plus qu'on ne les
+   * voit. Rien pour toute autre ligne, qui s'écrit comme avant.
+   */
+  const personnagesIA = (it: OrderItem): string => {
+    const n = it.config?.aiPublicId ? (it.config.characters?.length ?? 0) : 0;
+    return n > 0 ? ` · ${n} ${n > 1 ? tr("panier.personnages") : tr("panier.personnage")}` : "";
   };
   /** « Modifier » rouvre la composition sur la fiche ; pas pour une carte, une IA, une affiche prête. */
   const lienModifier = (it: OrderItem): string | null => {
@@ -2905,6 +2944,14 @@ export default function CheckoutIsland(props: {
                             </Show>
                           }
                         >
+                          {/* Avec des personnages (20/11) : l'image, le muret
+                              et les personnages, comme au panier — sans texte
+                              ni filigrane du site, celui de l'image suffit.
+                              Sans eux, ou la bibliothèque absente, l'image
+                              seule, comme avant. */}
+                          <Show
+                            when={aDesPersonnagesIA(it) && biblio()}
+                            fallback={
                           <div
                             class="relative w-full overflow-hidden bg-paper-deep"
                             /* La feuille dans son vrai sens, comme au panier :
@@ -2929,6 +2976,33 @@ export default function CheckoutIsland(props: {
                               }}
                             />
                           </div>
+                            }
+                          >
+                            <PosterPreview
+                              state={stateFromConfig({
+                                ...it.config!,
+                                backgroundUrl:
+                                  it.config!.aiApercuUrl ||
+                                  `/ia/apercu/${it.config!.aiPublicId}`,
+                              })}
+                              characterById={personnageParId}
+                              slots={biblio()!.slots}
+                              cache={cache}
+                              assetBaseUrl={PUBLIC_API_URL}
+                              filigrane={false}
+                              sansTexte
+                              messages={{ chargementApercu: tr("cfg.chargement_apercu") }}
+                              foregroundUrl={
+                                urlAsset(
+                                  PUBLIC_API_URL,
+                                  it.config!.foregroundUrl ||
+                                    (it.config!.view === "back"
+                                      ? "/assets/muret_officiel.svg"
+                                      : ""),
+                                ) || undefined
+                              }
+                            />
+                          </Show>
                         </Show>
                         </Show>
                       </div>
@@ -2943,7 +3017,7 @@ export default function CheckoutIsland(props: {
                             change juste en dessous. */}
                         <Show when={!it.giftCard}>
                           <span class="block text-ink-soft">
-                            {`${it.config?.format ?? "A4"} · ${formatPrice(it.unitPriceCents, locale)}`}
+                            {`${it.config?.format ?? "A4"} · ${formatPrice(it.unitPriceCents, locale)}${personnagesIA(it)}`}
                           </span>
                         </Show>
                         {/* Les gestes du panier : la quantité, le retrait,

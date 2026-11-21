@@ -104,8 +104,12 @@ export interface ConfiguratorProps {
    * d'origine (@memoryline/types, nuanciers.ts).
    */
   nuanciersBase?: NuanciersPersonnages;
-  /** Décor d'avant-plan optionnel du produit (muret/banc…), rendu par-dessus
-   *  les personnages (effet « assis dessus »). URL /assets/… ou absolue. */
+  /**
+   * Décor optionnel du produit (muret, banc…). Il se pose DERRIÈRE les
+   * personnages et devant le fond — vus de dos, ils sont assis dessus —, et
+   * seulement s'il y a au moins un personnage : c'est l'ordre et la règle du
+   * fichier d'impression (pdf.ts). URL /assets/… ou absolue.
+   */
   foregroundUrl?: string | null;
   /** Réglages par défaut du produit (pré-remplissage à l'ouverture). */
   defaults?: {
@@ -135,6 +139,32 @@ export interface ConfiguratorProps {
    */
   onSubmit: (config: PosterConfig) => void;
   onBack?: () => void;
+  /**
+   * Les étapes proposées, dans leur ordre : une partie de STEPS. Absente ou
+   * vide, les trois, comme toujours.
+   *
+   * L'affiche tirée d'une photo (apps/web, AfficheIA) n'ouvre le module que
+   * sur « Personnages » (20/11) : son fond est l'image créée, ses textes et
+   * son format se choisissent sur son propre écran. Le module part alors de
+   * la première étape donnée, et masque le fil des étapes s'il n'y en a
+   * qu'une ; « Retour » à la première rend la main (onBack), le bouton de la
+   * dernière valide (onSubmit), comme avec les trois.
+   */
+  etapes?: readonly Step[];
+  /**
+   * Filigrane de l'aperçu, transmis à PosterPreview. Absent : actif, comme
+   * sur tout ce qu'on montre avant paiement. L'affiche tirée d'une photo le
+   * coupe (20/11) : son fond, l'aperçu de l'image créée, porte déjà le sien,
+   * cuit dans l'image, et un second par-dessus brouillerait la photo.
+   */
+  filigrane?: boolean;
+  /**
+   * Aperçu sans la couche de texte ni la roue qui attend ses polices (voir
+   * PosterPreview). Absent : le texte, comme toujours. L'affiche tirée d'une
+   * photo pose ses textes elle-même, à leur place, sur son propre écran
+   * (20/11) : sans cela, l'aperçu du module y montrerait « Memory Line ».
+   */
+  sansTexte?: boolean;
 }
 
 /** Formate un prix en centimes -> "23 €" (FR), « €23 » (EN)… selon la locale. */
@@ -156,6 +186,13 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     characters: msg().etapePersonnages,
     format: msg().etapeFormat,
   });
+  /**
+   * Les étapes de cette ouverture : celles de l'hôte (`etapes`), sinon les
+   * trois. Une liste vide vaut absente : sans aucune étape, le module ne
+   * saurait ni où commencer ni quoi montrer.
+   */
+  const etapes = (): readonly Step[] =>
+    props.etapes && props.etapes.length > 0 ? props.etapes : STEPS;
 
   const initialState: ConfiguratorState = props.initialConfig
     ? stateFromConfig(props.initialConfig)
@@ -172,6 +209,14 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     // filtrer sur une paire figée aurait ignoré tout nouveau type.
     if (props.defaults.view) initialState.view = props.defaults.view;
     if (props.defaults.format) initialState.format = props.defaults.format;
+  }
+
+  // Un état neuf, comme celui d'une réouverture, commence au fond. Le module
+  // ouvert sur une partie de ses étapes (20/11 : les personnages seuls, sur
+  // l'affiche tirée d'une photo) part de la première qu'on lui donne.
+  const premiereEtape = etapes()[0];
+  if (premiereEtape && !etapes().includes(initialState.step)) {
+    initialState.step = premiereEtape;
   }
 
   // À l'ouverture, l'affiche est VIDE de personnages (retour cliente) : le
@@ -274,7 +319,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     }
   });
 
-  const stepIndex = createMemo(() => STEPS.indexOf(state.step));
+  const stepIndex = createMemo(() => etapes().indexOf(state.step));
 
   /* --------------------------- navigation --------------------------------- */
   function goToStep(step: Step) {
@@ -288,7 +333,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   }
   function next() {
     const i = stepIndex();
-    const target = STEPS[i + 1];
+    const target = etapes()[i + 1];
     if (target) goToStep(target);
     else submit();
   }
@@ -298,7 +343,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
       props.onBack?.();
       return;
     }
-    const target = STEPS[i - 1];
+    const target = etapes()[i - 1];
     if (target) goToStep(target);
   }
   /**
@@ -718,13 +763,18 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   };
 
   /** Rappel du choix — le format courant s'il sort de l'ordinaire, le cadre.
-   *  Vide en A4 sans cadre : il n'y aurait rien à rappeler. */
+   *  Vide en A4 sans cadre : il n'y aurait rien à rappeler. Vide aussi quand
+   *  l'étape du format n'est pas proposée (20/11) : l'hôte fait choisir le
+   *  format sur son propre écran, et un « A3 » au pied de l'écran des
+   *  personnages ne rappellerait aucun choix fait ici. */
   const rappelChoix = (): string =>
-    [state.format === "A3" ? "A3" : null, cadreChoisi()?.name]
-      .filter(Boolean)
-      .join(" · ");
+    etapes().includes("format")
+      ? [state.format === "A3" ? "A3" : null, cadreChoisi()?.name]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
 
-  const isLast = () => stepIndex() === STEPS.length - 1;
+  const isLast = () => stepIndex() === etapes().length - 1;
   const editingActive = () =>
     state.step === "characters" && state.editingIndex !== null;
 
@@ -779,6 +829,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           // ensuite les places que ce module aura enregistrées.
           recomposer
           etalon={etalon()}
+          // Tels que l'hôte les donne : absents, le filigrane et le texte
+          // restent, comme toujours (voir ConfiguratorProps).
+          filigrane={props.filigrane}
+          sansTexte={props.sansTexte}
         />
       </div>
       </Show>
@@ -803,66 +857,71 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             des étapes inactives, qui reste lisible. L'allemand, le plus
             long, tient alors avec une marge que gardent aussi les polices
             système plus larges (Mac, iPhone). Sur un téléphone, la feuille
-            de style de l'hôte resserre encore (cf. global.css). */}
-        <div
-          class="ml-cfg-etapes"
-          style={{
-            display: "flex",
-            "flex-wrap": "nowrap",
-            gap: "6px",
-            "margin-bottom": "14px",
-          }}
-        >
-          {/* Chaque étape est cliquable à tout moment (retour cliente) : on
-              n'est pas tenu d'enchaîner Continuer / Retour pour revenir au
-              fond depuis le format. goToStep ferme l'éditeur de personnage
-              s'il était ouvert. */}
-          {STEPS.map((s, i) => (
-            <button
-              type="button"
-              class="ml-cfg-etape"
-              onClick={() => goToStep(s)}
-              aria-current={state.step === s ? "step" : undefined}
-              style={{
-                // Chaque pastille prend sa part de la rangée ; `min-width: 0`
-                // la laisse céder plutôt que de pousser la rangée hors du
-                // panneau.
-                flex: "1 1 auto",
-                "min-width": "0",
-                display: "inline-flex",
-                "align-items": "center",
-                "justify-content": "center",
-                "min-height": "32px",
-                "box-sizing": "border-box",
-                padding: "6px 12px",
-                border: "none",
-                "border-radius": "9999px",
-                background: state.step === s ? "#4f46e5" : "#e5e7eb",
-                color: state.step === s ? "#fff" : "#374151",
-                "font-weight": "600",
-                "font-size": "13px",
-                "line-height": "1.2",
-                "font-family": "inherit",
-                "white-space": "nowrap",
-                cursor: state.step === s ? "default" : "pointer",
-              }}
-            >
-              {/* Filet de sécurité : si une police plus large que prévu ne
-                  laissait pas la place, le libellé finirait par « … » dans
-                  sa pastille, sans jamais passer à la ligne ni déborder. Les
-                  tailles sont choisies pour que cela n'arrive pas. */}
-              <span
+            de style de l'hôte resserre encore (cf. global.css).
+            Masqué s'il n'y a qu'une étape (20/11 : les personnages seuls,
+            sur l'affiche tirée d'une photo) : une pastille seule ne mène
+            nulle part, et sa place revient aux personnages. */}
+        <Show when={etapes().length > 1}>
+          <div
+            class="ml-cfg-etapes"
+            style={{
+              display: "flex",
+              "flex-wrap": "nowrap",
+              gap: "6px",
+              "margin-bottom": "14px",
+            }}
+          >
+            {/* Chaque étape est cliquable à tout moment (retour cliente) : on
+                n'est pas tenu d'enchaîner Continuer / Retour pour revenir au
+                fond depuis le format. goToStep ferme l'éditeur de personnage
+                s'il était ouvert. */}
+            {etapes().map((s, i) => (
+              <button
+                type="button"
+                class="ml-cfg-etape"
+                onClick={() => goToStep(s)}
+                aria-current={state.step === s ? "step" : undefined}
                 style={{
+                  // Chaque pastille prend sa part de la rangée ; `min-width: 0`
+                  // la laisse céder plutôt que de pousser la rangée hors du
+                  // panneau.
+                  flex: "1 1 auto",
                   "min-width": "0",
-                  overflow: "hidden",
-                  "text-overflow": "ellipsis",
+                  display: "inline-flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  "min-height": "32px",
+                  "box-sizing": "border-box",
+                  padding: "6px 12px",
+                  border: "none",
+                  "border-radius": "9999px",
+                  background: state.step === s ? "#4f46e5" : "#e5e7eb",
+                  color: state.step === s ? "#fff" : "#374151",
+                  "font-weight": "600",
+                  "font-size": "13px",
+                  "line-height": "1.2",
+                  "font-family": "inherit",
+                  "white-space": "nowrap",
+                  cursor: state.step === s ? "default" : "pointer",
                 }}
               >
-                {i + 1}. {STEP_LABELS()[s]}
-              </span>
-            </button>
-          ))}
-        </div>
+                {/* Filet de sécurité : si une police plus large que prévu ne
+                    laissait pas la place, le libellé finirait par « … » dans
+                    sa pastille, sans jamais passer à la ligne ni déborder. Les
+                    tailles sont choisies pour que cela n'arrive pas. */}
+                <span
+                  style={{
+                    "min-width": "0",
+                    overflow: "hidden",
+                    "text-overflow": "ellipsis",
+                  }}
+                >
+                  {i + 1}. {STEP_LABELS()[s]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Show>
 
         <Show when={state.step === "background"}>
           <StepBackgroundText
@@ -985,6 +1044,8 @@ export {
   variantesDeVue,
 } from "./store";
 export type { PosterConfig } from "@memoryline/types";
+/** Une étape du module (« characters »…), pour la prop `etapes`. */
+export type { Step } from "./store";
 export type {
   CadreDTO,
   PieceCategoryDTO,

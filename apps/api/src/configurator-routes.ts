@@ -148,6 +148,11 @@ import { mesurerLaPiece, partsPourLaBoutique } from "./couleur-principale.js";
 import { partsDesZones } from "./couleurs-dessins.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
 import {
+  controlerLigneIA,
+  controlerLigneIAModifiee,
+  ligneIAAvecPersonnages,
+} from "./ia-composition.js";
+import {
   createPaypalOrder,
   capturePaypalOrder,
   RefusPaypal,
@@ -2628,7 +2633,17 @@ export function mountConfiguratorRoutes(app: Hono) {
     // Un fond archivé ne se propose plus, par aucun des trois chemins : il a
     // quitté le catalogue des choix, tout en restant imprimable pour les
     // commandes déjà passées dessus.
-    const vivant = isNull(schema.backgrounds.archivedAt);
+    // Le décor d'une fiche en BROUILLON non plus (relecture du 20/11) : « Créer
+    // une fiche produit » (BO › Affiches IA) range en décor l'image IA en
+    // pleine définition, sans filigrane. Cette route est publique et les
+    // identifiants se suivent : la fiche pas encore publiée la livrait, et la
+    // pêche au nom de ville (2) ou la bibliothèque (3) la proposaient à
+    // d'autres affiches. Publiée, la fiche le propose comme les autres. Une
+    // fiche ARCHIVÉE garde ses décors proposables : la pêche au nom s'en sert.
+    const vivant = and(
+      isNull(schema.backgrounds.archivedAt),
+      sql`not exists (select 1 from ${schema.products} p where p.id = ${schema.backgrounds.productId} and p.status = 'draft')`,
+    );
     // Un fond dont l'image manque sur le disque ne se propose pas non plus :
     // sa vignette sortait cassée et l'affiche se composait sur du vide. Le
     // back-office le signale (Décors des affiches) pour qu'on le remplace.
@@ -2908,6 +2923,18 @@ export function mountConfiguratorRoutes(app: Hono) {
     const parsed = posterConfigSchema.safeParse(body.config);
     if (!parsed.success)
       return c.json({ error: "config invalide", details: parsed.error.issues }, 400);
+    const productId = body.productId != null ? Number(body.productId) : null;
+    // Affiche « à partir de votre photo » avec des personnages (20/11) :
+    // contrôlée avant d'entrer au panier (ia-composition.ts) — une génération
+    // prête, de CETTE affiche, en portrait ; décor, fond et cadre ramenés à ce
+    // que la boutique a réglé. Toute autre ligne passe comme avant, sans une
+    // lecture de plus. Avant la naissance du panier : un refus n'en crée pas.
+    let lue = parsed.data;
+    if (ligneIAAvecPersonnages(lue)) {
+      const verdict = await controlerLigneIA(cartId, productId, lue);
+      if (!verdict.ok) return c.json({ error: verdict.code }, 400);
+      lue = verdict.config;
+    }
 
     // La langue de la page : le panier la garde dès sa naissance, pour qu'un
     // visiteur qui ne passe jamais en caisse puisse quand même être relancé
@@ -2939,14 +2966,13 @@ export function mountConfiguratorRoutes(app: Hono) {
         })
         .onConflictDoNothing();
     }
-    const productId = body.productId != null ? Number(body.productId) : null;
     // Un cadre que le site ne propose pas ne rentre pas dans le panier : la
     // ligne s'écrit sans lui, au prix de l'affiche seule. Seule une page
     // ouverte AVANT que la boutique ne retire les cadres peut encore en
     // envoyer un ; la réponse le dit (`cadreRetire`), et le site le montre.
     const cadreRetire =
-      porteUnCadre(parsed.data) && !(await cadresProposesA(c));
-    const config = cadreRetire ? sansCadre(parsed.data) : parsed.data;
+      porteUnCadre(lue) && !(await cadresProposesA(c));
+    const config = cadreRetire ? sansCadre(lue) : lue;
     const { unitPriceCents, frameCents } = await resolvePrixLigne(
       productId,
       config.format,
@@ -2997,12 +3023,23 @@ export function mountConfiguratorRoutes(app: Hono) {
     const parsed = posterConfigSchema.safeParse(body.config);
     if (!parsed.success)
       return c.json({ error: "config invalide", details: parsed.error.issues }, 400);
+    // Affiche « à partir de votre photo » avec des personnages (20/11) : le
+    // même contrôle qu'à l'ajout, pour le produit DE LA LIGNE enregistrée, lu
+    // lui aussi avant la transaction (controlerLigneIAModifiee). Toute autre
+    // ligne passe comme avant, sans une lecture de plus.
+    let lue = parsed.data;
+    if (ligneIAAvecPersonnages(lue)) {
+      const verdict = await controlerLigneIAModifiee(c.req.param("cartId"), itemId, lue);
+      if (!verdict) return c.notFound();
+      if (!verdict.ok) return c.json({ error: verdict.code }, 400);
+      lue = verdict.config;
+    }
     // Même règle qu'à l'ajout : sans cadre si le site n'en propose pas. Lue
     // AVANT la transaction — une requête partie par `db` sous le verrou
     // prendrait une seconde connexion du pool (voir Executeur).
     const cadreRetire =
-      porteUnCadre(parsed.data) && !(await cadresProposesA(c));
-    const config = cadreRetire ? sansCadre(parsed.data) : parsed.data;
+      porteUnCadre(lue) && !(await cadresProposesA(c));
+    const config = cadreRetire ? sansCadre(lue) : lue;
     // Contrôle du statut, écriture de la ligne et retour en panier : une
     // seule transaction, sous le verrou de la commande. Contrôlé avant et
     // écrit après, un paiement validé entre les deux laissait une commande

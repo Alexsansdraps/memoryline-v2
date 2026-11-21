@@ -654,16 +654,71 @@ export async function editerImages(
 /*  Rattachement au paiement                                                  */
 /* -------------------------------------------------------------------------- */
 
+/** Ce que le rattachement lit d'une génération pour choisir celle d'une ligne. */
+export interface GenerationARattacher {
+  id: number;
+  publicId: string;
+  productId: number | null;
+  orderItemId: number | null;
+}
+
+/**
+ * La génération à rattacher à une ligne de la commande payée, ou null.
+ *
+ * Du plus sûr au plus approximatif : l'identifiant que la ligne annonce
+ * (`config.aiPublicId`), puis une liaison déjà posée (POST /ia/lier), puis la
+ * plus récente du même produit — `generations` arrive de la plus récente à la
+ * plus ancienne. Une génération déjà `retenues` pour une autre ligne n'est
+ * jamais reprise.
+ *
+ * Le dernier repli est réservé aux lignes qui n'annoncent RIEN (20/11) : c'est
+ * le filet des paniers construits par une version plus ancienne de la
+ * boutique. Une ligne qui annonce sa génération s'imprime avec CELLE-LÀ
+ * (configAImprimer, fichiers-impression.ts) ; lui en rattacher une autre
+ * marquait payée — et effaçait la photo d'origine de — une affiche que
+ * personne n'avait achetée. C'est ce qui arrivait à la seconde de deux lignes
+ * qui annoncent la même génération (la création seule, puis la même avec des
+ * personnages) : la première prend la génération, la seconde n'en emprunte
+ * plus aucune autre.
+ */
+export function candidatDeLaLigne<G extends GenerationARattacher>(
+  ligne: { id: number; productId: number | null; config: unknown },
+  generations: readonly G[],
+  retenues: ReadonlySet<number>,
+): G | null {
+  const libre = (g: G) => !retenues.has(g.id);
+  const annonce = (ligne.config as { aiPublicId?: unknown } | null)?.aiPublicId;
+  // Une annonce vide n'annonce rien : elle sautait déjà la première recherche.
+  const publicId = typeof annonce === "string" && annonce !== "" ? annonce : null;
+  return (
+    (publicId !== null
+      ? generations.find((g) => g.publicId === publicId && libre(g))
+      : undefined) ??
+    generations.find((g) => g.orderItemId === ligne.id && libre(g)) ??
+    (publicId === null
+      ? generations.find(
+          (g) =>
+            g.orderItemId == null &&
+            libre(g) &&
+            ligne.productId != null &&
+            g.productId === ligne.productId,
+        )
+      : undefined) ??
+    null
+  );
+}
+
 /**
  * Rattache les générations d'un panier aux lignes de la commande payée et
  * pose `paidAt`. C'est cette date qui les sort de la purge : une affiche
  * achetée doit être réimprimable dans six mois.
  *
- * Ligne par ligne, du plus sûr au plus approximatif : l'identifiant que la
- * boutique a rangé dans `order_item.config.aiPublicId`, puis une liaison déjà
- * posée (POST /ia/lier), puis à défaut la génération la plus récente du même
- * produit. Ce dernier repli n'est qu'un filet : sans lui, un panier construit
- * par une version plus ancienne de la boutique perdrait son affiche.
+ * Ligne par ligne, du plus sûr au plus approximatif (candidatDeLaLigne) :
+ * l'identifiant que la boutique a rangé dans `order_item.config.aiPublicId`,
+ * puis une liaison déjà posée (POST /ia/lier), puis à défaut — pour une ligne
+ * qui n'annonce aucune génération — la plus récente du même produit. Ce
+ * dernier repli n'est qu'un filet : sans lui, un panier construit par une
+ * version plus ancienne de la boutique perdrait son affiche.
  *
  * `config` vient du navigateur du client : on ne cherche l'identifiant qu'il
  * annonce que parmi les générations de SON panier, jamais dans toute la table.
@@ -703,20 +758,7 @@ export async function rattacherGenerationsAuPanier(
     let rattachees = 0;
 
     for (const ligne of lignes) {
-      const annonce = (ligne.config as { aiPublicId?: unknown } | null)?.aiPublicId;
-      const publicId = typeof annonce === "string" ? annonce : null;
-      const candidate =
-        (publicId
-          ? generations.find((g) => g.publicId === publicId && !retenues.has(g.id))
-          : null) ??
-        generations.find((g) => g.orderItemId === ligne.id && !retenues.has(g.id)) ??
-        generations.find(
-          (g) =>
-            g.orderItemId == null &&
-            !retenues.has(g.id) &&
-            ligne.productId != null &&
-            g.productId === ligne.productId,
-        );
+      const candidate = candidatDeLaLigne(ligne, generations, retenues);
       if (!candidate) continue;
       await db
         .update(schema.aiGenerations)

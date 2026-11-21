@@ -4,6 +4,7 @@ import {
   t,
   LANGUE_DEFAUT,
   LOCALE_COMPLETE,
+  type CleUi,
   type Langue,
 } from "../i18n/utils.ts";
 import {
@@ -81,6 +82,23 @@ interface PromoRule {
  * retenu entre deux visites dans lib/code-promo.ts. Le panier ne montre plus
  * que les promotions automatiques.
  */
+
+/**
+ * La phrase d'un refus du serveur pour une affiche IA AVEC personnages
+ * (21/11). Le serveur recontrôle une telle ligne à chaque changement de
+ * quantité (ia-composition.ts) et répond 400 { error: <code> } — création
+ * purgée, base qui ne répond pas. Une phrase à elle, pas celle de la fiche
+ * (AfficheIA) : ici la ligne est déjà au panier, sans « Modifier », et
+ * « retirez les personnages » n'y a pas de sens. Null pour toute autre erreur.
+ */
+function phraseDuRefusIA(e: unknown): CleUi | null {
+  const texte = String(e);
+  return ["ia_indisponible", "ia_autre_affiche", "ia_personnages_paysage"].some((code) =>
+    texte.includes(`"${code}"`),
+  )
+    ? "ia.refus.panier"
+    : null;
+}
 
 
 export default function CartIsland(props: {
@@ -243,10 +261,16 @@ export default function CartIsland(props: {
     out.push(
       `${tr("panier.format")}${tr("ponct.deux_points")}${format}${DIMENSIONS[format] ? ` (${DIMENSIONS[format]})` : ""}`,
     );
-    // Une affiche IA n'a ni cadre, ni texte, ni personnages : lui lister des
-    // rubriques vides ne dirait rien au client.
+    // Une affiche IA n'a ni cadre ni rubrique de texte : lui lister des
+    // rubriques vides ne dirait rien au client. Ses personnages, quand il en
+    // a posé (20/11), se comptent comme sur les autres affiches.
     if (it.config.aiPublicId) {
       out.push(tr("panier.affiche_ia"));
+      const nIA = it.config.characters?.length ?? 0;
+      if (nIA > 0)
+        out.push(
+          `${nIA} ${nIA > 1 ? tr("panier.personnages") : tr("panier.personnage")}`,
+        );
       return out;
     }
     const cadre = (cadres() ?? []).find(
@@ -370,6 +394,22 @@ export default function CartIsland(props: {
     visuelBoutique(cart()?.fiches, it);
 
   /**
+   * Une affiche IA où le client a posé des personnages (20/11) : sa vignette
+   * les dessine sur l'image. Jamais en paysage — le site n'en compose pas, et
+   * l'aperçu du module ne sait dessiner qu'en portrait : l'image seule.
+   */
+  const aDesPersonnagesIA = (it: OrderItem): boolean =>
+    !!it.config?.aiPublicId &&
+    (it.config.characters?.length ?? 0) > 0 &&
+    it.config.orientation !== "paysage";
+
+  /**
+   * Le refus d'un changement de quantité, sous la ligne refusée (21/11) : sans
+   * lui, « − » et « + » ne faisaient rien, sans un mot.
+   */
+  const [refusLigne, setRefusLigne] = createSignal<{ id: number; cle: CleUi } | null>(null);
+
+  /**
    * Change la quantité d'une ligne. On repasse la configuration telle quelle :
    * le serveur recalcule le prix unitaire lui-même, le navigateur n'a jamais
    * son mot à dire sur un montant.
@@ -379,6 +419,7 @@ export default function CartIsland(props: {
     // Une carte cadeau garde sa quantité : une ligne, une carte, un destinataire.
     if (q === it.quantity || it.giftCard || !it.config) return;
     setBusy(it.id);
+    setRefusLigne(null);
     try {
       await browserApi.updateCartItem(getCartId(), it.id, {
         config: it.config,
@@ -389,6 +430,12 @@ export default function CartIsland(props: {
       // La pastille de l'en-tête compte les exemplaires : elle doit suivre
       // (CartBadge.tsx, recette du 17/11).
       window.dispatchEvent(new Event("ml:panier"));
+    } catch (e) {
+      // Seul le refus d'une affiche IA avec personnages se dit ici (21/11) :
+      // toute autre panne reste ce qu'elle était.
+      const cle = phraseDuRefusIA(e);
+      if (!cle) throw e;
+      setRefusLigne({ id: it.id, cle });
     } finally {
       setBusy(null);
     }
@@ -588,6 +635,15 @@ export default function CartIsland(props: {
                       </Show>
                         }
                       >
+                        {/* Avec des personnages (20/11) : l'image, le muret et
+                            les personnages, aux places enregistrées — sans
+                            texte, comme toute vignette d'affiche IA, et sans
+                            le filigrane du site : celui de l'image suffit.
+                            Tant que la bibliothèque n'est pas là (ou si elle
+                            ne vient pas), l'image seule, comme avant. */}
+                        <Show
+                          when={aDesPersonnagesIA(it) && biblio()}
+                          fallback={
                         <div
                           class="ml-squelette relative w-full overflow-hidden"
                           /* LA FEUILLE, DANS SON VRAI SENS, et non un portrait
@@ -620,6 +676,34 @@ export default function CartIsland(props: {
                             }}
                           />
                         </div>
+                          }
+                        >
+                          <PosterPreview
+                            state={stateFromConfig({
+                              ...it.config!,
+                              backgroundUrl:
+                                it.config!.aiApercuUrl ||
+                                `/ia/apercu/${it.config!.aiPublicId}`,
+                            })}
+                            characterById={personnageParId}
+                            slots={biblio()!.slots}
+                            cache={cache}
+                            assetBaseUrl={PUBLIC_API_URL}
+                            filigrane={false}
+                            sansTexte
+                            messages={{ chargementApercu: tr("cfg.chargement_apercu") }}
+                            foregroundUrl={
+                              // Le même calcul que pour les autres affiches.
+                              urlAsset(
+                                PUBLIC_API_URL,
+                                it.config!.foregroundUrl ||
+                                  (it.config!.view === "back"
+                                    ? "/assets/muret_officiel.svg"
+                                    : ""),
+                              ) || undefined
+                            }
+                          />
+                        </Show>
                       </Show>
                     </Show>
                     </div>
@@ -646,6 +730,13 @@ export default function CartIsland(props: {
                         >
                           {tr("panier.modifier")}
                         </a>
+                      </Show>
+                      <Show when={refusLigne()?.id === it.id ? refusLigne()!.cle : null}>
+                        {(cle) => (
+                          <p role="alert" class="mt-2 text-sm text-terracotta-deep">
+                            {tr(cle())}
+                          </p>
+                        )}
                       </Show>
                     </div>
                   </div>

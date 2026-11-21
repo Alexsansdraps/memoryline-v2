@@ -141,8 +141,9 @@ export function mountDecors(app: Hono): void {
 
     // Ce que la pêche trouverait pour chacune, avec la règle même du
     // configurateur, sur les décors qu'il peut réellement proposer.
+    // Le décor d'une fiche en brouillon ne se propose pas (cf. /backgrounds).
     const proposables = decors
-      .filter((d) => !fichierDAssetManquant(d.url))
+      .filter((d) => d.produitStatut !== "draft" && !fichierDAssetManquant(d.url))
       .map((d) => ({ name: d.nom }));
 
     return c.json({
