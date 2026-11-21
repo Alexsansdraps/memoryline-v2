@@ -2,13 +2,16 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 21/11, 3 h 30 : tout `main` est en ligne
+## 0. État au 21/11, 6 h : tout `main` est en ligne
 
 ### 0.1 En ligne
-- **Tout `main` jusqu'à `0819969`**, mis en ligne le 21/11 à 3 h 16, marché fermé : aucune commande, aucune création IA, aucun panier en cours depuis la dernière vente du stand (SAL-0012, 20/11 à 20 h 25). Pas de migration : la prod reste à 0112.
-- **Ce que ça a ajouté** :
+- **Tout `main` jusqu'à `4b6889d`**, mis en ligne le 21/11 à 5 h 54, marché fermé (aucune commande, création IA ni panier en cours depuis la veille au soir). Pas de migration : la prod reste à 0112.
+  - `4b6889d` : les restes du matin (voir 0.2), demandés par Alexandra (« finis tout », « met en prod »).
+  - Vérifié après : pages du site et du stand 200, pages du BO qui renvoient vers la connexion, `/api/health` répond, base comprise. Le code servi porte le correctif de la fenêtre, et les journaux de l'API, du site et du BO n'ont aucune erreur. Le BO a été reconstruit cette fois.
+- **Mise en ligne de 3 h 16** : tout `main` jusqu'à `0819969`, marché fermé, depuis la dernière vente du stand (SAL-0012, 20/11 à 20 h 25).
+- **Ce qu'elle a ajouté** :
   - `0819969` : **personnages et muret sur l'affiche « à partir de votre photo »**, au site et sur la tablette. Le détail est dans le message du commit et dans `docs/plan-personnages-affiches-photo.md`.
-    - **Choix faits par défaut, à confirmer par Alexandra** :
+    - **Choix faits par défaut, gardés tels quels** (21/11 : Alexandra n'a rien demandé de changer, « finis tout ») :
       - pas de supplément de prix ;
       - un seul muret, celui du type d'affiche « De dos » (à défaut `muret_officiel.svg`) ;
       - deux boutons : « Assis sur le muret » (vus de dos) d'abord, puis « Debout, de face » (sans muret) ;
@@ -19,13 +22,13 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
     - Aussi : `GET /backgrounds` ne propose plus le décor d'une fiche en BROUILLON. Même règle à l'écran « Décors des affiches » et pour les affiches de démo.
     - Aussi : `mettre-en-ligne.sh` échoue (code 1, fin du journal du service, dernière ligne « le site est EN PANNE ») quand le site ou l'API ne répondent toujours pas après une minute et demie.
   - `8afd173` : la facture d'une fiche commande ne se NUMÉROTE plus depuis un lien venu d'ailleurs (garde `Sec-Fetch-Site`, comme pour le ZIP). Une facture déjà numérotée se rouvre d'où que ce soit.
-- **Vérifié avant la mise en ligne** :
+- **Vérifié avant la mise en ligne de 3 h 16** :
   - tsc de l'API, du module et du site (seulement les 3 erreurs anciennes de StandSalon) ;
   - tests de l'API : 504 réussis, 0 échec ;
   - construction de production du site ;
   - bancs navigateur : module classique identique à HEAD, parcours avec personnages au site et au stand ;
   - relecture indépendante en 5 angles : aucun constat bloquant ni important ; les 2 mineurs sont corrigés.
-- **Vérifié après la mise en ligne** :
+- **Vérifié après la mise en ligne de 3 h 16** :
   - le script a fini par « Mise en ligne terminée » (code 0), avec la sauvegarde faite avant, et son nouveau contrôle a vu le site et l'API répondre ;
   - pages : l'accueil, `/affiches`, l'affiche photo (site et `?stand=1`), une affiche classique et `/commande` répondent 200 ; `/panier` renvoie vers `/commande` (302), comme avant ;
   - API : `/health` répond, base comprise. `/views` donne le muret du type « De dos » (`/assets/muret_officiel.svg`). `/backgrounds` rend 250 décors comme avant (aucune fiche en brouillon n'en a), et 1 pour l'affiche n° 1 ;
@@ -35,7 +38,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
   - **pas fait** : un ajout au panier avec personnages en prod. Le contrôle de sécurité de Claude a refusé l'appel, alors même qu'il devait être refusé par le serveur sans rien écrire. C'est le premier essai sur la tablette qui le fera.
 - **À vérifier par Alexandra avant l'ouverture du marché** (Claude n'a pas de session au BO) :
   - **BO** : Créer des fonds s'ouvre ; les deux boutons d'Affiches IA ; « Factures » dans Ventes stand ; « Éditer la facture » sur une fiche commande (le bouton doit toujours marcher) ;
-  - **sur la tablette** : une affiche à partir d'une photo avec « Assis sur le muret » et 1 ou 2 personnages, jusqu'au panier du stand, sans valider la vente ; regarder la vignette ;
+  - **sur la tablette** : une affiche à partir d'une photo avec « Assis sur le muret » et 1 ou 2 personnages, jusqu'au panier du stand, sans valider la vente ; regarder la vignette. Toucher aussi la zone de dépôt de la photo : la fenêtre ne doit plus sauter ;
   - **première vraie commande avec personnages** : ouvrir son PDF au BO, et vérifier le muret et les personnages.
 
 ### 0.1 bis Mise en ligne précédente
@@ -66,35 +69,55 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
   - les deux boutons d'Affiches IA s'affichent ;
   - « Factures » apparaît dans Ventes stand.
 
-### 0.2 Restes (mineurs, non faits)
-- **Personnages sur l'affiche photo** :
-  - sur téléphone (390 px), le fond grisé de la fenêtre peut défiler d'environ 300 px et cacher la croix. C'était déjà le cas avant les personnages ;
-  - à la caisse, la phrase d'un refus s'affiche dans la zone d'erreur générale, loin de la ligne, comme les autres erreurs de ligne ;
-  - « Debout, de face » : les personnages peuvent sembler flotter sur certaines photos. À juger sur quelques essais ;
-  - avec des personnages, le grand aperçu recadre l'image (environ 6 % de la hauteur), comme l'impression ;
-  - une génération ajoutée depuis un AUTRE panier (nouvel essai « panier_clos ») ne reçoit pas `paidAt` au paiement : c'était déjà le cas avant ;
-  - pas encore testé : Safari et la vraie tablette ;
-  - des numéros de ligne périmés dans les commentaires d'`apps/api/src/affiches-demo-tirage.ts`, qui citent `packages/configurator/src/index.tsx` (décalé d'environ 45 lignes ; les fonctions sont nommées).
-- **Banc de recette des personnages** : `apps/web/.harnais-persos/`, exclu de git. Il monte les vrais îlots sur une API simulée.
+### 0.2 Restes
+**Faits le 21/11 au matin** (commit et mise en ligne : voir 0.1) :
+- **Fenêtre de l'affiche photo** : elle ne défile plus, et la croix reste visible.
+  - Le champ fichier masqué se rangeait par rapport au fond grisé : jusqu'à plus de 800 px de défilement sur téléphone, et environ 60 px sur la tablette du stand en touchant la zone de dépôt, dès quatre styles.
+  - Vérifié à 390, 768 et 1280 px, au site et au stand : rien d'autre ne bouge, et le corps du POST est identique.
+- **Types du BO** : `plafondFonds` (catalogue des fonds) et `fonds` (stats IA) sont dans `apps/admin/src/lib/api.ts`, et les pages ne les retypent plus (`astro check` du BO : 0 erreur).
+- **Numéros de ligne** à jour dans les commentaires d'`affiches-demo-tirage.ts`.
+- **Tests sur base** : ils tournent pour de vrai, sur une base JETABLE (recette ci-dessous).
+  - Nouveau `apps/api/tests/fonds-ia-base.test.ts` : séparation des dépenses affiches / fonds, coût réservé dès le lancement et sous le verrou, deux lancements simultanés dont un seul passe, plafond des fonds vide = moitié. La route des lots, qui recopie le verrou, n'y est pas couverte.
+  - Les 4 fichiers protégés ensemble : 52 tests sur 52 ; aucune ligne de test restante.
+- **Banc de recette des personnages** (`apps/web/.harnais-persos/`, exclu de git) : son lanceur sait de nouveau monter la version commitée.
   - On le lance par l'entrée « harnais-persos » de `memory-line/.claude/launch.json`, ou par `node apps/web/.harnais-persos/demarrer.mjs` (port 5199).
-- **Types du BO** : ajouter à `apps/admin/src/lib/api.ts` les champs `plafondFonds` (catalogue des fonds) et `fonds` (stats IA). Ils sont typés dans les pages pour l'instant.
-- **Tests des fonds** : il manque un test sur base de la réservation du coût et de la séparation affiches / fonds.
-- **Clé OpenAI partagée** : les fonds et les affiches des clients passent par la même clé, donc par la même limite de cadence. Lancer les gros lots de fonds hors des heures du marché.
 
-### 0.3 À décider
-- **SAL-0006** :
-  - Validée à 11 h 32 (29 €), rouverte à 11 h 37, puis jamais revalidée.
-  - La tablette a gardé ce panier et l'a revalidé à 20 h 03 pour un autre client (35 €).
-  - La vente du matin n'existe donc plus dans les comptes.
-  - Proposé : une vente rouverte qui n'est pas revalidée en 15 minutes se referme d'office, payée et terminée, comme avant la réouverture.
-- **Propositions encore ouvertes** :
-  - garder une trace de chaque suppression ;
-  - n'autoriser la suppression d'une vente du stand payée que si elle est annulée ou en test ;
+**Laissés exprès** (« touche pas aux commandes ») :
+- à la caisse, la phrase d'un refus s'affiche dans la zone d'erreur générale, loin de la ligne, comme les autres erreurs de ligne ;
+- une génération ajoutée depuis un AUTRE panier (nouvel essai « panier_clos ») ne reçoit pas `paidAt` au paiement. C'était déjà le cas avant : le corriger toucherait au paiement.
+
+**À juger, pas du code** :
+- « Debout, de face » : les personnages peuvent sembler flotter sur certaines photos ;
+- avec des personnages, le grand aperçu recadre l'image (environ 6 % de la hauteur), comme l'impression ;
+- pas encore testés : Safari et la vraie tablette ;
+- clé OpenAI partagée par les fonds et les affiches des clients : lancer les gros lots de fonds hors des heures du marché.
+
+**Environnement local** (pas la prod) :
+- La pile Docker locale travaille sur une base Neon HÉBERGÉE (`DATABASE_URL` du `.env`), pas sur le conteneur `memoryline-db`.
+  - Cette base a des migrations de retard (au moins 0092 et 0100) : sur `localhost:8080`, la lecture d'un panier répond 500, et la tâche des stands échoue chaque minute.
+  - À décider par Alexandra : la mettre à jour, ou faire pointer la pile locale sur `memoryline-db`.
+- `memoryline-db` est resté à 9 migrations (juillet) : n'y rien lire.
+- Recette des tests sur base, sans toucher ni au `.env` ni à la pile (Git Bash, racine du dépôt) :
+  ```
+  URL=$(grep -oE 'postgres://memoryline:[^@"]+@db:5432/memoryline' docker-compose.yml)_essais
+  docker exec memoryline-db createdb -U memoryline memoryline_essais
+  docker exec -e DATABASE_URL="$URL" memoryline-api sh -c 'case "$DATABASE_URL" in *@db:5432/memoryline_essais) echo LOCALE;; *) echo AUTRE;; esac'
+  MSYS_NO_PATHCONV=1 docker exec -e DATABASE_URL="$URL" -w /app/apps/api memoryline-api sh -c 'npx tsx src/db/migrate.ts'
+  MSYS_NO_PATHCONV=1 docker exec -e DATABASE_URL="$URL" -w /app/apps/api memoryline-api sh -c 'npx tsx --test tests/fonds-ia-base.test.ts tests/factures-zip.test.ts tests/cartes-cadeaux-caisse.test.ts tests/ia-composition.test.ts'
+  docker exec memoryline-db dropdb -U memoryline memoryline_essais
+  ```
+  - La troisième commande doit répondre LOCALE avant d'aller plus loin. La garde des tests (`@db:5432/` et NODE_ENV) ne les laisse jamais tourner sur Neon ni en production.
+
+### 0.3 Décidé, et encore à décider
+- **Décidé le 21/11** (Alexandra : « touche pas aux commandes ») : **on ne touche à aucune commande**, ni à leurs données, ni à leur logique, ni à la caisse.
+  - **SAL-0006** : validée à 11 h 32 (29 €), rouverte à 11 h 37, jamais revalidée, puis revalidée à 20 h 03 pour un autre client (35 €). La vente du matin reste hors des comptes, et une vente rouverte NE se referme PAS d'elle-même.
+  - Écartées pour la même raison : garder une trace de chaque suppression de vente ; n'autoriser la suppression d'une vente payée que si elle est annulée ou en test.
+- **Encore à décider** (interface, pas les commandes) :
   - pas de bandeau cookies sur la tablette ;
   - en-tête compact sous 1280 px.
 
 ### 0.4 Personnages sur l'affiche photo : FAIT et en ligne (21/11)
-Voir 0.1 : les trois choix faits par défaut (prix, muret, boutons) attendent la confirmation d'Alexandra.
+Voir 0.1 : les choix faits par défaut (prix, muret, boutons) sont gardés. Pour les changer plus tard :
 - Changer les boutons ne touche que le site (AfficheIA, PersonnagesIA).
 - Un autre muret doit être celui d'un type d'affiche ou de la fiche, sinon le serveur le retire (`ia-composition.ts`, décors permis).
 - Un supplément de prix demanderait aussi le serveur, qui calcule le prix de la ligne (`resolvePrixLigne`).
