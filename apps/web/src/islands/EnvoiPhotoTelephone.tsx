@@ -1,12 +1,11 @@
 /// <reference lib="dom" />
 import { createSignal, onCleanup, onMount, Show, type JSX } from "solid-js";
-import { t, LANGUE_DEFAUT, type CleUi, type Langue } from "../i18n/utils.ts";
+import { t, LANGUE_DEFAUT, type Langue } from "../i18n/utils.ts";
 import {
   ErreurEnvoiTelephone,
   envoyerPhotoTelephone,
   verifierCodeRelais,
   type EchecEnvoiTelephone,
-  type OrigineRelais,
 } from "../lib/ia.ts";
 
 /**
@@ -17,12 +16,6 @@ import {
  * Rien d'autre sur cette page : ni prix, ni menu, ni panier. Le client est
  * debout devant un stand, son téléphone dans une main ; tout ce qui n'est pas
  * le bouton le détourne de ce qu'il est venu faire.
- *
- * Depuis le 21/11, le code peut aussi venir d'un écran du site (un
- * ordinateur, le plus souvent). L'API dit d'où vient le relais en vérifiant
- * le code : les phrases parlent alors de « l'écran où vous créez votre
- * affiche », et plus de la tablette ni du stand. Tant qu'on ne le sait pas
- * (code inconnu, API d'avant le 21/11), ce sont les phrases du stand.
  */
 
 type Etat =
@@ -40,10 +33,6 @@ export default function EnvoiPhotoTelephone(props: {
   code: string;
 }): JSX.Element {
   const tr = t(props.langue ?? LANGUE_DEFAUT);
-  /** D'où vient le relais ; inconnue tant que l'API ne l'a pas dit. */
-  const [origine, setOrigine] = createSignal<OrigineRelais | undefined>();
-  /** La phrase du site pour un relais du site, celle du stand sinon. */
-  const trOrigine = (cle: CleUi, cleSite: CleUi) => tr(origine() === "site" ? cleSite : cle);
 
   const [etat, setEtat] = createSignal<Etat>("verification");
   const [pourcent, setPourcent] = createSignal(0);
@@ -71,8 +60,7 @@ export default function EnvoiPhotoTelephone(props: {
    * que le client ait fouillé ses albums, pas après.
    */
   onMount(async () => {
-    const { etat: reponse, origine: venue } = await verifierCodeRelais(props.code);
-    setOrigine(venue);
+    const reponse = await verifierCodeRelais(props.code);
     if (reponse === "valide") setEtat("pret");
     else if (reponse === "inconnu" || reponse === "expire") setEtat(reponse);
     else {
@@ -140,17 +128,13 @@ export default function EnvoiPhotoTelephone(props: {
 
       <Show when={etat() === "inconnu" || etat() === "expire"}>
         <p role="alert" class="mt-8 bg-terracotta/10 px-5 py-4 text-center text-terracotta-deep">
-          {etat() === "expire"
-            ? trOrigine("photo.code_expire", "photo.code_expire_site")
-            : tr("photo.code_inconnu")}
+          {etat() === "expire" ? tr("photo.code_expire") : tr("photo.code_inconnu")}
         </p>
       </Show>
 
       <Show when={etat() !== "verification" && etat() !== "inconnu" && etat() !== "expire"}>
         <Show when={etat() !== "envoye"}>
-          <p class="mt-3 text-center text-ink-soft">
-            {trOrigine("photo.intro", "photo.intro_site")}
-          </p>
+          <p class="mt-3 text-center text-ink-soft">{tr("photo.intro")}</p>
         </Show>
 
         <Show when={vignette()}>
@@ -191,9 +175,7 @@ export default function EnvoiPhotoTelephone(props: {
 
         <Show when={etat() === "envoye"}>
           <p class="mt-6 text-center text-2xl" role="status">
-            {envoyees() > 1
-              ? trOrigine("photo.envoyee_autre", "photo.envoyee_autre_site")
-              : trOrigine("photo.envoyee", "photo.envoyee_site")}
+            {tr(envoyees() > 1 ? "photo.envoyee_autre" : "photo.envoyee")}
           </p>
         </Show>
 
@@ -232,9 +214,7 @@ export default function EnvoiPhotoTelephone(props: {
               {etat() === "envoye" ? tr("photo.autre") : tr("photo.choisir")}
             </label>
             <Show when={etat() === "envoye"}>
-              <p class="mt-2 text-center text-sm text-ink-soft">
-                {trOrigine("photo.autre_aide", "photo.autre_aide_site")}
-              </p>
+              <p class="mt-2 text-center text-sm text-ink-soft">{tr("photo.autre_aide")}</p>
             </Show>
           </div>
         </Show>

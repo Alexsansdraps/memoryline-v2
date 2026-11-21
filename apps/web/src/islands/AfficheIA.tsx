@@ -141,10 +141,8 @@ export interface AfficheIAProps {
   sansPrix?: boolean;
   /**
    * La tablette du stand : la photo peut alors venir du téléphone du client
-   * (RelaisPhoto.tsx), avec le code du stand. Sur le site, le même relais
-   * existe depuis le 21/11, sans code, mais sur un grand écran seulement
-   * (voir `grandEcran`) : sur un téléphone, le visiteur a sa photo sous la
-   * main, dans l'appareil qui affiche la page.
+   * (RelaisPhoto.tsx). Sur le site, rien ne change — le visiteur a sa photo
+   * sous la main, dans l'appareil qui affiche la page.
    */
   stand?: boolean;
 }
@@ -1218,31 +1216,6 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     });
   });
 
-  /**
-   * Le relais du téléphone sur le site (21/11, Alexandra : « le module de QR
-   * code […] sur le site classique aussi ») : seulement sur un écran d'au
-   * moins 768 px de large, un ordinateur ou une tablette. Sur un téléphone,
-   * la photo se choisit directement — un QR code à scanner avec le téléphone
-   * même qui l'affiche n'aurait pas de sens. Un téléphone tourné à
-   * l'horizontale dépasse pourtant 768 px : il se reconnaît à son écran
-   * tactile de moins de 600 px de petit côté.
-   *
-   * Suivi en direct : une fenêtre rétrécie sous 768 px retire le relais, qui
-   * se ferme alors comme à « Annuler ». Au stand, rien de tout cela n'est lu :
-   * le relais y est toujours là, comme avant.
-   */
-  const largeurRelais = window.matchMedia("(min-width: 768px)");
-  const estGrandEcran = () =>
-    largeurRelais.matches &&
-    !(
-      window.matchMedia("(pointer: coarse)").matches &&
-      Math.min(window.screen.width, window.screen.height) < 600
-    );
-  const [grandEcran, setGrandEcran] = createSignal(estGrandEcran());
-  const suivreLargeur = () => setGrandEcran(estGrandEcran());
-  largeurRelais.addEventListener("change", suivreLargeur);
-  onCleanup(() => largeurRelais.removeEventListener("change", suivreLargeur));
-
   /** L'image seule dans le grand aperçu : sans personnage, ou en les attendant. */
   const imageApercu = () => (
     <img
@@ -1773,12 +1746,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           {/* Pendant la composition des personnages (20/11), le relais est
               occupé puis fermé : une photo arrivée du téléphone effacerait
               l'affiche qu'on est en train de composer (choisirPhoto). */}
-          {/* Sur le site aussi depuis le 21/11, sur un grand écran : même
-              place, mêmes règles, sans code du stand. */}
-          <Show when={props.stand || grandEcran()}>
+          <Show when={props.stand}>
             <RelaisPhoto
               langue={props.langue}
-              stand={!!props.stand}
               disponible={true}
               occupe={occupe() || !!composer()}
               interrompre={etape() === "generation" || !!composer()}

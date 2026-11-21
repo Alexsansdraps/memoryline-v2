@@ -271,10 +271,6 @@ export const ui = {
     "ia.relais.recue": "Photo reçue du téléphone.",
     "ia.relais.recue_aide":
       "Pas la bonne ? Touchez le bouton ci-dessous, puis envoyez-en une autre depuis la même page du téléphone.",
-    /* Le relais ouvert depuis le site (21/11), sur un ordinateur : pas de
-       « Touchez » sous une souris. Les phrases du stand ne changent pas. */
-    "ia.relais.recue_aide_site":
-      "Pas la bonne ? Utilisez le bouton ci-dessous, puis envoyez-en une autre depuis la même page du téléphone.",
     "ia.relais.autre": "Recevoir une autre photo",
     "ia.relais.expire": "Ce code a expiré. Demandez-en un nouveau.",
     "ia.relais.nouveau_code": "Nouveau code",
@@ -310,17 +306,6 @@ export const ui = {
       "Ce code ne correspond à aucun envoi en cours. Vérifiez l'adresse affichée sur la tablette.",
     "photo.code_expire":
       "Ce code a expiré. Demandez un nouveau code sur la tablette.",
-    /* La page du téléphone pour un relais ouvert depuis le site (21/11) :
-       ni tablette ni stand, l'écran où le client crée son affiche — un
-       ordinateur le plus souvent. */
-    "photo.intro_site": "Elle s'affichera aussitôt sur l'écran où vous créez votre affiche.",
-    "photo.envoyee_site": "C'est envoyé ! Regardez l'écran où vous créez votre affiche.",
-    "photo.envoyee_autre_site":
-      "C'est envoyé ! Choisissez « Recevoir une autre photo » sur l'écran où vous créez votre affiche.",
-    "photo.autre_aide_site":
-      "Une autre photo ? Envoyez-la, puis choisissez « Recevoir une autre photo » sur l'écran où vous créez votre affiche.",
-    "photo.code_expire_site":
-      "Ce code a expiré. Choisissez « Nouveau code » sur l'écran où vous créez votre affiche.",
     "photo.err.rafale":
       "Trop d'envois d'affilée. Patientez quelques minutes, puis réessayez.",
     "photo.err.reseau":
@@ -1126,8 +1111,6 @@ export const ui = {
     "ia.relais.recue": "Photo received from the phone.",
     "ia.relais.recue_aide":
       "Not the right one? Tap the button below, then send another one from the same page on the phone.",
-    "ia.relais.recue_aide_site":
-      "Not the right one? Use the button below, then send another one from the same page on the phone.",
     "ia.relais.autre": "Receive another photo",
     "ia.relais.expire": "This code has expired. Ask for a new one.",
     "ia.relais.nouveau_code": "New code",
@@ -1159,15 +1142,6 @@ export const ui = {
       "This code doesn't match any upload in progress. Check the address shown on the tablet.",
     "photo.code_expire":
       "This code has expired. Ask for a new code on the tablet.",
-    "photo.intro_site":
-      "It will appear straight away on the screen where you are creating your poster.",
-    "photo.envoyee_site": "Sent! Look at the screen where you are creating your poster.",
-    "photo.envoyee_autre_site":
-      "Sent! Choose “Receive another photo” on the screen where you are creating your poster.",
-    "photo.autre_aide_site":
-      "Another photo? Send it, then choose “Receive another photo” on the screen where you are creating your poster.",
-    "photo.code_expire_site":
-      "This code has expired. Choose “New code” on the screen where you are creating your poster.",
     "photo.err.rafale":
       "Too many uploads in a row. Please wait a few minutes, then try again.",
     "photo.err.reseau":
@@ -1940,8 +1914,6 @@ export const ui = {
     "ia.relais.recue": "Foto vom Handy erhalten.",
     "ia.relais.recue_aide":
       "Nicht das richtige? Tippen Sie auf die Schaltfläche unten und senden Sie dann ein anderes von derselben Seite auf dem Handy.",
-    "ia.relais.recue_aide_site":
-      "Nicht das richtige? Nutzen Sie die Schaltfläche unten und senden Sie dann ein anderes von derselben Seite auf dem Handy.",
     "ia.relais.autre": "Weiteres Foto empfangen",
     "ia.relais.expire": "Dieser Code ist abgelaufen. Fordern Sie einen neuen an.",
     "ia.relais.nouveau_code": "Neuer Code",
@@ -1973,15 +1945,6 @@ export const ui = {
       "Dieser Code gehört zu keiner laufenden Übertragung. Prüfen Sie die Adresse auf dem Tablet.",
     "photo.code_expire":
       "Dieser Code ist abgelaufen. Fordern Sie am Tablet einen neuen Code an.",
-    "photo.intro_site": "Es erscheint sofort auf dem Bildschirm, auf dem Sie Ihr Poster gestalten.",
-    "photo.envoyee_site":
-      "Gesendet! Schauen Sie auf den Bildschirm, auf dem Sie Ihr Poster gestalten.",
-    "photo.envoyee_autre_site":
-      "Gesendet! Wählen Sie „Weiteres Foto empfangen“ auf dem Bildschirm, auf dem Sie Ihr Poster gestalten.",
-    "photo.autre_aide_site":
-      "Ein anderes Foto? Senden Sie es und wählen Sie dann „Weiteres Foto empfangen“ auf dem Bildschirm, auf dem Sie Ihr Poster gestalten.",
-    "photo.code_expire_site":
-      "Dieser Code ist abgelaufen. Wählen Sie „Neuer Code“ auf dem Bildschirm, auf dem Sie Ihr Poster gestalten.",
     "photo.err.rafale":
       "Zu viele Sendungen nacheinander. Bitte warten Sie einige Minuten und versuchen Sie es dann erneut.",
     "photo.err.reseau":
@@ -2758,8 +2721,6 @@ export const ui = {
     "ia.relais.recue": "Foto ricevuta dal telefono.",
     "ia.relais.recue_aide":
       "Non è quella giusta? Tocca il pulsante qui sotto, poi inviane un'altra dalla stessa pagina sul telefono.",
-    "ia.relais.recue_aide_site":
-      "Non è quella giusta? Usa il pulsante qui sotto, poi inviane un'altra dalla stessa pagina sul telefono.",
     "ia.relais.autre": "Ricevi un'altra foto",
     "ia.relais.expire": "Questo codice è scaduto. Chiedine uno nuovo.",
     "ia.relais.nouveau_code": "Nuovo codice",
@@ -2791,14 +2752,6 @@ export const ui = {
       "Questo codice non corrisponde a nessun invio in corso. Controlla l'indirizzo mostrato sul tablet.",
     "photo.code_expire":
       "Questo codice è scaduto. Chiedi un nuovo codice sul tablet.",
-    "photo.intro_site": "Apparirà subito sullo schermo su cui stai creando il tuo poster.",
-    "photo.envoyee_site": "Inviata! Guarda lo schermo su cui stai creando il tuo poster.",
-    "photo.envoyee_autre_site":
-      "Inviata! Scegli «Ricevi un'altra foto» sullo schermo su cui stai creando il tuo poster.",
-    "photo.autre_aide_site":
-      "Un'altra foto? Inviala, poi scegli «Ricevi un'altra foto» sullo schermo su cui stai creando il tuo poster.",
-    "photo.code_expire_site":
-      "Questo codice è scaduto. Scegli «Nuovo codice» sullo schermo su cui stai creando il tuo poster.",
     "photo.err.rafale":
       "Troppi invii di seguito. Attendi qualche minuto, poi riprova.",
     "photo.err.reseau":
@@ -3569,8 +3522,6 @@ export const ui = {
     "ia.relais.recue": "Foto recibida del móvil.",
     "ia.relais.recue_aide":
       "¿No es la correcta? Toca el botón de abajo y envía otra desde la misma página del móvil.",
-    "ia.relais.recue_aide_site":
-      "¿No es la correcta? Usa el botón de abajo y envía otra desde la misma página del móvil.",
     "ia.relais.autre": "Recibir otra foto",
     "ia.relais.expire": "Este código ha caducado. Pide uno nuevo.",
     "ia.relais.nouveau_code": "Nuevo código",
@@ -3602,14 +3553,6 @@ export const ui = {
       "Este código no corresponde a ningún envío en curso. Comprueba la dirección que aparece en la tableta.",
     "photo.code_expire":
       "Este código ha caducado. Pide un código nuevo en la tableta.",
-    "photo.intro_site": "Aparecerá enseguida en la pantalla donde estás creando tu lámina.",
-    "photo.envoyee_site": "¡Enviada! Mira la pantalla donde estás creando tu lámina.",
-    "photo.envoyee_autre_site":
-      "¡Enviada! Elige «Recibir otra foto» en la pantalla donde estás creando tu lámina.",
-    "photo.autre_aide_site":
-      "¿Otra foto? Envíala y elige «Recibir otra foto» en la pantalla donde estás creando tu lámina.",
-    "photo.code_expire_site":
-      "Este código ha caducado. Elige «Nuevo código» en la pantalla donde estás creando tu lámina.",
     "photo.err.rafale":
       "Demasiados envíos seguidos. Espera unos minutos y vuelve a intentarlo.",
     "photo.err.reseau":
@@ -4345,7 +4288,6 @@ export const ui = {
     "ia.relais.reste": "コードの有効時間：あと{minutes}分",
     "ia.relais.recue": "スマートフォンから写真を受信しました。",
     "ia.relais.recue_aide": "違う写真ですか？下のボタンをタップして、スマートフォンの同じページから別の写真を送ってください。",
-    "ia.relais.recue_aide_site": "違う写真ですか？下のボタンを押して、スマートフォンの同じページから別の写真を送ってください。",
     "ia.relais.autre": "別の写真を受け取る",
     "ia.relais.expire": "このコードは期限切れです。新しいコードを発行してください。",
     "ia.relais.nouveau_code": "新しいコード",
@@ -4370,11 +4312,6 @@ export const ui = {
     "photo.apercu_alt": "選択した写真",
     "photo.code_inconnu": "このコードに該当する送信はありません。タブレットに表示されているアドレスをご確認ください。",
     "photo.code_expire": "このコードは期限切れです。タブレットで新しいコードを発行してください。",
-    "photo.intro_site": "写真はすぐに、ポスターを作成中の画面に表示されます。",
-    "photo.envoyee_site": "送信しました！ポスターを作成中の画面をご覧ください。",
-    "photo.envoyee_autre_site": "送信しました！ポスターを作成中の画面で「別の写真を受け取る」を選んでください。",
-    "photo.autre_aide_site": "別の写真を使いますか？送信してから、ポスターを作成中の画面で「別の写真を受け取る」を選んでください。",
-    "photo.code_expire_site": "このコードは期限切れです。ポスターを作成中の画面で「新しいコード」を選んでください。",
     "photo.err.rafale": "短時間に送信が集中しています。数分ほど待ってから、もう一度お試しください。",
     "photo.err.reseau": "送信できませんでした。接続を確認して、もう一度お試しください。",
     "panier.titre": "カート",
@@ -5017,7 +4954,6 @@ export const ui = {
     "ia.relais.reste": "二维码还有 {minutes} 分钟有效",
     "ia.relais.recue": "已收到手机上的照片。",
     "ia.relais.recue_aide": "不是这张？请点击下方按钮，然后在手机的同一页面再发送另一张。",
-    "ia.relais.recue_aide_site": "不是这张？请使用下方按钮，然后在手机的同一页面再发送另一张。",
     "ia.relais.autre": "接收另一张照片",
     "ia.relais.expire": "此二维码已过期。请重新获取。",
     "ia.relais.nouveau_code": "新二维码",
@@ -5042,11 +4978,6 @@ export const ui = {
     "photo.apercu_alt": "所选照片",
     "photo.code_inconnu": "此代码与任何进行中的发送都不匹配。请核对平板上显示的网址。",
     "photo.code_expire": "此代码已过期。请在平板上获取新代码。",
-    "photo.intro_site": "照片将立即显示在您制作海报的屏幕上。",
-    "photo.envoyee_site": "已发送！请看您制作海报的屏幕。",
-    "photo.envoyee_autre_site": "已发送！请在您制作海报的屏幕上选择“接收另一张照片”。",
-    "photo.autre_aide_site": "还有另一张照片？请发送，然后在您制作海报的屏幕上选择“接收另一张照片”。",
-    "photo.code_expire_site": "此代码已过期。请在您制作海报的屏幕上选择“新二维码”。",
     "photo.err.rafale": "发送过于频繁。请等待几分钟后重试。",
     "photo.err.reseau": "发送未成功。请检查网络连接后重试。",
     "panier.titre": "您的购物车",

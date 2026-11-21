@@ -688,13 +688,6 @@ export function CharacterEditor(props: {
    * de pièces), sinon `repli` — la peau pour la première couleur d'un humain,
    * les vêtements pour les autres, le pelage pour un dessin en pixels.
    */
-  /**
-   * La liste propre d'une couleur du dessin de base, réglée au back-office
-   * (21/11) : elle passe avant le nuancier, comme sur une pièce
-   * (pastillesDeLaRangee) — 10 couleurs au plus. Null sans liste.
-   */
-  const couleursPropres = (couleurs: readonly string[] | undefined): readonly string[] | null =>
-    couleurs && couleurs.length > 0 ? couleurs.slice(0, 10) : null;
   const presetsDuNuancier = (nuancier: Nuancier | undefined, repli: NuancierBase) =>
     couleursDuNuancier(nuancier, repli, props.nuanciersBase, props.pieceCategories);
   /** Intitulé de chaque emplacement, traduit. */
@@ -853,7 +846,7 @@ export function CharacterEditor(props: {
         tous.forEach((ligne, i) => {
           const g = groupes[i]!;
           const repli: NuancierBase = g.zone === premier?.zone ? "peau" : "vetements";
-          rangees.push({ ligne, presets: couleursPropres(g.couleurs) ?? presetsDuNuancier(g.nuancier, repli) });
+          rangees.push({ ligne, presets: presetsDuNuancier(g.nuancier, repli) });
         });
       }
 
@@ -874,7 +867,7 @@ export function CharacterEditor(props: {
           },
           // Le nuancier choisi au back-office ; faute d'indication, celui des
           // cheveux, qui va au pelage d'un animal.
-          presets: couleursPropres(f.couleurs) ?? presetsDuNuancier(f.nuancier, "cheveux"),
+          presets: presetsDuNuancier(f.nuancier, "cheveux"),
         });
       }
       return rangees;

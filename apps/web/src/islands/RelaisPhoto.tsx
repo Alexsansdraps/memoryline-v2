@@ -19,8 +19,7 @@ import {
 } from "../lib/ia.ts";
 
 /**
- * « Envoyer la photo depuis votre téléphone » — sur la tablette du stand, et
- * (21/11) sur les grands écrans du site.
+ * « Envoyer la photo depuis votre téléphone » — sur la tablette du stand.
  *
  * Au marché de Noël, la photo à mettre en affiche est dans le téléphone du
  * client. Plutôt que de la faire passer par un courriel ou une messagerie, la
@@ -31,17 +30,9 @@ import {
  * comme d'habitude. Jamais de création lancée d'office : c'est une dépense,
  * elle part d'un geste.
  *
- * Au stand, le relais s'ouvre avec le code du stand — celui que la tablette
- * retient déjà pour valider les ventes.
- *
- * Sur le site aussi, depuis le 21/11 (Alexandra : « le module de QR code pour
- * envoyer une image sur le site classique aussi ») : sur un ordinateur, la
- * photo est le plus souvent dans le téléphone. Là, `stand` est faux : jamais
- * de code du stand, le relais s'ouvre au premier clic, sans en-tête
- * X-Salon-Code — c'est ce qui le désigne « site » à l'API, qui le borne à sa
- * façon (frein par IP plus serré, plafond global de relais ouverts). Tout le
- * reste — relève, confirmation, fermeture, la page du téléphone — est
- * commun. La fiche ne le montre que sur un grand écran (AfficheIA.tsx).
+ * Le relais n'existe qu'au stand, et s'ouvre avec le code du stand — celui que
+ * la tablette retient déjà pour valider les ventes. Sans lui, n'importe quel
+ * visiteur du site pourrait se créer des boîtes de dépôt sur le serveur.
  *
  * La tablette RELÈVE le relais toutes les secondes et demie, plutôt que de
  * garder une connexion ouverte : un wifi de marché coupe les connexions
@@ -79,11 +70,6 @@ const SECONDAIRE =
 
 export default function RelaisPhoto(props: {
   langue?: Langue;
-  /**
-   * La tablette du stand (absent : la tablette aussi, comme avant le 21/11).
-   * Faux : un écran du site — ni code du stand, ni phrase qui parle de toucher.
-   */
-  stand?: boolean;
   /** Faux tant qu'un style reste à choisir : la même règle que la zone de dépôt. */
   disponible: boolean;
   /** La tablette envoie une photo : la suivante attend qu'elle ait fini. */
@@ -95,8 +81,6 @@ export default function RelaisPhoto(props: {
 }): JSX.Element {
   const langue = props.langue ?? LANGUE_DEFAUT;
   const tr = t(langue);
-  /** Fixé au montage : la fiche ne passe pas du stand au site sous les yeux. */
-  const auStand = props.stand !== false;
 
   const [etat, setEtat] = createSignal<Etat>("ferme");
   const [relais, setRelais] = createSignal<RelaisOuvert | null>(null);
@@ -185,10 +169,9 @@ export default function RelaisPhoto(props: {
 
   async function dessinerQr(texte: string, moi: number) {
     try {
-      // Chargé à la demande : seuls la tablette du stand et les grands écrans
-      // du site en ont besoin, et seulement quand un client n'a pas sa photo
-      // sous la main. C'est un module CommonJS : Vite en range le contenu
-      // sous `default`.
+      // Chargé à la demande : seule la tablette du stand en a besoin, et
+      // seulement quand un client n'a pas sa photo sous la main. C'est un
+      // module CommonJS : Vite en range le contenu sous `default`.
       const module = await import("qrcode");
       const QRCode = module.default ?? module;
       const svg = await QRCode.toString(texte, {
@@ -208,9 +191,8 @@ export default function RelaisPhoto(props: {
   /**
    * Ouvre un relais avec ce code de stand. `retenu` : le code vient de la
    * mémoire de la tablette, et non d'une saisie — refusé, il est oublié.
-   * `null` : un relais du site, sans code (21/11).
    */
-  async function ouvrir(code: string | null, retenu: boolean) {
+  async function ouvrir(code: string, retenu: boolean) {
     abandonner();
     const moi = numero;
     setMessage(null);
@@ -221,7 +203,7 @@ export default function RelaisPhoto(props: {
         void fermerRelais(r.jeton);
         return;
       }
-      if (code !== null) retenirCode(code);
+      retenirCode(code);
       setSaisieCode("");
       setRelais(r);
       setFin(Date.now() + r.resteSecondes * 1000);
@@ -233,9 +215,7 @@ export default function RelaisPhoto(props: {
     } catch (e) {
       if (moi !== numero) return;
       const cause = e instanceof ErreurRelais ? e.code : "injoignable";
-      // Sur le site, aucun code à redemander : un refus (une API d'avant le
-      // 21/11, qui exigeait le code du stand) se dit comme une panne.
-      if (cause === "code_stand" && code !== null) {
+      if (cause === "code_stand") {
         // Un code retenu devenu faux — stand fermé depuis hier, code changé —
         // est effacé, comme à la validation de la commande.
         if (retenu) oublierCode();
@@ -249,10 +229,6 @@ export default function RelaisPhoto(props: {
 
   function demarrer() {
     if (!props.disponible) return;
-    if (!auStand) {
-      void ouvrir(null, false);
-      return;
-    }
     const retenu = codeMemorise();
     if (retenu) void ouvrir(retenu, true);
     else demanderCode(null);
@@ -483,9 +459,7 @@ export default function RelaisPhoto(props: {
               </span>
               {tr("ia.relais.recue")}
             </p>
-            <p class="mt-1 text-sm text-ink-soft">
-              {tr(auStand ? "ia.relais.recue_aide" : "ia.relais.recue_aide_site")}
-            </p>
+            <p class="mt-1 text-sm text-ink-soft">{tr("ia.relais.recue_aide")}</p>
             <div class="mt-3 flex flex-wrap gap-3">
               <button
                 type="button"
