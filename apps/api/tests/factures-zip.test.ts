@@ -225,6 +225,25 @@ test("la route refuse un lien venu d'une autre page, avant de lire quoi que ce s
   assert.equal(vendeur.status, 403);
 });
 
+test("la facture d'une fiche : un lien venu d'ailleurs ne la fait pas numéroter", async () => {
+  const app = application();
+  // Identifiant illisible : aucune lecture en base, le refus vient d'abord.
+  for (const origine of ["cross-site", "same-site", "none"]) {
+    const res = await app.request("/admin/orders/0/facture.pdf", {
+      headers: { "Sec-Fetch-Site": origine },
+    });
+    assert.equal(res.status, 403, origine);
+    const { error } = (await res.json()) as { error: string };
+    assert.match(error, /Aucun numéro n'a été donné/);
+  }
+  // Le bouton de la fiche (même adresse) : la route va plus loin, jusqu'au
+  // refus d'un identifiant illisible, sans base.
+  for (const entetes of [{ "Sec-Fetch-Site": "same-origin" }, {}]) {
+    const res = await app.request("/admin/orders/0/facture.pdf", { headers: entetes });
+    assert.equal(res.status, 400, JSON.stringify(entetes));
+  }
+});
+
 /* ------------------------------------------------------------------------ */
 /*  Le nom du fichier                                                        */
 /* ------------------------------------------------------------------------ */

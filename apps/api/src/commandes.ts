@@ -3793,6 +3793,28 @@ export function mountOrderRoutes(app: Hono): void {
         403,
       );
     const id = Number(c.req.param("id"));
+    // Un lien venu d'ailleurs ne fait pas NUMÉROTER une facture (relecture du
+    // 20/11, même garde que le ZIP) : la première édition consomme un numéro,
+    // définitif. Le bouton de la fiche, lui, part du back-office
+    // (« same-origin »). Rouvrir une facture qui a DÉJÀ son numéro reste
+    // possible d'où que ce soit (favori, lien gardé) : ce n'est qu'une lecture.
+    if (!requeteDuBackOffice(c.req.header("Sec-Fetch-Site"))) {
+      const [deja] =
+        Number.isInteger(id) && id > 0
+          ? await db
+              .select({ numero: schema.orders.invoiceNumber })
+              .from(schema.orders)
+              .where(eq(schema.orders.id, id))
+          : [];
+      if (!deja?.numero)
+        return c.json(
+          {
+            error:
+              "Cette commande n'a pas encore de facture : éditez-la depuis sa fiche, au back-office (bouton « Éditer la facture »). Aucun numéro n'a été donné.",
+          },
+          403,
+        );
+    }
     // La facture sort dans la langue de la cliente, comme celle qui lui est
     // envoyée : la boutique télécharge le document que la cliente a, ou aura.
     // `?langue=fr` en demande une autre, pour la comptabilité par exemple.
