@@ -47,22 +47,6 @@ function centimesSaisis(brut: FormDataEntryValue | null, libelle: string): numbe
   return Math.round(n * 100);
 }
 
-/**
- * Le plafond propre aux fonds (relecture du 20/11), tel que l'API l'ajoute
- * au catalogue : à part de celui des affiches des clients.
- */
-type PlafondFonds = {
-  plafondCents: number;
-  /** Vrai sans réglage : c'est alors la moitié du plafond des affiches. */
-  parDefaut: boolean;
-  reglageCents: number | null;
-  defautCents: number;
-  /** Versions en cours comprises : leur coût est réservé au lancement. */
-  depenseCents: number;
-  resteCents: number;
-  plafondAffichesCents: number;
-};
-
 let flash: string | null = Astro.url.searchParams.get("reglages") === "1" ? "Réglages enregistrés." : null;
 let flashAlerte = false;
 
@@ -142,8 +126,8 @@ const jeton = nouveauJeton();
 const reg = catalogue?.reglages;
 const cout = reg?.coutParVersionCents ?? 0;
 const bouchon = !!catalogue?.bouchon;
-const plafondFonds =
-  (catalogue as (CatalogueFondsIa & { plafondFonds?: PlafondFonds }) | null)?.plafondFonds ?? null;
+/** Le plafond propre aux fonds, à part de celui des affiches (relecture du 20/11). */
+const plafondFonds = catalogue?.plafondFonds ?? null;
 const enEuros = (cents: number) => (cents / 100).toFixed(2).replace(".", ",");
 const champ = "rounded border border-bo-border bg-bo-surface px-2 py-1 text-sm";
 const couleurEtat = (e: string) =>

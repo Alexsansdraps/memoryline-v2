@@ -1799,6 +1799,25 @@ export interface StatsIA {
   /** Délai au-delà duquel une photo non achetée peut être effacée. */
   purgeJours: number;
   total: { essais: number; coutCents: number };
+  /**
+   * Les fonds du mois (BO › Atelier › Créer des fonds), à part : leur dépense
+   * ne compte pas dans le plafond des affiches, qui ne protège que les
+   * clients, et ils ont le leur (relecture du 20/11). Absent d'une API plus
+   * ancienne.
+   */
+  fonds?: FondsDuMoisIa;
+}
+
+/** Les fonds du mois, dans les chiffres de BO › Affiches IA (StatsIA). */
+export interface FondsDuMoisIa {
+  /** Versions dessinées ou en cours (pas les échecs). */
+  versions: number;
+  /** Versions en cours comprises : leur coût est réservé au lancement. */
+  depenseCents: number;
+  plafondCents: number;
+  /** Vrai sans réglage : c'est alors la moitié du plafond des affiches. */
+  plafondParDefaut: boolean;
+  resteCents: number;
 }
 
 /**
@@ -2228,9 +2247,27 @@ export interface CatalogueFondsIa {
   bouchon: boolean;
   depenseCents: number;
   plafondCents: number;
+  /**
+   * Le plafond propre aux fonds ce mois-ci, à part de celui des affiches des
+   * clients (relecture du 20/11). Absent d'une API plus ancienne.
+   */
+  plafondFonds?: PlafondFondsIa;
   decors: { id: number; nom: string; url: string }[];
   affiches: { id: number; nom: string }[];
   fonds: ResumeFondIa[];
+}
+
+/** Le plafond des fonds, tel que le catalogue de Créer des fonds le donne. */
+export interface PlafondFondsIa {
+  plafondCents: number;
+  /** Vrai sans réglage : c'est alors la moitié du plafond des affiches. */
+  parDefaut: boolean;
+  reglageCents: number | null;
+  defautCents: number;
+  /** Versions en cours comprises : leur coût est réservé au lancement. */
+  depenseCents: number;
+  resteCents: number;
+  plafondAffichesCents: number;
 }
 
 export function adminApi(request?: Request) {

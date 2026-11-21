@@ -102,9 +102,7 @@ const bouchon = !!catalogue?.bouchon;
  * des affiches des clients (relecture du 20/11). Ajouté au catalogue par
  * l'API ; null si elle ne le dit pas.
  */
-const resteFonds =
-  (catalogue as (CatalogueFondsIa & { plafondFonds?: { resteCents: number } }) | null)?.plafondFonds
-    ?.resteCents ?? null;
+const resteFonds = catalogue?.plafondFonds?.resteCents ?? null;
 const confirmation = confirmationMessage(1, cout, bouchon, resteFonds);
 const enCours = fond?.etat === "en_cours";
 const jetonMessage = nouveauJeton();

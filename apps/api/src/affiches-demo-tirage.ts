@@ -733,7 +733,7 @@ function couleursAuChangementDePiece(
  * couleurs arrivent avec elle et celles de la pièce quittée s'en vont. La
  * pièce déjà portée, touchée à nouveau, ne change rien.
  *
- * recopié de setAsset, packages/configurator/src/index.tsx l.459-490, garder
+ * recopié de setAsset, packages/configurator/src/index.tsx l.504-535, garder
  * identiques (la pièce est donnée, et non son identifiant)
  */
 function changerDePiece(
@@ -860,7 +860,7 @@ function dEssai(nom: string | null | undefined): boolean {
 /**
  * Les personnages qu'une cliente peut ajouter sur ce type d'affiche :
  * proposés (non masqués), non archivés, de ce type. Contrairement au module
- * (visibleCharacters, index.tsx l.200), on ne retombe PAS sur toute la liste
+ * (visibleCharacters, index.tsx l.245), on ne retombe PAS sur toute la liste
  * quand aucun ne correspond : ce serait poser des personnages de face sur une
  * affiche de dos. Ni ceux dont le dessin ne s'imprime pas, ni ceux d'essai
  * (cf. dessinImprimable, dEssai) : un sous-ensemble de ce que le module
@@ -1221,12 +1221,12 @@ function habiller(
 ): WorkingCharacter {
   const c = candidat.perso;
   // a. Les pièces qu'il a le droit de porter : celles de son type d'affiche,
-  //    restreintes aux siennes (addCharacter, index.tsx l.383-391).
+  //    restreintes aux siennes (addCharacter, index.tsx l.428-436).
   const pieces = slotsForCharacter(variantesDeVue(lib.slots, c.orientation ?? vue), c);
   // b. Sa tenue par défaut, en identifiants de pièces.
   const wc = defaultCharacter(c, rang, pieces);
   // c. Les couleurs de la base FIGÉES, comme le fait le changement de
-  //    personnage (changeCharacter, index.tsx l.596-599) : une couleur par
+  //    personnage (changeCharacter, index.tsx l.641-644) : une couleur par
   //    défaut changée au back-office après le tirage ne change pas la
   //    réimpression d'une affiche déjà tirée.
   for (const [zone, hex] of Object.entries(c.baseColorZones ?? {}))
@@ -1447,7 +1447,7 @@ export function tirerAfficheDemo(
   const tirage = tirerScene(scene, piocheDe(pool, hasard), hasard, composition === "rangee");
 
   // 2. Le fond : l'un des siens. Retrouvés par le nom de la ville, le
-  //    premier : celui que le module présélectionne (index.tsx l.233-237),
+  //    premier : celui que le module présélectionne (index.tsx l.278-282),
   //    les suivants pouvant être ceux d'une autre affiche de la ville.
   //    L'appelant écarte l'affiche quand plusieurs se partagent la tête de
   //    liste : rien ne dit alors lequel le module montre (affiches-demo.ts).

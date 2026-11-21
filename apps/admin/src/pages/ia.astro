@@ -180,14 +180,7 @@ const texte = (cle: string) =>
  * ne compte plus dans le plafond des affiches, qui ne protège que les clients,
  * et ils ont le leur. L'API les ajoute aux chiffres du mois.
  */
-type FondsDuMois = {
-  versions: number;
-  depenseCents: number;
-  plafondCents: number;
-  plafondParDefaut: boolean;
-  resteCents: number;
-};
-const fondsDuMois = (stats as (StatsIA & { fonds?: FondsDuMois }) | null)?.fonds ?? null;
+const fondsDuMois = stats?.fonds ?? null;
 
 // Ce que l'API applique fait foi : c'est elle qui lit les réglages et facture.
 const modele = stats?.modele ?? texte("ia.modele") ?? MODELE_DEFAUT;

@@ -1683,8 +1683,18 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               un vrai <input>, donc utilisable au clavier et aux lecteurs
               d'écran ; le cadre n'est que sa décoration. Éteinte tant qu'un
               style reste à choisir, et elle dit pourquoi. */}
+          {/* `relative` (21/11) : le champ masqué (sr-only) est en position
+              absolue. Sans ancêtre positionné, il se plaçait par rapport au
+              fond grisé de la fenêtre (.ml-modal-overlay, en position fixe),
+              bien plus bas que son bord : ce fond défilait, surtout quand un
+              toucher sur la zone donnait le focus au champ — jusqu'à plus de
+              800 px sur téléphone, et environ 60 px sur la tablette du stand
+              dès quatre styles —, et emportait l'en-tête et la croix. Rangé
+              dans son cadre, il suit le corps de la fenêtre et n'agrandit
+              plus rien ; le clic, le dépôt et le relais du stand sont
+              inchangés. */}
           <label
-            class={`${choixDuStyle() ? "mt-3" : "mt-5"} flex flex-col items-center justify-center gap-1 border-2 border-dashed p-6 text-center transition-colors ${
+            class={`relative ${choixDuStyle() ? "mt-3" : "mt-5"} flex flex-col items-center justify-center gap-1 border-2 border-dashed p-6 text-center transition-colors ${
               survol()
                 ? "cursor-pointer border-terracotta bg-terracotta/5"
                 : "cursor-pointer border-ink/25 hover:border-ink/50"
