@@ -1218,6 +1218,30 @@ const gardes =
     };
 
     /**
+     * PERSONNAGE (21/11, Alexandra : « on peut pas modifier les couleurs (en
+     * ajouter) ») : sans liste à elle, une couleur du dessin propose son
+     * NUANCIER (Peau, Vêtements…, ou une catégorie de pièces). « + Ajouter »
+     * part de ces couleurs-là, comme sur une pièce ; avec une liste, le
+     * client n'a qu'elle (CharacterEditor, baseZones).
+     */
+    const heriteesDuNuancier = (
+      valeur: Nuancier | undefined,
+      repli: NuancierBase,
+    ): { source: string; couleurs: string[]; libre: boolean } => {
+      const choisi: Nuancier = valeur ?? repli;
+      const categorie = choisi.startsWith("categorie:")
+        ? nuanciers?.categories.find((c) => `categorie:${c.slug}` === choisi)?.name
+        : undefined;
+      return {
+        source: categorie
+          ? `celles de la catégorie « ${categorie} »`
+          : `celles du nuancier « ${LIBELLES_NUANCIERS_BASE[(choisi.startsWith("categorie:") ? repli : choisi) as NuancierBase]} »`,
+        couleurs: [...couleursDuNuancier(choisi, repli, nuanciers?.base, nuanciers?.categories ?? [])],
+        libre: false,
+      };
+    };
+
+    /**
      * Les couleurs de la partie `cible` (un groupe, une famille en pixels) :
      * leur liste propre change, et s'enregistre. Vide : la partie reprend
      * celles de sa catégorie. Le message nomme la PARTIE, et compte ses
@@ -1235,7 +1259,7 @@ const gardes =
           ? `${partie.court} : ${couleurs.length} couleurs, le client n'en voit que ${COULEURS_PARTIE_MAX}.`
           : couleurs.length
             ? `${partie.court} : ${enMots(couleurs.length, "couleur")} proposée${couleurs.length > 1 ? "s" : ""} (${COULEURS_PARTIE_MAX} au plus).`
-            : `${partie.court} reprend les couleurs de la catégorie.`,
+            : `${partie.court} reprend les couleurs ${etat.mode === "personnage" ? "de son nuancier" : "de la catégorie"}.`,
       );
     };
 
@@ -1507,7 +1531,11 @@ const gardes =
       // « Reprendre » et le champ du code (plus bas) portent la même clé :
       // quand « Reprendre » refait la ligne et disparaît, le focus passe au
       // champ du code de la même partie.
-      const reprendre = el("button", petit, "Reprendre les couleurs de la catégorie");
+      const reprendre = el(
+        "button",
+        petit,
+        etat.mode === "personnage" ? "Reprendre les couleurs du nuancier" : "Reprendre les couleurs de la catégorie",
+      );
       reprendre.type = "button";
       reprendre.dataset.cle = `liste-partie:${l.cle}`;
       reprendre.title = `Efface la liste de ${partie.dans} : le client aura de nouveau ${p.heritees.source}`;
@@ -1850,16 +1878,14 @@ const gardes =
                 },
             // Pièce dessinée en pixels : chaque famille a ses couleurs
             // proposées, comme une partie d'un dessin vectoriel.
-            pastilles: piece
-              ? {
-                  propres: f.couleurs ?? [],
-                  heritees: heriteesDeLaPartie(),
-                  depart: couleur,
-                  designation: designer(f.nom, i + 1),
-                  onChange: (couleurs) =>
-                    reglerCouleursDeLaPartie(f, designer(f.nom, i + 1), couleurs),
-                }
-              : undefined,
+            pastilles: {
+              propres: f.couleurs ?? [],
+              heritees: piece ? heriteesDeLaPartie() : heriteesDuNuancier(f.nuancier, "cheveux"),
+              depart: couleur,
+              designation: designer(f.nom, i + 1),
+              onChange: (couleurs) =>
+                reglerCouleursDeLaPartie(f, designer(f.nom, i + 1), couleurs),
+            },
             // Pièce : « C'est une ombre », sauf sur la plus étendue.
             ombre:
               piece && f !== principale
@@ -2320,6 +2346,15 @@ const gardes =
                 publier();
                 void enregistrerTout("Nuancier changé.");
               },
+            },
+            // Ses couleurs à lui, à ajouter ou retirer (21/11) ; sans liste,
+            // le nuancier choisi juste avant.
+            pastilles: {
+              propres: g.couleurs ?? [],
+              heritees: heriteesDuNuancier(g.nuancier, g.zone === premier ? "peau" : "vetements"),
+              depart: etat.zones[g.zone] ?? "#000000",
+              designation: designer(g.nom, i + 1),
+              onChange: (couleurs) => reglerCouleursDeLaPartie(g, designer(g.nom, i + 1), couleurs),
             },
           }),
         );
