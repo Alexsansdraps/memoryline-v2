@@ -4,7 +4,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 0. État au 21/11, 6 h : tout `main` est en ligne
 
-### 0.0 PROGRAMMÉ À 22 H LE 21/11 : `39b3445` (relais photo du site + couleurs propres des personnages)
+### 0.0 PROGRAMMÉ À 22 H LE 21/11 : `97434ee` (relais photo du site, couleurs propres des personnages, plus de suggestions pendant la frappe dans la recherche du site)
 - Le 21/11 vers 17 h 45, ces deux changements sont partis en prod pendant le marché, puis ont été retirés à la demande d'Alexandra (`cfb4c44`). Elle a demandé de les remettre à 22 h : la mise en ligne de `39b3445` est programmée sur le PC de Claude (archive faite à 17 h 53). La migration 0113 est déjà en prod.
 - **Couleurs des personnages** (BO › Personnages › Dessin) : chaque couleur a sa liste, à laquelle on ajoute ou retire des couleurs (« + Ajouter » part de son nuancier, 10 au plus). Sans liste, c'est le nuancier, comme avant.
 - **Après la mise en ligne, essayer** :
