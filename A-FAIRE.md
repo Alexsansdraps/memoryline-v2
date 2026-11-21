@@ -1,10 +1,44 @@
-# À faire — Memory Line (à jour le 20/11)
+# À faire — Memory Line (à jour le 21/11)
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 20/11, 22 h 40 : tout `main` est en ligne
+## 0. État au 21/11, 3 h 30 : tout `main` est en ligne
 
 ### 0.1 En ligne
+- **Tout `main` jusqu'à `0819969`**, mis en ligne le 21/11 à 3 h 16, marché fermé : aucune commande, aucune création IA, aucun panier en cours depuis la dernière vente du stand (SAL-0012, 20/11 à 20 h 25). Pas de migration : la prod reste à 0112.
+- **Ce que ça a ajouté** :
+  - `0819969` : **personnages et muret sur l'affiche « à partir de votre photo »**, au site et sur la tablette. Le détail est dans le message du commit et dans `docs/plan-personnages-affiches-photo.md`.
+    - **Choix faits par défaut, à confirmer par Alexandra** :
+      - pas de supplément de prix ;
+      - un seul muret, celui du type d'affiche « De dos » (à défaut `muret_officiel.svg`) ;
+      - deux boutons : « Assis sur le muret » (vus de dos) d'abord, puis « Debout, de face » (sans muret) ;
+      - portrait seulement, placement automatique ;
+      - les personnages suivent « Générer une autre version ».
+    - Sans personnage, la ligne de panier est celle d'avant, au caractère près (vérifié contre HEAD).
+    - Le serveur contrôle les lignes avec personnages (`ia-composition.ts`) et ne touche à aucune autre. L'empreinte d'impression n'a pas bougé : aucune réimpression.
+    - Aussi : `GET /backgrounds` ne propose plus le décor d'une fiche en BROUILLON. Même règle à l'écran « Décors des affiches » et pour les affiches de démo.
+    - Aussi : `mettre-en-ligne.sh` échoue (code 1, fin du journal du service, dernière ligne « le site est EN PANNE ») quand le site ou l'API ne répondent toujours pas après une minute et demie.
+  - `8afd173` : la facture d'une fiche commande ne se NUMÉROTE plus depuis un lien venu d'ailleurs (garde `Sec-Fetch-Site`, comme pour le ZIP). Une facture déjà numérotée se rouvre d'où que ce soit.
+- **Vérifié avant la mise en ligne** :
+  - tsc de l'API, du module et du site (seulement les 3 erreurs anciennes de StandSalon) ;
+  - tests de l'API : 504 réussis, 0 échec ;
+  - construction de production du site ;
+  - bancs navigateur : module classique identique à HEAD, parcours avec personnages au site et au stand ;
+  - relecture indépendante en 5 angles : aucun constat bloquant ni important ; les 2 mineurs sont corrigés.
+- **Vérifié après la mise en ligne** :
+  - le script a fini par « Mise en ligne terminée » (code 0), avec la sauvegarde faite avant, et son nouveau contrôle a vu le site et l'API répondre ;
+  - pages : l'accueil, `/affiches`, l'affiche photo (site et `?stand=1`), une affiche classique et `/commande` répondent 200 ; `/panier` renvoie vers `/commande` (302), comme avant ;
+  - API : `/health` répond, base comprise. `/views` donne le muret du type « De dos » (`/assets/muret_officiel.svg`). `/backgrounds` rend 250 décors comme avant (aucune fiche en brouillon n'en a), et 1 pour l'affiche n° 1 ;
+  - le morceau PersonnagesIA est servi (200), et AfficheIA pèse 46,8 Ko, comme la construction locale ;
+  - sans session, l'admin et `facture.pdf` répondent 401 ; les `frame-ancestors` n'ont pas changé ;
+  - les journaux de l'API et du site depuis le redémarrage ne montrent aucune erreur ;
+  - **pas fait** : un ajout au panier avec personnages en prod. Le contrôle de sécurité de Claude a refusé l'appel, alors même qu'il devait être refusé par le serveur sans rien écrire. C'est le premier essai sur la tablette qui le fera.
+- **À vérifier par Alexandra avant l'ouverture du marché** (Claude n'a pas de session au BO) :
+  - **BO** : Créer des fonds s'ouvre ; les deux boutons d'Affiches IA ; « Factures » dans Ventes stand ; « Éditer la facture » sur une fiche commande (le bouton doit toujours marcher) ;
+  - **sur la tablette** : une affiche à partir d'une photo avec « Assis sur le muret » et 1 ou 2 personnages, jusqu'au panier du stand, sans valider la vente ; regarder la vignette ;
+  - **première vraie commande avec personnages** : ouvrir son PDF au BO, et vérifier le muret et les personnages.
+
+### 0.1 bis Mise en ligne précédente
 - **Tout `main` jusqu'à `4eaf9d2`**, mis en ligne le 20/11 à 22 h 35, marché fermé.
   - Migrations 0111 et 0112 passées.
   - Proxy relancé pour le nouveau `Caddyfile.prod` : `frame-ancestors 'none'` partout, `'self'` sur `/atelier-affiche` (vérifié).
@@ -32,12 +66,17 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
   - les deux boutons d'Affiches IA s'affichent ;
   - « Factures » apparaît dans Ventes stand.
 
-### 0.2 Reste de la relecture (mineurs, non faits)
-- **Décor d'une fiche en brouillon** : une fiche produit en BROUILLON (« Créer une fiche produit ») livre son décor par `GET /backgrounds?productId=…`.
-  - Cette route est publique, et les identifiants se suivent.
-  - Ce décor est l'image IA en pleine définition, sans filigrane.
-  - À faire : écarter les décors des produits en brouillon. Vérifier d'abord que l'aperçu du BO ne passe pas par cette route.
-- **Facture de la fiche** : `/admin/orders/:id/facture.pdf` n'a pas la garde `Sec-Fetch-Site` du ZIP.
+### 0.2 Restes (mineurs, non faits)
+- **Personnages sur l'affiche photo** :
+  - sur téléphone (390 px), le fond grisé de la fenêtre peut défiler d'environ 300 px et cacher la croix. C'était déjà le cas avant les personnages ;
+  - à la caisse, la phrase d'un refus s'affiche dans la zone d'erreur générale, loin de la ligne, comme les autres erreurs de ligne ;
+  - « Debout, de face » : les personnages peuvent sembler flotter sur certaines photos. À juger sur quelques essais ;
+  - avec des personnages, le grand aperçu recadre l'image (environ 6 % de la hauteur), comme l'impression ;
+  - une génération ajoutée depuis un AUTRE panier (nouvel essai « panier_clos ») ne reçoit pas `paidAt` au paiement : c'était déjà le cas avant ;
+  - pas encore testé : Safari et la vraie tablette ;
+  - des numéros de ligne périmés dans les commentaires d'`apps/api/src/affiches-demo-tirage.ts`, qui citent `packages/configurator/src/index.tsx` (décalé d'environ 45 lignes ; les fonctions sont nommées).
+- **Banc de recette des personnages** : `apps/web/.harnais-persos/`, exclu de git. Il monte les vrais îlots sur une API simulée.
+  - On le lance par l'entrée « harnais-persos » de `memory-line/.claude/launch.json`, ou par `node apps/web/.harnais-persos/demarrer.mjs` (port 5199).
 - **Types du BO** : ajouter à `apps/admin/src/lib/api.ts` les champs `plafondFonds` (catalogue des fonds) et `fonds` (stats IA). Ils sont typés dans les pages pour l'instant.
 - **Tests des fonds** : il manque un test sur base de la réservation du coût et de la séparation affiches / fonds.
 - **Clé OpenAI partagée** : les fonds et les affiches des clients passent par la même clé, donc par la même limite de cadence. Lancer les gros lots de fonds hors des heures du marché.
@@ -54,26 +93,11 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
   - pas de bandeau cookies sur la tablette ;
   - en-tête compact sous 1280 px.
 
-### 0.4 Prochain chantier : personnages et muret sur les affiches « à partir de votre photo »
-Alexandra, le 20/11 : « faut pouvoir ajouter personnages et murets si les gens veulent pour les images à partir de leurs photos ». Le plan complet est dans `docs/plan-personnages-affiches-photo.md`, avec les fichiers, les tests, les pièges et 11 questions.
-
-**Le principe** :
-- Une fois l'image créée (en portrait), un bloc facultatif propose « Assis sur le muret » (de dos) ou « Debout, de face ».
-- Le module de personnalisation s'ouvre sur la seule étape « Personnages », avec l'image filigranée comme fond.
-- AfficheIA reste maître de la ligne de panier : textes déplacés, format, quantité.
-- L'impression sait déjà poser le muret et les personnages. Ne toucher ni `pdf.ts`, ni `fichiers-impression.ts`, ni `packages/types` (empreinte LANCEMENT).
-
-**À poser à Alexandra avant de coder** (recommandations entre parenthèses) :
-1. Un supplément de prix ? (non)
-2. Quels murets ? (un seul, celui du type « De dos », `muret_officiel.svg`)
-3. « Assis sur le muret » ET « Debout, de face » ? (les deux, le muret en premier)
-
-**Retenu sans question** : portrait seulement, placement automatique, personnages gardés d'une version à l'autre, pas de muret sans personnage.
-
-**Indispensables au serveur** :
-- `ia-composition.ts`, qui contrôle la ligne IA au POST et au PUT du panier ;
-- `apercus.ts`, avec la règle « iaComposee » ;
-- le correctif du rattachement dans `ia.ts`, pour deux lignes qui portent le même `aiPublicId`.
+### 0.4 Personnages sur l'affiche photo : FAIT et en ligne (21/11)
+Voir 0.1 : les trois choix faits par défaut (prix, muret, boutons) attendent la confirmation d'Alexandra.
+- Changer les boutons ne touche que le site (AfficheIA, PersonnagesIA).
+- Un autre muret doit être celui d'un type d'affiche ou de la fiche, sinon le serveur le retire (`ia-composition.ts`, décors permis).
+- Un supplément de prix demanderait aussi le serveur, qui calcule le prix de la ligne (`resolvePrixLigne`).
 
 ### 0.5 Après la mise en ligne
 - **Premier vrai essai de « Créer des fonds » avec Margaux** (le faux dessinateur est ignoré en production) :
