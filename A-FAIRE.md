@@ -4,8 +4,9 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 0. État au 21/11, 6 h : tout `main` est en ligne
 
-### 0.0 PAS ENCORE EN LIGNE : `6d7fda8`, relais photo par QR code sur le site classique
-- **À mettre en ligne le 21/11 après 20 h** (marché fermé), avec l'accord d'Alexandra. La migration 0113 part avec l'API et le site, en une seule fois.
+### 0.0 PROGRAMMÉ À 22 H LE 21/11 : `39b3445` (relais photo du site + couleurs propres des personnages)
+- Le 21/11 vers 17 h 45, ces deux changements sont partis en prod pendant le marché, puis ont été retirés à la demande d'Alexandra (`cfb4c44`). Elle a demandé de les remettre à 22 h : la mise en ligne de `39b3445` est programmée sur le PC de Claude (archive faite à 17 h 53). La migration 0113 est déjà en prod.
+- **Couleurs des personnages** (BO › Personnages › Dessin) : chaque couleur a sa liste, à laquelle on ajoute ou retire des couleurs (« + Ajouter » part de son nuancier, 10 au plus). Sans liste, c'est le nuancier, comme avant.
 - **Après la mise en ligne, essayer** :
   - sur un ordinateur, l'affiche photo puis « Envoyer la photo depuis votre téléphone » : le QR code s'affiche sans code de stand, et la photo arrive ;
   - sur la tablette du stand, le relais comme avant.
