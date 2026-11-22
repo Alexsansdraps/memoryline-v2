@@ -372,6 +372,20 @@ function dateDite(stand: StandBo): string {
   return cree ? `Créé le ${cree}.` : "";
 }
 
+/**
+ * Aujourd'hui à Paris (« 2026-11-22 ») : les jours d'avant ne se montrent
+ * plus dans le calendrier d'un stand (22/11, Alexandra : « enlève les dates
+ * passées dans le calendrier du stand »). Leurs lignes restent dans le
+ * formulaire, masquées : enregistrer ne doit pas changer un jour passé (une
+ * ligne absente repartirait « Avec pause »).
+ */
+const aujourdHui = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Paris",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(new Date());
+
 /** « ven. 20 nov. » : un jour du calendrier, court. */
 function jourCourt(j: string): string {
   return new Intl.DateTimeFormat("fr-FR", {
@@ -951,15 +965,18 @@ const classeBouton =
                             : { md: m?.de, ma: m?.a, ad: am?.de, aa: am?.a };
                         // Ce que la ligne montre selon son choix (VISIBLES).
                         const cache = (champ: string) => !VISIBLES[genre]!.includes(champ);
+                        // Un jour passé : masqué, et hors des cases « Cocher ».
+                        const passe = j < aujourdHui;
                         return (
                           <tr
                             class={`border-t border-bo-border ${genre === "ferme" ? "bg-bo-bg text-bo-muted" : ""}`}
                             data-ligne-horaires
+                            hidden={passe}
                           >
                             <td class="px-2 py-1">
                               <input
                                 type="checkbox"
-                                data-coche-jour
+                                data-coche-jour={passe ? undefined : ""}
                                 data-jour-semaine={((new Date(`${j}T12:00:00Z`).getUTCDay() + 6) % 7) + 1}
                                 aria-label={`Cocher le ${jourCourt(j)}`}
                               />
