@@ -4,6 +4,11 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 0. État au 21/11, 6 h : tout `main` est en ligne
 
+### 0.00 EN LIGNE DEPUIS LE 22/11 À 21 H 15 : `a3bd8e8`
+- BO › Ventes stand : le calendrier d'un stand ne montre plus les jours passés (leurs réglages restent, masqués).
+- Affiche à partir d'une photo : la grille des styles choisit son nombre de colonnes (4 styles : une ligne de 4, ou 2 × 2 sur téléphone).
+- Vérifié : pages du site, du stand et du BO, l'API répond, le code servi porte la grille, aucune erreur dans les journaux.
+
 ### 0.0 EN LIGNE DEPUIS LE 21/11 À 21 H 28 : `97434ee` (relais photo du site, couleurs propres des personnages, plus de suggestions pendant la frappe dans la recherche du site)
 - Mise en ligne avancée à 21 h 28 à la demande d'Alexandra (marché fermé, aucune activité). Vérifié après : pages du site, du stand et du BO, API (base comprise), le code servi porte le relais du site, 113 migrations, aucune erreur dans les journaux.
 - Le 21/11 vers 17 h 45, ces deux changements sont partis en prod pendant le marché, puis ont été retirés à la demande d'Alexandra (`cfb4c44`). Elle a demandé de les remettre à 22 h : la mise en ligne de `39b3445` est programmée sur le PC de Claude (archive faite à 17 h 53). La migration 0113 est déjà en prod.
