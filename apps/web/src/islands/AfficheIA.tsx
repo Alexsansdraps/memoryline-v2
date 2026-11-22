@@ -262,6 +262,26 @@ const TRAITS_PERSONNAGES: Record<"back" | "front", () => JSX.Element> = {
   ),
 };
 
+/**
+ * Le nombre de colonnes d'une grille de `n` cartes : `max` ou `max - 1`,
+ * celui qui laisse le moins de cases vides sur la dernière ligne, le plus
+ * large à égalité. Grand écran (4) : 4 → 4, 5 → 3 + 2, 6 → 3 + 3, 7 → 4 + 3 ;
+ * téléphone (3) : 4 → 2 × 2. Jamais moins de `max - 1` : une ou deux cartes
+ * gardent leur taille au lieu de remplir toute la largeur.
+ */
+function colonnesDesStyles(n: number, max: number): number {
+  let meilleur = max;
+  let vides = Infinity;
+  for (let c = max; c >= max - 1; c--) {
+    const v = (c - (n % c)) % c;
+    if (v < vides) {
+      vides = v;
+      meilleur = c;
+    }
+  }
+  return meilleur;
+}
+
 /** La case d'un style qui n'a pas encore d'image d'exemple. */
 function AttenteStyle(props: { titre: string }): JSX.Element {
   return (
@@ -1654,7 +1674,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   {tr("ia.style_manquant")}
                 </p>
               </Show>
-              <div class="mt-3 grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3">
+              {/* Autant de colonnes qu'il faut pour remplir les lignes
+                  (22/11, Alexandra : « si elle en rajoute, que ça fasse pas
+                  moche ») : quatre styles en ligne, ou deux par deux sur
+                  téléphone, plutôt que trois et un tout seul dessous. */}
+              <div
+                class="mt-3 grid grid-cols-[repeat(var(--colonnes-tel),minmax(0,1fr))] gap-3 sm:grid-cols-[repeat(var(--colonnes),minmax(0,1fr))]"
+                style={{
+                  "--colonnes": String(colonnesDesStyles(styles().length, 4)),
+                  "--colonnes-tel": String(colonnesDesStyles(styles().length, 3)),
+                }}
+              >
                 <For each={styles()}>
                   {(st) => {
                     const actif = () => styleChoisi() === st.id;
