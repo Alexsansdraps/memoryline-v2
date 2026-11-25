@@ -665,6 +665,7 @@ async function editerImage(
    * de la consigne ; la photo du client reste IMAGE 1.
    */
   references: { nom: string; donnees: Buffer }[] = [],
+  surUsage?: (usage: UsageOpenAI | null) => void,
 ): Promise<Buffer> {
   // L'ORDRE fait le sens : la photo d'abord, c'est elle qui porte la scène.
   // Une référence en premier ferait recopier son contenu, et le client
@@ -679,6 +680,7 @@ async function editerImage(
     taille,
     qualite,
     fidelite,
+    surUsage,
   );
 }
 
@@ -687,6 +689,51 @@ export interface ImageEnvoyee {
   nom: string;
   donnees: Buffer;
   type: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Le vrai coût d'une image (25/11)                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Ce qu'OpenAI dit avoir consommé pour une image : il le renvoie avec elle
+ * (`usage`). Le BO comptait 8 c par image, un chiffre fixe jamais recalé ;
+ * une affiche en haute qualité, avec la photo en haute fidélité, coûte
+ * plusieurs fois plus — et le plafond du mois, calculé sur ces 8 c, ne
+ * protégeait plus rien (le crédit s'est vidé le 25/11 au soir).
+ */
+export interface UsageOpenAI {
+  input_tokens?: number;
+  output_tokens?: number;
+  input_tokens_details?: { text_tokens?: number; image_tokens?: number };
+}
+
+/**
+ * Prix en dollars par MILLION de tokens, tels qu'OpenAI les publie (relevés
+ * le 25/11 pour gpt-image-2 : texte envoyé 5 $, image envoyée 8 $, image
+ * produite 30 $). Un modèle absent d'ici garde l'estimation du réglage.
+ */
+const PRIX_PAR_MILLION: Record<string, { texte: number; imageEntree: number; sortie: number }> = {
+  "gpt-image-2": { texte: 5, imageEntree: 8, sortie: 30 },
+  "gpt-image-1": { texte: 5, imageEntree: 10, sortie: 40 },
+};
+/** Dollars → euros, arrondi prudent (le BO compte en euros). */
+const EUROS_PAR_DOLLAR = 0.9;
+
+/**
+ * Le coût réel d'une image, en centimes d'euro, d'après sa consommation ;
+ * null si on ne sait pas le calculer (modèle inconnu, réponse sans `usage`).
+ */
+export function coutReelCents(modele: string, usage: UsageOpenAI | null | undefined): number | null {
+  const prix = PRIX_PAR_MILLION[modele.replace(/-\d{4}-\d{2}-\d{2}$/, "")];
+  if (!prix || !usage) return null;
+  const entree = Number(usage.input_tokens ?? 0);
+  const sortie = Number(usage.output_tokens ?? 0);
+  if (!Number.isFinite(entree) || !Number.isFinite(sortie) || entree + sortie <= 0) return null;
+  const images = Number(usage.input_tokens_details?.image_tokens ?? 0);
+  const texte = Number(usage.input_tokens_details?.text_tokens ?? Math.max(0, entree - images));
+  const dollars = (texte * prix.texte + images * prix.imageEntree + sortie * prix.sortie) / 1_000_000;
+  return Math.max(1, Math.round(dollars * EUROS_PAR_DOLLAR * 100));
 }
 
 /**
@@ -707,6 +754,8 @@ export async function editerImages(
   taille: string,
   qualite: string,
   fidelite: string,
+  /** Reçoit ce qu'OpenAI dit avoir consommé (25/11), pour le vrai coût. */
+  surUsage?: (usage: UsageOpenAI | null) => void,
 ): Promise<Buffer> {
   if (!images.length) throw new Error("Aucune image à envoyer au modèle");
   const envoyer = async (avecOptions: boolean): Promise<Response> => {
@@ -746,7 +795,9 @@ export async function editerImages(
 
   const json = (await res.json()) as {
     data?: { b64_json?: string; url?: string }[];
+    usage?: UsageOpenAI;
   };
+  surUsage?.(json.usage ?? null);
   const premiere = json.data?.[0];
   if (premiere?.b64_json) return Buffer.from(premiere.b64_json, "base64");
   if (premiere?.url) {
@@ -1652,6 +1703,8 @@ export function mountIaRoutes(app: Hono): void {
       .returning();
 
     try {
+      // Ce qu'OpenAI dira avoir consommé, pour le vrai coût (25/11).
+      let usageOpenAI: UsageOpenAI | null = null;
       const pleine = await editerImage(
         photo,
         nomPhoto,
@@ -1673,6 +1726,9 @@ export function mountIaRoutes(app: Hono): void {
         ENVOYER_LES_EXEMPLES_DE_STYLE
           ? ((await imagesDuStyle(style?.images)) ?? (await referencesDeStyle()))
           : [],
+        (u) => {
+          usageOpenAI = u;
+        },
       );
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
@@ -1688,7 +1744,9 @@ export function mountIaRoutes(app: Hono): void {
           status: "prete",
           previewPath: apercu,
           fullPath: `ia/${nomPleine}`,
-          costCents: reg["ia.coutParImageCents"],
+          // Le vrai coût, d'après ce qu'OpenAI a consommé (25/11) ; à
+          // défaut, l'estimation du réglage, comme avant.
+          costCents: coutReelCents(reg["ia.modele"], usageOpenAI) ?? reg["ia.coutParImageCents"],
         })
         .where(eq(schema.aiGenerations.id, ligne!.id));
 
