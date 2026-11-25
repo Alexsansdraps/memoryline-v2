@@ -4,6 +4,13 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 0. État au 21/11, 6 h : tout `main` est en ligne
 
+### 0.000 PROGRAMMÉ LE 25/11 À 20 H 15 (`main` à cette heure-là) : les affiches IA
+- **Le bon prompt** : un style qui a sa consigne part avec elle seule ; la consigne générale (« Prompt universel ») ne sert plus que pour une affiche sans style. ⚠ Une règle qui n'était que dans la consigne générale (pas de texte, format…) doit être recopiée dans la consigne de chaque style, au BO.
+- **Plus d'images d'exemple envoyées au modèle** : seule la photo de la cliente part (les résultats recopiaient d'anciennes créations). Pour revenir en arrière : `ENVOYER_LES_EXEMPLES_DE_STYLE` dans apps/api/src/ia.ts.
+- **Plus de crédit OpenAI** (le 25/11 à 19 h 02) : message clair au site (« momentanément suspendue »), mail d'alerte à la boutique (au plus toutes les 3 h), refus immédiat pendant 5 min.
+- **Vrai coût par image** dans le BO, d'après la consommation renvoyée par OpenAI (gpt-image-2 : 5 / 8 / 30 $ le million de tokens, × 0,9 pour l'euro). Les images d'avant gardent leur estimation de 8 c.
+- **Compte OpenAI** : la clé de la boutique est sur le compte agence.glowup@gmail.com (« Margauxrd »). Margaux a rechargé le 25/11 vers 19 h 10, mais le crédit était presque aussitôt épuisé : à recharger d'un vrai montant, et activer la recharge automatique.
+
 ### 0.00 EN LIGNE DEPUIS LE 22/11 À 21 H 15 : `a3bd8e8`
 - BO › Ventes stand : le calendrier d'un stand ne montre plus les jours passés (leurs réglages restent, masqués).
 - Affiche à partir d'une photo : la grille des styles choisit son nombre de colonnes (4 styles : une ligne de 4, ou 2 × 2 sur téléphone).
