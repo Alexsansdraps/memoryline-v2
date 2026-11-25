@@ -756,8 +756,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         return tr("ia.err.rafale");
       case "plafond":
         return tr("ia.err.plafond");
-      // Plus de crédit chez OpenAI (25/11) : au stand, la vendeuse sait quoi
-      // faire ; sur le site, la cliente sait que ce n'est pas sa photo.
+      // Plus de crédit chez OpenAI (25/11). Jamais dit à la cliente (Alexandra :
+      // « faut pas le dire au client ») : au stand, elle est invitée à voir le
+      // vendeur ; sur le site, à réessayer plus tard. La boutique, elle, est
+      // prévenue par courrier (alerterCreditEpuise, côté API).
       case "credit":
         return tr(props.stand ? "ia.err.credit_stand" : "ia.err.credit");
       case "generation":

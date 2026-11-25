@@ -217,9 +217,9 @@ export const ui = {
     "ia.err.plafond":
       "La création d'affiches est momentanément suspendue. Réessayez plus tard, ou écrivez-nous.",
     "ia.err.credit":
-      "La création d'affiches est momentanément indisponible : notre service d'images n'a plus de crédit. Nous sommes prévenus, réessayez un peu plus tard.",
+      "La création d'affiches est momentanément indisponible. Réessayez un peu plus tard, ou écrivez-nous.",
     "ia.err.credit_stand":
-      "Plus de crédit pour les images (OpenAI) : aucune affiche ne peut être créée. Prévenez Margaux pour qu'elle recharge le compte.",
+      "La création d'affiches est momentanément indisponible. Rapprochez-vous du vendeur.",
     "ia.err.generation":
       "La création n'a pas abouti. Relancez : cela passe souvent au deuxième essai. Sinon, essayez une autre photo.",
     "ia.err.attente":
@@ -1088,9 +1088,9 @@ export const ui = {
     "ia.err.plafond":
       "Poster creation is paused for the moment. Try again later, or write to us.",
     "ia.err.credit":
-      "Poster creation is temporarily unavailable: our image service has run out of credit. We've been notified — please try again a little later.",
+      "Poster creation is temporarily unavailable. Please try again a little later, or contact us.",
     "ia.err.credit_stand":
-      "No credit left for images (OpenAI): no poster can be created. Let Margaux know so she can top up the account.",
+      "Poster creation is temporarily unavailable. Please ask the seller.",
     "ia.err.generation":
       "The poster couldn't be created. Try again — it often works on the second attempt. Otherwise, try another photo.",
     "ia.err.attente":
@@ -1905,9 +1905,9 @@ export const ui = {
     "ia.err.plafond":
       "Die Postererstellung ist vorübergehend ausgesetzt. Versuchen Sie es später erneut oder schreiben Sie uns.",
     "ia.err.credit":
-      "Die Postererstellung ist vorübergehend nicht verfügbar: Unser Bilddienst hat kein Guthaben mehr. Wir sind informiert – bitte versuchen Sie es etwas später erneut.",
+      "Die Postererstellung ist vorübergehend nicht verfügbar. Bitte versuchen Sie es etwas später erneut oder schreiben Sie uns.",
     "ia.err.credit_stand":
-      "Kein Guthaben mehr für Bilder (OpenAI): Es kann kein Poster erstellt werden. Sagen Sie Margaux Bescheid, damit sie das Konto auflädt.",
+      "Die Postererstellung ist vorübergehend nicht verfügbar. Bitte wenden Sie sich an den Verkäufer.",
     "ia.err.generation":
       "Das Poster konnte nicht erstellt werden. Starten Sie erneut – beim zweiten Versuch klappt es oft. Sonst probieren Sie ein anderes Foto.",
     "ia.err.attente":
@@ -2728,9 +2728,9 @@ export const ui = {
     "ia.err.plafond":
       "La creazione dei poster è sospesa per il momento. Riprova più tardi, oppure scrivici.",
     "ia.err.credit":
-      "La creazione dei poster è momentaneamente non disponibile: il nostro servizio di immagini ha esaurito il credito. Siamo stati avvisati, riprova un po' più tardi.",
+      "La creazione dei poster è momentaneamente non disponibile. Riprova un po' più tardi, oppure scrivici.",
     "ia.err.credit_stand":
-      "Credito esaurito per le immagini (OpenAI): non si può creare nessun poster. Avvisa Margaux perché ricarichi l'account.",
+      "La creazione dei poster è momentaneamente non disponibile. Rivolgiti al venditore.",
     "ia.err.generation":
       "La creazione non è riuscita. Rilancia: spesso funziona al secondo tentativo. Altrimenti prova un'altra foto.",
     "ia.err.attente":
@@ -3543,9 +3543,9 @@ export const ui = {
     "ia.err.plafond":
       "La creación de láminas está suspendida por el momento. Inténtalo más tarde, o escríbenos.",
     "ia.err.credit":
-      "La creación de láminas no está disponible por el momento: nuestro servicio de imágenes se ha quedado sin crédito. Ya estamos avisados, vuelve a intentarlo un poco más tarde.",
+      "La creación de láminas no está disponible por el momento. Vuelve a intentarlo un poco más tarde, o escríbenos.",
     "ia.err.credit_stand":
-      "Sin crédito para las imágenes (OpenAI): no se puede crear ninguna lámina. Avisa a Margaux para que recargue la cuenta.",
+      "La creación de láminas no está disponible por el momento. Dirígete al vendedor.",
     "ia.err.generation":
       "La creación no ha salido. Vuelve a lanzarla: suele funcionar al segundo intento. Si no, prueba con otra foto.",
     "ia.err.attente":
@@ -4334,9 +4334,9 @@ export const ui = {
     "ia.err.rafale": "短時間にリクエストが集中しています。1分ほど待ってから、もう一度お試しください。",
     "ia.err.plafond": "ポスターの作成を一時的に停止しています。しばらくしてからもう一度お試しいただくか、お問い合わせください。",
     "ia.err.credit":
-      "現在、ポスターを作成できません。画像サービスのクレジットが不足しています。担当者に通知済みですので、しばらくしてからもう一度お試しください。",
+      "現在、ポスターを作成できません。しばらくしてからもう一度お試しいただくか、お問い合わせください。",
     "ia.err.credit_stand":
-      "画像用のクレジット（OpenAI）がありません。ポスターを作成できません。アカウントのチャージをMargauxに依頼してください。",
+      "現在、ポスターを作成できません。販売スタッフにお声がけください。",
     "ia.err.generation": "作成できませんでした。もう一度お試しください。2回目でうまくいくことがよくあります。それでも難しい場合は、別の写真をお試しください。",
     "ia.err.attente": "ポスターの作成に予想より時間がかかっています。もう一度作成してください。",
     "ia.err.inconnu": "問題が発生しました。もう一度作成してください。",
@@ -5010,9 +5010,9 @@ export const ui = {
     "ia.err.rafale": "请求过于频繁。请等待一分钟后重试。",
     "ia.err.plafond": "海报制作功能暂时暂停。请稍后重试，或给我们留言。",
     "ia.err.credit":
-      "海报制作暂时无法使用：我们的图片服务额度已用完。我们已收到通知，请稍后再试。",
+      "海报制作暂时无法使用。请稍后再试，或给我们留言。",
     "ia.err.credit_stand":
-      "图片额度（OpenAI）已用完：无法制作海报。请通知 Margaux 为账户充值。",
+      "海报制作暂时无法使用。请联系店员。",
     "ia.err.generation": "制作未能完成。请重试：通常第二次就能成功。否则请换一张照片。",
     "ia.err.attente": "海报制作时间比预期更长。请重新生成。",
     "ia.err.inconnu": "出了点问题。请重新生成。",
