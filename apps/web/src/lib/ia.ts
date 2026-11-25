@@ -29,6 +29,8 @@ export type EchecIA =
   | "trop_lourde"
   | "rafale"
   | "plafond"
+  /** Plus de crédit chez OpenAI (25/11) : le serveur le dit (creditEpuise). */
+  | "credit"
   | "generation"
   | "attente"
   | "inconnu";
@@ -269,7 +271,15 @@ export async function genererAffiche(entree: {
   } catch {
     throw new ErreurIA("indisponible");
   }
-  if (!reponse.ok) throw new ErreurIA(causeDuStatut(reponse.status));
+  if (!reponse.ok) {
+    // Plus de crédit chez OpenAI (25/11) : un message à lui, pas celui du
+    // plafond du mois — la boutique doit savoir quoi faire.
+    if (reponse.status === 402) {
+      const corps = (await reponse.json().catch(() => null)) as { creditEpuise?: boolean } | null;
+      if (corps?.creditEpuise) throw new ErreurIA("credit");
+    }
+    throw new ErreurIA(causeDuStatut(reponse.status));
+  }
 
   const data = (await reponse
     .json()
