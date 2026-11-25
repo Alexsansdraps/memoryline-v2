@@ -269,6 +269,13 @@ const REFERENCES_MAX = 3;
 const STYLE_IMAGES_MAX = 5;
 
 /**
+ * Les images d'exemple d'un style partent-elles au modèle avec la photo ?
+ * Non depuis le 25/11 : les résultats ressemblaient aux exemples (voir
+ * l'appel, dans /ia/generer). Vrai pour revenir à l'ancien comportement.
+ */
+const ENVOYER_LES_EXEMPLES_DE_STYLE = false;
+
+/**
  * Les images de style à envoyer, dans l'ordre.
  *
  * L'ordre compte : la consigne parle d'IMAGE 2, IMAGE 3 et IMAGE 4. On les
@@ -1646,7 +1653,17 @@ export function mountIaRoutes(app: Hono): void {
         reg["ia.fidelite"],
         // Les images du style choisi ; à défaut, celles du dossier du
         // serveur, qui restent le repli des affiches sans style.
-        (await imagesDuStyle(style?.images)) ?? (await referencesDeStyle()),
+        //
+        // PLUS ENVOYÉES au modèle (25/11, Alexandra : « il faudrait que les
+        // prompts ne reprennent pas les images d'avant… je retrouve des
+        // similitudes sur les résultats ») : ces images d'exemple sont
+        // d'anciennes créations, et le modèle en recopiait les scènes. Elles
+        // restent sur les cartes des styles, au site. Seule la photo de la
+        // cliente part avec la consigne — que les consignes appellent déjà
+        // « la référence ».
+        ENVOYER_LES_EXEMPLES_DE_STYLE
+          ? ((await imagesDuStyle(style?.images)) ?? (await referencesDeStyle()))
+          : [],
       );
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
