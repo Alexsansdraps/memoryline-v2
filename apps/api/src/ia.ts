@@ -1601,12 +1601,21 @@ export function mountIaRoutes(app: Hono): void {
         ? reg["ia.taille"]
         : DEFAUTS["ia.taille"];
 
+    // LE BON PROMPT (25/11, Alexandra : « il faut que ça prenne le bon
+    // prompt ») : un style qui a sa consigne part avec ELLE SEULE. La consigne
+    // générale (« Prompt universel », BO › Affiches IA) passait avant elle à
+    // chaque création — 12 800 caractères, puis ceux du style : deux
+    // consignes mêlées, que le modèle mélangeait. Elle ne sert plus que de
+    // repli, pour une affiche sans style (ou un style sans consigne).
+    const consigneDuStyle = (style?.prompt ?? "").trim();
     const consigne = ajouterDemandeClient(
       [
-        appliquerVariables(reg["ia.stylePrompt"], {
-          OUTPUT_FORMAT: paysage ? "A3 horizontal (landscape) poster" : "A3 vertical poster",
-          CUSTOMER_REQUEST: precision,
-        }),
+        consigneDuStyle
+          ? ""
+          : appliquerVariables(reg["ia.stylePrompt"], {
+              OUTPUT_FORMAT: paysage ? "A3 horizontal (landscape) poster" : "A3 vertical poster",
+              CUSTOMER_REQUEST: precision,
+            }),
         produit.aiStylePrompt ?? "",
         // Le style choisi vient APRÈS celui de l'affiche : de deux consignes
         // qui se contrediraient, c'est celle que la cliente a choisie qui doit
