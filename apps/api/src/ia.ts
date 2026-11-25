@@ -51,6 +51,7 @@ import {
   appliquerVariables,
 } from "./ia-style.js";
 import { CLE_PLAFOND_FONDS, plafondDesFonds } from "./fonds-ia-consigne.js";
+import { envoyer } from "./mail.js";
 
 /** Mêmes assets que le reste de l'API (cf. ASSETS_DIR dans index.ts). */
 const ASSETS_DIR = resolve(fileURLToPath(import.meta.url), "../../../../data/assets");
@@ -116,6 +117,105 @@ const DEFAUTS = {
 
 type CleReglage = keyof typeof DEFAUTS;
 type Reglages = { [K in CleReglage]: (typeof DEFAUTS)[K] };
+
+/* -------------------------------------------------------------------------- */
+/*  Plus de crédit chez OpenAI (25/11)                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Le compte OpenAI n'a plus de crédit : la réponse d'OpenAI le dit ainsi
+ * (« insufficient_quota », « credit_balance_exhausted »).
+ *
+ * Le 25/11 au soir, au marché, les clientes ont vu « la création a échoué »
+ * et réessayaient pour rien (Alexandra : « mettre un message clair quand y'a
+ * plus de crédits, genre envoyer un mail à Margaux ! »). Désormais : 402, que
+ * le site traduit par « La création d'affiches est momentanément
+ * suspendue » ; une alerte par courrier à la boutique ; et, cinq minutes
+ * durant, les demandes suivantes sont refusées tout de suite au lieu de
+ * faire attendre une génération vouée à l'échec.
+ */
+const CREDIT_EPUISE = /insufficient_quota|credit_balance_exhausted|no credits/i;
+/** Après un refus faute de crédit, on ne réessaie pas OpenAI avant ce délai. */
+const ATTENTE_APRES_CREDIT_MS = 5 * 60_000;
+/** Une alerte au plus par période : pas un courrier par cliente bloquée. */
+const ALERTE_CREDIT_TOUS_LES_MS = 3 * 60 * 60_000;
+const CLE_ALERTE_CREDIT = "alerte.creditOpenAIEnvoyeeLe";
+const MESSAGE_SUSPENDU =
+  "La création d'affiches par IA est momentanément suspendue. Réessayez plus tard ou contactez-nous.";
+
+/** Un refus faute de crédit dans les cinq dernières minutes ? */
+async function creditEpuiseRecemment(): Promise<boolean> {
+  try {
+    const [g] = await db
+      .select({ erreur: schema.aiGenerations.erreur })
+      .from(schema.aiGenerations)
+      .where(
+        and(
+          eq(schema.aiGenerations.status, "echec"),
+          isNull(schema.aiGenerations.fondId),
+          gte(schema.aiGenerations.createdAt, new Date(Date.now() - ATTENTE_APRES_CREDIT_MS)),
+        ),
+      )
+      .orderBy(desc(schema.aiGenerations.createdAt))
+      .limit(1);
+    return CREDIT_EPUISE.test(String(g?.erreur ?? ""));
+  } catch {
+    return false;
+  }
+}
+
+/** L'adresse de la boutique pour ses alertes, comme les avis de commande. */
+function adresseDesAlertes(): string {
+  for (const brut of [process.env.MAIL_BOUTIQUE, process.env.CONTACT_TO, process.env.MAIL_BCC, process.env.MAIL_FROM]) {
+    const valeur = (brut ?? "").trim();
+    if (!valeur) continue;
+    const adresse = (valeur.match(/<([^>]+)>/)?.[1] ?? valeur).trim();
+    if (adresse.includes("@")) return adresse;
+  }
+  return process.env.MAIL_TEST_URL ? "boutique@memoryline.test" : "";
+}
+
+/**
+ * Prévient la boutique par courrier que le crédit OpenAI est épuisé — une
+ * fois toutes les trois heures au plus (la date du dernier envoi est gardée
+ * en base : un redémarrage n'en renvoie pas un). Ne lève jamais.
+ */
+async function alerterCreditEpuise(): Promise<void> {
+  try {
+    const a = adresseDesAlertes();
+    if (!a) return;
+    const [dernier] = await db
+      .select({ value: schema.settings.value })
+      .from(schema.settings)
+      .where(eq(schema.settings.key, CLE_ALERTE_CREDIT));
+    const le = typeof dernier?.value === "string" ? Date.parse(dernier.value) : NaN;
+    if (Number.isFinite(le) && Date.now() - le < ALERTE_CREDIT_TOUS_LES_MS) return;
+    const maintenant = new Date().toISOString();
+    await db
+      .insert(schema.settings)
+      .values({ key: CLE_ALERTE_CREDIT, value: maintenant, label: "Dernière alerte « plus de crédit OpenAI »" })
+      .onConflictDoUpdate({ target: schema.settings.key, set: { value: maintenant, updatedAt: new Date() } });
+    const lien = "https://platform.openai.com/settings/organization/billing/overview";
+    await envoyer({
+      to: a,
+      subject: "⚠️ Plus de crédit OpenAI : les affiches à partir d'une photo sont bloquées",
+      text: [
+        "Le compte OpenAI de la boutique n'a plus de crédit : plus aucune affiche à partir d'une photo ne peut être créée, au stand comme sur le site.",
+        `Pour relancer : ajoute du crédit sur ${lien} (compte agence.glowup@gmail.com). Les créations repartent toutes seules, sans rien redémarrer.`,
+        "Conseil : active la recharge automatique (Auto recharge) sur la même page, pour que ça ne coupe plus.",
+        "Les clientes voient pour l'instant « La création d'affiches est momentanément suspendue ». Ce courrier ne repart pas avant trois heures.",
+      ].join("\n\n"),
+      html: [
+        "<p><strong>Le compte OpenAI de la boutique n'a plus de crédit</strong> : plus aucune affiche à partir d'une photo ne peut être créée, au stand comme sur le site.</p>",
+        `<p>Pour relancer : <a href="${lien}">ajoute du crédit sur OpenAI</a> (compte agence.glowup@gmail.com). Les créations repartent toutes seules, sans rien redémarrer.</p>`,
+        "<p>Conseil : active la <strong>recharge automatique</strong> (Auto recharge) sur la même page, pour que ça ne coupe plus.</p>",
+        '<p style="color:#666">Les clientes voient pour l\'instant « La création d\'affiches est momentanément suspendue ». Ce courrier ne repart pas avant trois heures.</p>',
+      ].join(""),
+    });
+  } catch (e) {
+    console.error("[ia] alerte « plus de crédit » non envoyée :", e);
+  }
+}
 
 /** L'A3 couché : 420:297, deux multiples de 16. */
 const TAILLE_PAYSAGE = "2240x1584";
@@ -1413,6 +1513,12 @@ export function mountIaRoutes(app: Hono): void {
         503,
       );
 
+    // Plus de crédit chez OpenAI il y a moins de cinq minutes : on le dit
+    // tout de suite, plutôt que de faire attendre une génération vouée à
+    // l'échec (25/11).
+    if (await creditEpuiseRecemment())
+      return c.json({ error: MESSAGE_SUSPENDU, creditEpuise: true }, 402);
+
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const productId = Number(body.productId);
     const cartId = body.cartId ? String(body.cartId) : null;
@@ -1569,6 +1675,12 @@ export function mountIaRoutes(app: Hono): void {
         .set({ status: "echec", erreur: message.slice(0, 1000) })
         .where(eq(schema.aiGenerations.id, ligne!.id));
       console.error("Génération IA échouée (" + publicId + ") :", message);
+      // Plus de crédit : un message clair (402, « momentanément suspendue »
+      // sur le site) et la boutique prévenue par courrier (25/11).
+      if (CREDIT_EPUISE.test(message)) {
+        void alerterCreditEpuise();
+        return c.json({ publicId, status: "echec", error: MESSAGE_SUSPENDU, creditEpuise: true }, 402);
+      }
       return c.json(
         { publicId, status: "echec", error: "La création de l'affiche a échoué, réessayez." },
         502,
