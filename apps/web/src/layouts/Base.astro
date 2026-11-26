@@ -1329,6 +1329,40 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         document.addEventListener("keydown", function (e) {
           if (e.key === "Escape") fermerSauf(null);
         });
+        // Au survol de la souris, le menu s'ouvre tout seul (26/11, Alexandra :
+        // « faut au survol que ça s'affiche »). Il se referme un court instant
+        // après qu'on l'a quitté : le temps de traverser l'espace entre le
+        // titre et le panneau. Le doigt et le clavier gardent le toucher /
+        // Entrée. Ouvert par le survol, un clic sur le titre ne le referme pas
+        // sous la souris.
+        menus.forEach(function (m) {
+          var minuterie = 0;
+          var parSurvol = false;
+          m.addEventListener("pointerenter", function (e) {
+            if (e.pointerType !== "mouse") return;
+            clearTimeout(minuterie);
+            if (!m.open) {
+              parSurvol = true;
+              m.setAttribute("open", "");
+            }
+          });
+          m.addEventListener("pointerleave", function (e) {
+            if (e.pointerType !== "mouse") return;
+            clearTimeout(minuterie);
+            minuterie = setTimeout(function () {
+              m.removeAttribute("open");
+              parSurvol = false;
+            }, 250);
+          });
+          var titre = m.querySelector("summary");
+          if (titre)
+            titre.addEventListener("click", function (e) {
+              if (parSurvol && m.open) {
+                e.preventDefault();
+                parSurvol = false;
+              }
+            });
+        });
       })();
     </script>
 

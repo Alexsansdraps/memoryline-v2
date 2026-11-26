@@ -23,6 +23,7 @@
  * négligée : moins d'un tiers de degré sur cinquante ans, invisible ici.
  */
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Context, Hono } from "hono";
@@ -226,6 +227,86 @@ export async function rendreCiel(lat: number, lon: number, instant: Date): Promi
   return sharp(Buffer.from(svgDuCiel(lat, lon, instant))).png().toBuffer();
 }
 
+/**
+ * Les villes du monde (26/11, Alexandra : « j'aimerais qu'on puisse taper la
+ * ville qu'on veut ») : GeoNames cities5000, CC BY 4.0 — toutes les villes de
+ * plus de 5 000 habitants, avec leur fuseau horaire. Lu au premier appel,
+ * gardé en mémoire ensuite. Aucune recherche ne part chez un tiers : ce que
+ * la cliente tape reste chez nous.
+ */
+export interface Ville {
+  nom: string;
+  pays: string;
+  region: string;
+  lat: number;
+  lon: number;
+  fuseau: string;
+  habitants: number;
+  /** Nom et autres noms, sans accents ni tirets, pour la recherche. */
+  cles: string[];
+}
+
+/** « Saint-Louis », « saint louis », « SAINT LOUIS » → « saint louis ». */
+export function normaliserNom(t: string): string {
+  return t
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[\s'’\-.]+/g, " ")
+    .trim();
+}
+
+let villes: Ville[] | null = null;
+function lesVilles(): Ville[] {
+  if (villes) return villes;
+  const brut = readFileSync(new URL("./ciel-villes.tsv", import.meta.url), "utf8");
+  villes = [];
+  for (const ligne of brut.split("\n")) {
+    if (!ligne || ligne.startsWith("#")) continue;
+    const [nom, autres, pays, region, lat, lon, fuseau, habitants] = ligne.split("\t");
+    if (!nom || !fuseau) continue;
+    villes.push({
+      nom,
+      pays: pays ?? "",
+      region: region ?? "",
+      lat: Number(lat),
+      lon: Number(lon),
+      fuseau,
+      habitants: Number(habitants) || 0,
+      cles: [normaliserNom(nom), ...(autres ? autres.split("|") : [])],
+    });
+  }
+  return villes;
+}
+
+/**
+ * Les villes dont un nom commence par ce qui est tapé : le nom exact d'abord,
+ * puis les plus peuplées — la France passe devant à taille comparable (une
+ * boutique française : « Colmar » avant un homonyme lointain).
+ */
+export function chercherVilles(q: string, max = 8): Omit<Ville, "cles">[] {
+  const n = normaliserNom(q);
+  if (n.length < 2) return [];
+  const trouvees: { v: Ville; exacte: boolean }[] = [];
+  for (const v of lesVilles()) {
+    let ok = false;
+    let exacte = false;
+    for (const c of v.cles) {
+      if (c.startsWith(n)) {
+        ok = true;
+        if (c === n) exacte = true;
+      }
+    }
+    if (ok) trouvees.push({ v, exacte });
+  }
+  const poids = (t: { v: Ville; exacte: boolean }) =>
+    (t.exacte ? 1e12 : 0) + t.v.habitants * (t.v.pays === "FR" ? 20 : 1);
+  return trouvees
+    .sort((a, b) => poids(b) - poids(a))
+    .slice(0, max)
+    .map(({ v: { cles: _c, ...reste } }) => reste);
+}
+
 /** Cadence : un ciel se calcule en une seconde, pas besoin de plus de 10 par minute. */
 const appels = new Map<string, number[]>();
 function tropDAppels(ip: string): boolean {
@@ -239,6 +320,16 @@ function tropDAppels(ip: string): boolean {
 }
 
 export function mountCielRoutes(app: Hono): void {
+  /** GET /ia/ciel/villes?q=mulh → les villes proposées sous le champ. */
+  app.get("/ia/ciel/villes", (c: Context) => {
+    const q = String(c.req.query("q") ?? "").slice(0, 60);
+    return c.json(
+      { villes: chercherVilles(q) },
+      200,
+      { "Cache-Control": "public, max-age=86400" },
+    );
+  });
+
   /**
    * POST /ia/ciel { productId, cartId, date: "AAAA-MM-JJ", heure: "HH:MM",
    *                 fuseau: "Europe/Paris", lat, lon, lieu }

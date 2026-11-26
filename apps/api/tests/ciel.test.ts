@@ -45,3 +45,15 @@ test("carte : zénith au centre, horizon au bord, nord en haut, est à gauche", 
   assert.ok(Math.abs(est.x + 1) < 1e-9);
   assert.equal(surLaCarte(-1, 0), null);
 });
+
+test("villes : on tape le nom, avec ou sans accents, en français ou non", async () => {
+  const { chercherVilles } = await import("../src/ciel.ts");
+  const mulh = chercherVilles("mulh");
+  assert.equal(mulh[0]?.nom, "Mulhouse");
+  assert.equal(mulh[0]?.fuseau, "Europe/Paris");
+  assert.equal(chercherVilles("Bâle")[0]?.nom, "Basel");
+  assert.equal(chercherVilles("londres")[0]?.nom, "London");
+  assert.equal(chercherVilles("saint-louis").some((v) => v.pays === "FR"), true);
+  assert.equal(chercherVilles("thann")[0]?.pays, "FR");
+  assert.deepEqual(chercherVilles("m"), []);
+});

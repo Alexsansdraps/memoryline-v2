@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
-import { createSignal, For, Show, type JSX } from "solid-js";
-import { t, type Langue } from "../i18n/utils.ts";
+import { createSignal, For, onCleanup, Show, type JSX } from "solid-js";
+import { LOCALE_COMPLETE, t, type Langue } from "../i18n/utils.ts";
 import { PUBLIC_API_URL, getCartId } from "../lib/api.ts";
 import { apercuAbsolu } from "../lib/ia.ts";
 
@@ -14,61 +14,24 @@ import { apercuAbsolu } from "../lib/ia.ts";
  * textes, personnages, format et panier y sont déjà.
  */
 
-/**
- * Les villes proposées : coordonnées au centre-ville et fuseau horaire. À
- * l'échelle d'une carte du ciel, un degré ne se voit pas : la grande ville la
- * plus proche suffit.
- */
-const VILLES: { nom: string; lat: number; lon: number; tz: string }[] = [
-  { nom: "Mulhouse", lat: 47.75, lon: 7.34, tz: "Europe/Paris" },
-  { nom: "Colmar", lat: 48.08, lon: 7.36, tz: "Europe/Paris" },
-  { nom: "Strasbourg", lat: 48.57, lon: 7.75, tz: "Europe/Paris" },
-  { nom: "Belfort", lat: 47.64, lon: 6.86, tz: "Europe/Paris" },
-  { nom: "Besançon", lat: 47.24, lon: 6.02, tz: "Europe/Paris" },
-  { nom: "Metz", lat: 49.12, lon: 6.18, tz: "Europe/Paris" },
-  { nom: "Nancy", lat: 48.69, lon: 6.18, tz: "Europe/Paris" },
-  { nom: "Reims", lat: 49.26, lon: 4.03, tz: "Europe/Paris" },
-  { nom: "Dijon", lat: 47.32, lon: 5.04, tz: "Europe/Paris" },
-  { nom: "Paris", lat: 48.86, lon: 2.35, tz: "Europe/Paris" },
-  { nom: "Lille", lat: 50.63, lon: 3.06, tz: "Europe/Paris" },
-  { nom: "Rouen", lat: 49.44, lon: 1.1, tz: "Europe/Paris" },
-  { nom: "Le Havre", lat: 49.49, lon: 0.11, tz: "Europe/Paris" },
-  { nom: "Rennes", lat: 48.12, lon: -1.68, tz: "Europe/Paris" },
-  { nom: "Brest", lat: 48.39, lon: -4.49, tz: "Europe/Paris" },
-  { nom: "Nantes", lat: 47.22, lon: -1.55, tz: "Europe/Paris" },
-  { nom: "Tours", lat: 47.39, lon: 0.69, tz: "Europe/Paris" },
-  { nom: "Limoges", lat: 45.83, lon: 1.26, tz: "Europe/Paris" },
-  { nom: "Bordeaux", lat: 44.84, lon: -0.58, tz: "Europe/Paris" },
-  { nom: "Toulouse", lat: 43.6, lon: 1.44, tz: "Europe/Paris" },
-  { nom: "Clermont-Ferrand", lat: 45.78, lon: 3.09, tz: "Europe/Paris" },
-  { nom: "Lyon", lat: 45.76, lon: 4.84, tz: "Europe/Paris" },
-  { nom: "Grenoble", lat: 45.19, lon: 5.72, tz: "Europe/Paris" },
-  { nom: "Montpellier", lat: 43.61, lon: 3.88, tz: "Europe/Paris" },
-  { nom: "Perpignan", lat: 42.7, lon: 2.9, tz: "Europe/Paris" },
-  { nom: "Marseille", lat: 43.3, lon: 5.37, tz: "Europe/Paris" },
-  { nom: "Nice", lat: 43.71, lon: 7.26, tz: "Europe/Paris" },
-  { nom: "Ajaccio", lat: 41.92, lon: 8.74, tz: "Europe/Paris" },
-  { nom: "Bâle", lat: 47.56, lon: 7.59, tz: "Europe/Zurich" },
-  { nom: "Zurich", lat: 47.38, lon: 8.54, tz: "Europe/Zurich" },
-  { nom: "Genève", lat: 46.2, lon: 6.14, tz: "Europe/Zurich" },
-  { nom: "Fribourg-en-Brisgau", lat: 48.0, lon: 7.84, tz: "Europe/Berlin" },
-  { nom: "Berlin", lat: 52.52, lon: 13.4, tz: "Europe/Berlin" },
-  { nom: "Bruxelles", lat: 50.85, lon: 4.35, tz: "Europe/Brussels" },
-  { nom: "Luxembourg", lat: 49.61, lon: 6.13, tz: "Europe/Luxembourg" },
-  { nom: "Londres", lat: 51.51, lon: -0.13, tz: "Europe/London" },
-  { nom: "Madrid", lat: 40.42, lon: -3.7, tz: "Europe/Madrid" },
-  { nom: "Lisbonne", lat: 38.72, lon: -9.14, tz: "Europe/Lisbon" },
-  { nom: "Rome", lat: 41.9, lon: 12.5, tz: "Europe/Rome" },
-  { nom: "Alger", lat: 36.75, lon: 3.06, tz: "Africa/Algiers" },
-  { nom: "Casablanca", lat: 33.57, lon: -7.59, tz: "Africa/Casablanca" },
-  { nom: "Montréal", lat: 45.5, lon: -73.57, tz: "America/Toronto" },
-  { nom: "New York", lat: 40.71, lon: -74.01, tz: "America/New_York" },
-  { nom: "Pointe-à-Pitre", lat: 16.24, lon: -61.53, tz: "America/Guadeloupe" },
-  { nom: "Fort-de-France", lat: 14.62, lon: -61.06, tz: "America/Martinique" },
-  { nom: "Saint-Denis (La Réunion)", lat: -20.88, lon: 55.45, tz: "Indian/Reunion" },
-  { nom: "Tokyo", lat: 35.68, lon: 139.65, tz: "Asia/Tokyo" },
-  { nom: "Pékin", lat: 39.9, lon: 116.41, tz: "Asia/Shanghai" },
-];
+/** Une ville trouvée par l'API (GeoNames, apps/api/src/ciel.ts). */
+interface Ville {
+  nom: string;
+  pays: string;
+  region: string;
+  lat: number;
+  lon: number;
+  fuseau: string;
+}
+
+const MULHOUSE: Ville = {
+  nom: "Mulhouse",
+  pays: "FR",
+  region: "Grand Est",
+  lat: 47.75,
+  lon: 7.336,
+  fuseau: "Europe/Paris",
+};
 
 export interface CielEtoileProps {
   langue: Langue;
@@ -83,7 +46,85 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
   const aujourdHui = new Date().toISOString().slice(0, 10);
   const [date, setDate] = createSignal(aujourdHui);
   const [heure, setHeure] = createSignal("21:00");
-  const [ville, setVille] = createSignal(0);
+  const [ville, setVille] = createSignal<Ville | null>(MULHOUSE);
+  const [saisie, setSaisie] = createSignal(MULHOUSE.nom);
+  const [proposees, setProposees] = createSignal<Ville[]>([]);
+  const [ouverte, setOuverte] = createSignal(false);
+  const [active, setActive] = createSignal(-1);
+  const [aucune, setAucune] = createSignal(false);
+  const [manque, setManque] = createSignal(false);
+
+  /** « France », « Allemagne »… dans la langue de la page. */
+  let noms: Intl.DisplayNames | null = null;
+  try {
+    noms = new Intl.DisplayNames([LOCALE_COMPLETE[props.langue]], { type: "region" });
+  } catch {
+    noms = null;
+  }
+  const pays = (code: string) => {
+    try {
+      return noms?.of(code) ?? code;
+    } catch {
+      return code;
+    }
+  };
+  const precision = (v: Ville) => [v.region, pays(v.pays)].filter(Boolean).join(", ");
+
+  // Recherche au fil de la frappe, 200 ms après la dernière touche ; une
+  // réponse arrivée après une plus récente est ignorée.
+  let minuterie: ReturnType<typeof setTimeout> | undefined;
+  let tour = 0;
+  onCleanup(() => clearTimeout(minuterie));
+  function taper(valeur: string) {
+    setSaisie(valeur);
+    setVille(null);
+    setManque(false);
+    clearTimeout(minuterie);
+    const q = valeur.trim();
+    if (q.length < 2) {
+      setProposees([]);
+      setOuverte(false);
+      setAucune(false);
+      return;
+    }
+    const ce = ++tour;
+    minuterie = setTimeout(async () => {
+      try {
+        const r = await fetch(`${PUBLIC_API_URL}/ia/ciel/villes?q=${encodeURIComponent(q)}`);
+        const data = (await r.json()) as { villes?: Ville[] };
+        if (ce !== tour) return;
+        const liste = Array.isArray(data.villes) ? data.villes : [];
+        setProposees(liste);
+        setAucune(liste.length === 0);
+        setActive(liste.length ? 0 : -1);
+        setOuverte(true);
+      } catch {
+        /* réseau : on réessaiera à la prochaine touche */
+      }
+    }, 200);
+  }
+  function choisir(v: Ville) {
+    setVille(v);
+    setSaisie(v.nom);
+    setOuverte(false);
+    setManque(false);
+  }
+  function clavier(e: KeyboardEvent) {
+    const n = proposees().length;
+    if (!ouverte() || !n) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((i) => (i + 1) % n);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((i) => (i - 1 + n) % n);
+    } else if (e.key === "Enter" && active() >= 0) {
+      e.preventDefault();
+      choisir(proposees()[active()]!);
+    } else if (e.key === "Escape") {
+      setOuverte(false);
+    }
+  }
   const [occupe, setOccupe] = createSignal(false);
   const [erreur, setErreur] = createSignal(false);
   const [creation, setCreation] = createSignal<{ publicId: string; apercuChemin: string; apercu: string } | null>(null);
@@ -91,7 +132,11 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
   async function dessiner(e: Event) {
     e.preventDefault();
     if (occupe()) return;
-    const v = VILLES[ville()]!;
+    const v = ville();
+    if (!v) {
+      setManque(true);
+      return;
+    }
     setOccupe(true);
     setErreur(false);
     try {
@@ -103,10 +148,10 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
           cartId: getCartId(),
           date: date(),
           heure: heure(),
-          fuseau: v.tz,
+          fuseau: v.fuseau,
           lat: v.lat,
           lon: v.lon,
-          lieu: v.nom,
+          lieu: [v.nom, v.region, v.pays].filter(Boolean).join(", "),
         }),
       });
       const data = (await r.json().catch(() => null)) as { publicId?: string; apercu?: string } | null;
@@ -150,13 +195,62 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
           {tr("ciel.heure")}
           <input type="time" required value={heure()} onInput={(e) => setHeure(e.currentTarget.value)} class={champ} />
         </label>
-        <label class="block text-sm font-medium">
-          {tr("ciel.ville")}
-          <select value={ville()} onChange={(e) => setVille(Number(e.currentTarget.value))} class={champ}>
-            <For each={VILLES}>{(v, i) => <option value={i()}>{v.nom}</option>}</For>
-          </select>
-          <span class="mt-1 block text-xs font-normal text-ink-soft">{tr("ciel.ville_aide")}</span>
-        </label>
+        <div class="relative">
+          <label for="ciel-ville" class="block text-sm font-medium">
+            {tr("ciel.ville")}
+          </label>
+          <input
+            id="ciel-ville"
+            type="text"
+            role="combobox"
+            autocomplete="off"
+            aria-autocomplete="list"
+            aria-expanded={ouverte()}
+            aria-controls="ciel-villes"
+            aria-activedescendant={ouverte() && active() >= 0 ? `ciel-ville-${active()}` : undefined}
+            value={saisie()}
+            onInput={(e) => taper(e.currentTarget.value)}
+            onKeyDown={clavier}
+            onFocus={(e) => e.currentTarget.select()}
+            onBlur={() => setTimeout(() => setOuverte(false), 150)}
+            class={champ}
+          />
+          <Show when={ouverte()}>
+            <ul
+              id="ciel-villes"
+              role="listbox"
+              class="absolute left-0 right-0 z-20 mt-1 max-h-72 overflow-auto border border-ink/20 bg-paper shadow-lg"
+            >
+              <Show when={aucune()}>
+                <li class="px-3 py-2 text-sm text-ink-soft">{tr("ciel.ville_aucune")}</li>
+              </Show>
+              <For each={proposees()}>
+                {(v, i) => (
+                  <li
+                    id={`ciel-ville-${i()}`}
+                    role="option"
+                    aria-selected={active() === i()}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      choisir(v);
+                    }}
+                    onMouseEnter={() => setActive(i())}
+                    class={`cursor-pointer px-3 py-2 ${active() === i() ? "bg-ink/10" : ""}`}
+                  >
+                    <span class="font-medium">{v.nom}</span>
+                    <span class="ml-2 text-sm text-ink-soft">{precision(v)}</span>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+          <span class="mt-1 block text-xs font-normal text-ink-soft">
+            {ville() ? precision(ville()!) : tr("ciel.ville_aide")}
+          </span>
+          <Show when={manque()}>
+            <span role="status" class="mt-1 block text-sm text-terracotta-deep">{tr("ciel.ville_choisir")}</span>
+          </Show>
+        </div>
         <button
           type="submit"
           disabled={occupe()}
