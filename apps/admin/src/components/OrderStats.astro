@@ -1,5 +1,6 @@
 ---
 import { adminApi, formatPrice, type StatsCommandes } from "../lib/api.ts";
+import { PERIODES, PERIODE_PAR_DEFAUT } from "../lib/periode-liste.ts";
 
 interface Props {
   /** Canal des commandes : « web », « salon », ou tous si absent. */
@@ -19,16 +20,11 @@ const { channel, stand, portee } = Astro.props;
 
 /**
  * Période affichée, portée par l'URL : elle survit à un rechargement et se
- * partage par un lien, ce qu'un état en mémoire ne permettrait pas.
+ * partage par un lien, ce qu'un état en mémoire ne permettrait pas. Choisie,
+ * la liste dessous la suit aussi (lib/periode-liste.ts, 26/11).
  */
-const PERIODES = [
-  { jours: 1, label: "Aujourd'hui", compare: "hier" },
-  { jours: 7, label: "7 derniers jours", compare: "aux 7 jours précédents" },
-  { jours: 30, label: "30 derniers jours", compare: "aux 30 jours précédents" },
-  { jours: 90, label: "90 derniers jours", compare: "aux 90 jours précédents" },
-];
-const demande = Number(Astro.url.searchParams.get("jours") ?? 30);
-const periode = PERIODES.find((p) => p.jours === demande) ?? PERIODES[2]!;
+const demande = Number(Astro.url.searchParams.get("jours") ?? PERIODE_PAR_DEFAUT.jours);
+const periode = PERIODES.find((p) => p.jours === demande) ?? PERIODE_PAR_DEFAUT;
 
 let stats: StatsCommandes | null = null;
 let error: string | null = null;
@@ -113,9 +109,11 @@ const points = stats ? courbe(stats.serie) : "";
  * Conserve les autres paramètres de l'URL en changeant de période, SAUF les
  * dates « Du » et « Au » du filtre de la liste (from, to) : choisir une
  * période les vide (26/11, Alexandra : « ces boutons doivent si ils sont
- * cliqués, vider "du" et "au" »). Gardées, elles laissaient la liste sur
- * d'autres jours que les chiffres juste au-dessus. La recherche, l'étiquette
- * et l'onglet restent.
+ * cliqués, vider "du" et "au" »), et la liste montre alors les jours de la
+ * période (« si je mets aujourd'hui ça doit me sortir les commandes de
+ * aujourd'hui », lib/periode-liste.ts). Gardées, elles laissaient la liste
+ * sur d'autres jours que les chiffres juste au-dessus. La recherche,
+ * l'étiquette, l'onglet et le stand restent.
  */
 function lienPeriode(jours: number): string {
   const u = new URL(Astro.url);

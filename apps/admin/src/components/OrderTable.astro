@@ -32,6 +32,7 @@ import {
   type ResultatActionListe,
 } from "../lib/actions-liste-commandes.ts";
 import { choixDeLAffiche, saisieDuTotal } from "../lib/montant-vente.ts";
+import { periodeDeLaListe } from "../lib/periode-liste.ts";
 
 /**
  * Les filtres de la liste, plus celui des ventes de test (20/11) : l'API le
@@ -168,6 +169,13 @@ if (!flash && supprimee)
 const ongletActif = params.get("onglet") ?? "toutes";
 const onglet = ONGLETS.find((o) => o.cle === ongletActif) ?? ONGLETS[0]!;
 
+// La période choisie au-dessus, dans les chiffres (« Aujourd'hui », 7, 30,
+// 90 jours) : la liste la suit (26/11, Alexandra : « si je mets aujourd'hui
+// ça doit me sortir les commandes de aujourd'hui »). Les champs « Du » et
+// « Au » restent vides — ils ne montrent que des dates tapées à la main, qui
+// l'emportent —, et une ligne au-dessus de la liste dit ses jours.
+const periodeListe = periodeDeLaListe(params, new Date());
+
 // Les filtres saisis à la main l'emportent sur ceux de l'onglet : sinon on ne
 // pourrait pas affiner « À expédier » sans changer d'onglet. Celui des ventes
 // de test vient de l'onglet seul (« Toutes », « Annulées », « Test »).
@@ -180,8 +188,8 @@ const filtres: FiltresDeLaListe = {
   fulfillment: params.get("fulfillment") ?? onglet.filtres.fulfillment,
   etape: params.get("etape") ?? onglet.filtres.etape,
   tag: params.get("tag") ?? undefined,
-  from: params.get("from") ?? undefined,
-  to: params.get("to") ?? undefined,
+  from: params.get("from") ?? periodeListe?.from ?? undefined,
+  to: params.get("to") ?? periodeListe?.to ?? undefined,
 };
 
 // Dans l'onglet « Archivées », le bouton d'action groupée devient
@@ -383,6 +391,13 @@ const filtreActif =
     {ongletActif !== "toutes" && (
       <input type="hidden" name="onglet" value={ongletActif} />
     )}
+    {/* Le stand regardé et la période des chiffres survivent à « Filtrer »
+        (26/11) : le formulaire ne renvoyait que ses propres champs, et
+        filtrer par étiquette ramenait tous les stands et 30 jours. */}
+    {stand && <input type="hidden" name="stand" value={String(stand)} />}
+    {params.get("jours") && (
+      <input type="hidden" name="jours" value={params.get("jours") ?? ""} />
+    )}
     <label class="flex-1 min-w-[240px]">
       <span class="mb-1 block text-xs text-bo-muted">
         Rechercher (n° de commande, client, e-mail, ville)
@@ -400,7 +415,7 @@ const filtreActif =
       <input
         type="date"
         name="from"
-        value={filtres.from ?? ""}
+        value={params.get("from") ?? ""}
         class="rounded border border-bo-border px-3 py-2 text-sm"
       />
     </label>
@@ -409,7 +424,7 @@ const filtreActif =
       <input
         type="date"
         name="to"
-        value={filtres.to ?? ""}
+        value={params.get("to") ?? ""}
         class="rounded border border-bo-border px-3 py-2 text-sm"
       />
     </label>
@@ -490,6 +505,18 @@ const filtreActif =
       Exporter en CSV
     </a>
   </form>
+
+  {/* Les jours que montre la liste quand une période est choisie au-dessus
+      (26/11) : « Du » et « Au » restent vides, c'est donc cette ligne qui le
+      dit, avec le chemin du retour. */}
+  {periodeListe && (
+    <p class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-bo-border px-4 py-2 text-sm">
+      <span>{periodeListe.texte}, la période choisie au-dessus.</span>
+      <a href={lienAvec({ jours: null })} class="text-bo-accent hover:underline">
+        Voir toutes les dates
+      </a>
+    </p>
+  )}
 
   {/* Barre d'actions groupées : n'apparaît qu'une fois des cases cochées.
       Au stand, la page revient sur la liste (#ventes) et son message, au
