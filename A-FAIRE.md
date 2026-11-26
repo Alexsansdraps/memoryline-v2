@@ -2,10 +2,12 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 26/11 : `main` en ligne jusqu'à `cd9fcf6` ; le lot 2 et `333df30` sont prêts, PAS en ligne
+## 0. État au 26/11, 14 h 31 : tout `main` est en ligne (`ef7ca1c`)
 
-### 0.00000 PRÊT, PAS EN LIGNE : lot 2 des demandes de Margaux du 26/11 (`6e5fe48`), et `333df30`
-- **Ne part que sur un « mets en prod » d'Alexandra pour CE lot.** Coupure d'une à deux minutes, comme d'habitude.
+### 0.00000 EN LIGNE DEPUIS LE 26/11 À 14 H 31 (`ef7ca1c` : lot 2 des demandes de Margaux du 26/11, `6e5fe48`, et `333df30`)
+- Mis en ligne pendant le marché, à la demande d'Alexandra (« go met en prod stp »), pendant qu'une dernière relecture indépendante du lot tournait encore en local. Si elle trouve quelque chose, ce sera une petite mise en ligne à part.
+- **Vérifié après** : sauvegarde de la base et des fichiers faite avant, migrations appliquées sans erreur, site 200, API (base comprise) 200, BO 302 vers la connexion, le code servi porte « Comptez une à trois minutes » (site et tablette `?stand=1`), tous les conteneurs relancés, charge 1,35 au redémarrage (fichiers d'impression refaits).
+- **Pas vérifié** (Claude n'a pas lu la base ni les journaux de prod) : l'effet de 0114 et de 0115 — voir « Après la mise en ligne, vérifier » plus bas.
 - **Affiches IA en haute qualité** (« il faut que les affiches soient haute qualité ! au moins à l'impression ») :
   - la qualité « high » part vraiment. gpt-image-2 refusait `input_fidelity` (« For gpt-image-2, omit this parameter »), et le repli retirait AUSSI la qualité : les affiches partaient en « auto ». Les replis sont refaits un par un (taille, fidélité, qualité) et écrits au journal ;
   - taille 1584 × 2240, la plus grande garantie par OpenAI au format A (migration 0115, seulement si le réglage vaut encore 1024x1536). Coût d'environ 26 c l'image au lieu d'environ 16 c ;
@@ -29,7 +31,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - **Chiffres en « Manuscrite »** (`3a73fc3`) : seuls sur leur ligne (« 2025 » en ligne 3), ils s'impriment en Caveat ; le PDF et la vignette du BO y mettaient les tampons ronds de la police d'essai. Empreinte d'impression changée : les fichiers d'impression se refont (ceux à expédier d'avance, les autres à la demande). Reste : lancer `lignes-touchees.mts` (scratchpad du 26/11) en prod pour retrouver les affiches déjà vendues avec des tampons.
 - **Ventes stand** (`0e2e09d`) : montant d'une vente corrigeable par la propriétaire (écart au grand livre, journal, facture, compte client) ; colonne « Format et cadre » à la place de « Livraison ».
 - **Réglages IA** (`cd9fcf6`) : le BO montre le modèle et la taille vraiment en service ; consigne d'un style jusqu'à 20 000 caractères (avant : coupée sans prévenir à 8 000 — **le style « Famille » de prod est coupé en pleine phrase : Margaux doit recoller sa consigne entière**) ; enregistrer un style garde ses titres traduits (à vérifier au BO : des enregistrements passés ont pu les effacer).
-- **Lot 2** : prêt, pas en ligne (voir 0.00000).
+- **Lot 2** : en ligne depuis 14 h 31 (voir 0.00000).
 
 ### 0.000 EN LIGNE DEPUIS LE 25/11 À 20 H 15 (`00b2d69`) : les affiches IA
 - Plus le message clair « plus de crédit » (site : la cliente ; stand : « Prévenez Margaux »), 7 langues. Alerte par mail seulement (SMS écarté par Alexandra). Vérifié après : pages, API, code servi, aucune erreur.
