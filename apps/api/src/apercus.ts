@@ -35,7 +35,7 @@ import { eq } from "drizzle-orm";
 import sharp from "sharp";
 
 import { db, schema } from "./db/client.js";
-import { renderPosterPng } from "./pdf.js";
+import { boutsDeTexteImprimes, renderPosterPng } from "./pdf.js";
 /*
  * Les données du rendu sont celles du FICHIER D'IMPRESSION, à la lettre.
  *
@@ -45,7 +45,16 @@ import { renderPosterPng } from "./pdf.js";
  * raison d'être — montrer ce qui part à l'atelier. On lit donc la même.
  */
 import { donneesDImpression, enFile } from "./fichiers-impression.js";
-import { lignesRemplies, type PosterConfig, type TextesAffiche } from "@memoryline/types";
+import {
+  lignesRemplies,
+  morceauxDeTexte,
+  policeParId,
+  POLICE_SOUSTITRE_DEFAUT,
+  POLICE_TITRE_DEFAUT,
+  sousLignes,
+  type PosterConfig,
+  type TextesAffiche,
+} from "@memoryline/types";
 
 /** Le nombre de personnages d'une configuration lue en base, quelle qu'elle soit. */
 function nombreDePersonnages(config: unknown): number {
@@ -159,7 +168,51 @@ export function versionApercu(config: unknown): string {
   // portent des personnages (20/11) prennent le MÊME sel : une vignette
   // « texte seul » garde ainsi l'adresse déjà partie dans les courriels.
   if (iaComposee(config)) h.update("ia-avec-texte");
+  // Celles d'une ligne écrite tout entière dans une autre police que la
+  // sienne (« 2025 » seul en Manuscrite) portaient, rangées avant le 26/11,
+  // les tampons de la version d'essai (voir ligneEnPoliceDeSecours) : elles
+  // changent d'adresse, donc se refont. Les autres gardent la leur.
+  if (lignesEnPoliceDeSecours(config).length) h.update("chiffres-en-caveat");
   return h.digest("base64url").slice(0, 10);
+}
+
+/**
+ * Les lignes de l'affiche — ou un morceau coupé par Entrée, ou un bout entre
+ * deux emojis — écrites TOUT ENTIÈRES dans une autre police que la leur :
+ * « 2025 » seul en Manuscrite, que morceauxDeTexte écrit en Caveat. Leur
+ * rang parmi les lignes remplies (0 : la première) et leur texte ; vide si
+ * aucune.
+ *
+ * Jusqu'au 26/11, le moteur les imprimait dans la police de la ligne, et la
+ * version d'essai d'another shabby y posait son logo à la place de chaque
+ * chiffre (contenuDeLigne, pdf.ts ; Margaux : « erreur chiffre "police
+ * manuscrite" en ligne 3 »). Le fichier d'impression se refait de lui-même
+ * (son empreinte porte pdf.ts) ; la vignette, rangée par sa seule
+ * configuration, non : d'où ce sel. Même police par défaut que le moteur :
+ * la serif en tête, la manuscrite ensuite (POLICE_LIGNE_DEFAUT, pdf.ts).
+ *
+ * Les bouts sont ceux que POSE le moteur (boutsDeTexteImprimes, pdf.ts), pas
+ * ceux de la saisie : un emoji que le jeu ne dessine pas (« 🧑‍🧑‍🧒 2025 »,
+ * relecture du 26/11) s'efface à l'impression, et « 2025 » y reste seul.
+ * Exportée aussi pour retrouver les affiches déjà vendues avec les tampons.
+ */
+export function lignesEnPoliceDeSecours(config: unknown): { rang: number; texte: string }[] {
+  try {
+    const textes = (config as Partial<PosterConfig> | null)?.texts as TextesAffiche | undefined;
+    return lignesRemplies(textes).flatMap((ligne, rang) => {
+      const police = policeParId(ligne.font, rang === 0 ? POLICE_TITRE_DEFAUT : POLICE_SOUSTITRE_DEFAUT);
+      const touchee = sousLignes(ligne.value).some((sousLigne) =>
+        boutsDeTexteImprimes(sousLigne).some((bout) => {
+          const morceaux = morceauxDeTexte(bout, police);
+          return morceaux.length === 1 && morceaux[0]!.police.famille !== police.famille;
+        }),
+      );
+      return touchee ? [{ rang, texte: ligne.value }] : [];
+    });
+  } catch {
+    // Une configuration abîmée garde sa version d'avant.
+    return [];
+  }
 }
 
 /**

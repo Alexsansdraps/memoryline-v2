@@ -584,12 +584,28 @@ function facteurTaille(valeur: number | undefined): number {
 const CORPS_MESURE = 96;
 
 /**
- * Le contenu d'une ligne, chaque morceau dans sa police.
+ * Le contenu d'une ligne écrite dans la police `police`, chaque morceau dans
+ * la sienne.
  *
- * Un seul morceau — le cas courant — sort exactement comme avant : du texte
- * nu, sans balise en plus. Le découpage ne sert qu'aux caractères qu'une
- * police ne sait pas écrire (cf. morceauxDeTexte), et chaque morceau porte
- * alors sa propre famille.
+ * Un seul morceau DANS LA POLICE DE LA LIGNE — le cas courant — sort
+ * exactement comme avant : du texte nu, sans balise en plus. Le découpage ne
+ * sert qu'aux caractères qu'une police ne sait pas écrire (cf.
+ * morceauxDeTexte), et chaque morceau porte alors sa propre famille.
+ *
+ * Un morceau SEUL peut pourtant être dans une autre police que la ligne :
+ * c'est le cas d'une ligne en Manuscrite faite uniquement de chiffres —
+ * « 2025 » seul en ligne 3, ou sous « Famille Martin » après la touche
+ * Entrée. morceauxDeTexte la rend tout entière en Caveat ; ce raccourci
+ * l'écrivait quand même en texte nu, donc dans la police de la ligne, et la
+ * version d'essai d'another shabby y posait son logo (« GET THE FULL PRO
+ * VERSION — ZETAFONTS.COM ») à la place de chaque chiffre : quatre tampons
+ * au lieu de l'année, sur tout ce que dessine le serveur — le PDF, et la
+ * vignette que montrent le BO, le compte de la cliente et les courriels —,
+ * l'écran du module donnant toujours sa police à chaque morceau
+ * (PosterPreview, AfficheIA).
+ * Margaux, 20/11 : « ça met erreur mais uniquement quand on dl le pdf », « pas
+ * avec toutes les polices » ; 26/11 : « erreur chiffre "police manuscrite"
+ * en ligne 3 ».
  *
  * Les espaces se resserrent ici, une seule entre deux mots, comme le
  * navigateur le fait à l'écran : le texte part ensuite avec
@@ -597,10 +613,12 @@ const CORPS_MESURE = 96;
  * avalait l'espace qui touche une balise — « été 2019 à la mer » s'imprimait
  * « été2019à la mer », les chiffres de la manuscrite étant dans la leur.
  */
-function contenuDeLigne(morceaux: MorceauDeTexte[]): string {
+function contenuDeLigne(morceaux: MorceauDeTexte[], police: PoliceAffiche): string {
   const texte = (m: MorceauDeTexte | undefined) =>
     escapeXml((m?.texte ?? "").replace(/\s+/g, " "));
-  if (morceaux.length <= 1) return texte(morceaux[0]);
+  const seul = morceaux.length <= 1 ? morceaux[0] : undefined;
+  if (morceaux.length <= 1 && (!seul || familleCss(seul.police) === familleCss(police)))
+    return texte(seul);
   return morceaux
     .map(
       (m) =>
@@ -675,7 +693,7 @@ async function largeurParCorps(
       // Une mesure ratée ne doit pas rester en mémoire pour toujours.
       barres.catch(() => barresSeules.delete(cle));
     }
-    const avec = await encreEntreBarres(contenuDeLigne(morceaux), nb, famille, espacement);
+    const avec = await encreEntreBarres(contenuDeLigne(morceaux, police), nb, famille, espacement);
     return (avec - (await barres)) / CORPS_MESURE;
   } catch {
     return null;
@@ -751,6 +769,59 @@ function imageEmoji(grappe: string): Promise<string | null> {
   return image;
 }
 
+/**
+ * Ce que le jeu sait dessiner, sans lire d'image : son index suffit. C'est la
+ * question que pose imageEmoji, moins la lecture du fichier.
+ */
+function emojiDuJeu(grappe: string): boolean {
+  const jeu = fichiersEmojis();
+  return codesAEssayer(grappe).some((c) => jeu?.has(c) ?? false);
+}
+
+/** Un bout de sous-ligne tel qu'il s'imprime : du texte, ou un emoji du jeu. */
+type Pose = { texte: string } | { emoji: string };
+
+/**
+ * Une sous-ligne découpée comme elle s'imprime. Un emoji pour lequel
+ * `aUneImage` dit non disparaît, et le texte qui l'entourait se recolle ; les
+ * espaces qu'il laisse au bord de la ligne s'en vont, comme celles que
+ * sousLignes ôte déjà.
+ *
+ * Une seule règle pour l'impression (preparerSousLigne) et pour la version
+ * des vignettes (boutsDeTexteImprimes, lu par apercus.ts) depuis le 26/11 :
+ * « 🧑‍🧑‍🧒 2025 », dont l'emoji manque au jeu, s'imprime comme « 2025 » seul,
+ * en Caveat — et la vignette rangée avec les tampons doit le savoir pour se
+ * refaire (Margaux : « erreur chiffre "police manuscrite" en ligne 3 »).
+ */
+function posesDeSousLigne(texte: string, aUneImage: (emoji: string) => boolean): Pose[] {
+  const poses: Pose[] = [];
+  for (const s of segmentsDeLigne(texte)) {
+    if (s.type === "emoji") {
+      if (aUneImage(s.emoji)) poses.push({ emoji: s.emoji });
+      continue;
+    }
+    const precedent = poses[poses.length - 1];
+    if (precedent && "texte" in precedent) precedent.texte += s.texte;
+    else poses.push({ texte: s.texte });
+  }
+  const debut = poses[0];
+  if (debut && "texte" in debut) debut.texte = debut.texte.trimStart();
+  const fin = poses[poses.length - 1];
+  if (fin && "texte" in fin) fin.texte = fin.texte.trimEnd();
+  return poses.filter((p) => !("texte" in p) || p.texte);
+}
+
+/**
+ * Les bouts de TEXTE d'une sous-ligne, tels que l'impression les passe à
+ * morceauxDeTexte : la sous-ligne entière sans emoji ; sinon le texte entre
+ * les emojis que le jeu dessine (tout le texte recollé, s'il n'en dessine
+ * aucun). Rien n'est lu ni écrit : le jeu se consulte par son index.
+ */
+export function boutsDeTexteImprimes(sousLigne: string): string[] {
+  if (!contientEmoji(sousLigne)) return [sousLigne];
+  return posesDeSousLigne(sousLigne, emojiDuJeu).flatMap((p) => ("texte" in p ? [p.texte] : []));
+}
+
 /** Un bout de ligne prêt à poser, sa largeur en multiples du corps. */
 type BoutDeLigne =
   | { morceaux: MorceauDeTexte[]; largeur: number }
@@ -793,32 +864,19 @@ async function preparerSousLigne(
   if (!contientEmoji(texte)) return enTexte(texte);
 
   // Les emojis remplacés par leur image ; ceux sans image disparaissent, et
-  // le texte qui les entourait se recolle.
-  const poses: ({ texte: string } | { image: string })[] = [];
-  for (const s of segmentsDeLigne(texte)) {
-    if (s.type === "emoji") {
-      const image = await imageEmoji(s.emoji);
-      if (image) poses.push({ image });
-      continue;
-    }
-    const precedent = poses[poses.length - 1];
-    if (precedent && "texte" in precedent) precedent.texte += s.texte;
-    else poses.push({ texte: s.texte });
-  }
-  // Les espaces qu'un emoji sauté laisse au bord de la ligne s'en vont,
-  // comme celles que sousLignes ôte déjà.
-  const debut = poses[0];
-  if (debut && "texte" in debut) debut.texte = debut.texte.trimStart();
-  const fin = poses[poses.length - 1];
-  if (fin && "texte" in fin) fin.texte = fin.texte.trimEnd();
-  const restants = poses.filter((p) => !("texte" in p) || p.texte);
+  // le texte qui les entourait se recolle (posesDeSousLigne, la règle que
+  // lit aussi la version des vignettes).
+  const images = new Map<string, string | null>();
+  for (const s of segmentsDeLigne(texte))
+    if (s.type === "emoji" && !images.has(s.emoji)) images.set(s.emoji, await imageEmoji(s.emoji));
+  const restants = posesDeSousLigne(texte, (emoji) => !!images.get(emoji));
   const seulTexte = restants.map((p) => ("texte" in p ? p.texte : "")).join("");
-  if (!restants.some((p) => "image" in p)) return enTexte(seulTexte);
+  if (!restants.some((p) => "emoji" in p)) return enTexte(seulTexte);
 
   const bouts: BoutDeLigne[] = [];
   for (const p of restants) {
-    if ("image" in p) {
-      bouts.push({ image: p.image, largeur: largeurEmoji(espacement) });
+    if ("emoji" in p) {
+      bouts.push({ image: images.get(p.emoji)!, largeur: largeurEmoji(espacement) });
       continue;
     }
     const morceaux = morceauxDeTexte(p.texte, police);
@@ -938,7 +996,7 @@ async function buildTextSvg(
       if (!d.bouts) {
         parts.push(
           `<text x="${px(centre - decalage)}" y="${px(base)}" ` +
-            `text-anchor="middle" ${attributs}>${contenuDeLigne(d.morceaux)}</text>`,
+            `text-anchor="middle" ${attributs}>${contenuDeLigne(d.morceaux, r.police)}</text>`,
         );
         return;
       }
@@ -951,7 +1009,7 @@ async function buildTextSvg(
         if ("morceaux" in bout) {
           parts.push(
             `<text x="${px(depart)}" y="${px(base)}" ${attributs}>` +
-              `${contenuDeLigne(bout.morceaux)}</text>`,
+              `${contenuDeLigne(bout.morceaux, r.police)}</text>`,
           );
           continue;
         }
