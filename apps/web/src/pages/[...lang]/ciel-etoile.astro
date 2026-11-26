@@ -1,0 +1,50 @@
+---
+/**
+ * Le ciel étoilé d'un soir (26/11) — page CACHÉE.
+ *
+ * Alexandra : « le nouveau produit étoilé il faudrait le mettre en non visible
+ * sur le site, je montrerais à margaux ». Aucun lien n'y mène (ni menu, ni
+ * catalogue, ni plan du site), et elle est en « noindex » : on n'y arrive
+ * qu'en tapant l'adresse, /ciel-etoile.
+ *
+ * Le ciel devient le fond de l'affiche « à partir de votre photo » (son
+ * prix, ses formats, ses textes, ses personnages, son fichier d'impression) :
+ * voir islands/CielEtoile.tsx et apps/api/src/ciel.ts. `?affiche=<slug>`
+ * choisit une autre affiche IA pour l'accueillir.
+ */
+import Base from "../../layouts/Base.astro";
+import CielEtoile from "../../islands/CielEtoile.tsx";
+import { api } from "../../lib/api.ts";
+import { estLangue, langueDepuisParam, lien, t, type Langue } from "../../i18n/utils.ts";
+
+export const prerender = false;
+
+if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
+  return new Response(null, { status: 404 });
+const langue: Langue = langueDepuisParam(Astro.params.lang);
+const tr = t(langue);
+
+const slug = Astro.url.searchParams.get("affiche") || "affiche-a-partir-de-votre-photo";
+let produit: Awaited<ReturnType<typeof api.product>> | null = null;
+try {
+  produit = await api.product(slug, langue);
+} catch {
+  produit = null;
+}
+if (!produit || !produit.aiEnabled) return new Response(null, { status: 404 });
+---
+
+<Base langue={langue} title={`${tr("ciel.titre")} · Memory Line`} description={tr("ciel.intro")} path={lien(langue, "/ciel-etoile")} noindex>
+  <section class="mx-auto max-w-[1200px] px-4 pb-16 pt-12 sm:px-6">
+    <h1 class="text-3xl sm:text-4xl">{tr("ciel.titre")}</h1>
+    <p class="mt-4 max-w-2xl text-lg text-ink-soft">{tr("ciel.intro")}</p>
+    <div class="mt-8">
+      <CielEtoile
+        client:load
+        langue={langue}
+        productId={produit.id}
+        adresseAffiche={lien(langue, `/affiches/${produit.slug}`)}
+      />
+    </div>
+  </section>
+</Base>

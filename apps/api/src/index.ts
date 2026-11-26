@@ -131,6 +131,7 @@ import {
 import { demarrerPurgeIa, mountIaRoutes, solderLesAffichesInterrompues } from "./ia.js";
 import { mountIaReutiliser } from "./ia-reutiliser.js";
 import { demarrerMenageRelais, mountRelaisPhotoRoutes } from "./ia-relais.js";
+import { mountCielRoutes } from "./ciel.js";
 import { demarrerPreparationDesImpressions } from "./fichiers-impression.js";
 import { demarrerMesureDesPieces } from "./couleur-principale.js";
 import { mountContact } from "./contact.js";
@@ -2590,6 +2591,8 @@ mountIaRoutes(app);
 // La photo du client, de son téléphone à la tablette du stand
 // (apps/api/src/ia-relais.ts). Routes publiques /ia/relais*, aucune /admin.
 mountRelaisPhotoRoutes(app);
+// Le ciel étoilé d'un soir (26/11), rangé comme une affiche IA (apps/api/src/ciel.ts).
+mountCielRoutes(app);
 mountAnalytiqueRoutes(app);
 mountOrdreAffichageRoutes(app);
 

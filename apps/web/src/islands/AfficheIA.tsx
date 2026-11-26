@@ -661,6 +661,21 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     } catch {
       /* mémoire indisponible (navigation privée…) : la séance repart de zéro */
     }
+    // Arrivée du ciel étoilé (26/11, /ciel-etoile) : la page du ciel a rangé
+    // sa création parmi celles de la séance et l'ouvre ici, où l'on pose
+    // textes, personnages, format, comme sur une affiche tirée d'une photo.
+    try {
+      const adresse = new URL(location.href);
+      const id = adresse.searchParams.get("creation");
+      const venue = id ? creations().find((c) => c.publicId === id) : undefined;
+      if (venue) revoir(venue);
+      if (id) {
+        adresse.searchParams.delete("creation");
+        history.replaceState(history.state, "", adresse.pathname + adresse.search + adresse.hash);
+      }
+    } catch {
+      /* adresse illisible : la page s'ouvre comme d'habitude */
+    }
   });
   function memoriserCreations(liste: Creation[]) {
     setCreations(liste);
