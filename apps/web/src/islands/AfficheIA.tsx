@@ -61,6 +61,7 @@ import {
   type EchecIA,
 } from "../lib/ia.ts";
 import RelaisPhoto from "./RelaisPhoto.tsx";
+import CielEtoile from "./CielEtoile.tsx";
 import type { CompositionIA } from "./PersonnagesIA.tsx";
 
 /*
@@ -694,6 +695,36 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     setChemin(c.source);
     setEchec(null);
     setEtape("pret");
+  }
+  /**
+   * Le ciel étoilé (26/11, Alexandra : « fais moi en fiche produit
+   * personnalisable avec texte comme pour les affiches, pas accessibles par
+   * les autres gens ») : avec `?ciel=1` dans l'adresse, la photo cède la
+   * place à une date, une heure et une ville ; le ciel dessiné (API
+   * /ia/ciel) devient l'affiche montrée, et la suite — textes, personnages,
+   * format, panier — est celle de cette fiche. Sans le paramètre, rien ne
+   * change : aucun lien du site n'y mène.
+   */
+  const [modeCiel, setModeCiel] = createSignal(false);
+  onMount(() => {
+    try {
+      setModeCiel(new URL(location.href).searchParams.get("ciel") === "1");
+    } catch {
+      /* adresse illisible : la fiche photo, comme d'habitude */
+    }
+  });
+  function cielCree(c: { publicId: string; apercuChemin: string; apercu: string }) {
+    setEchec(null);
+    setChemin(null);
+    setPublicId(c.publicId);
+    setApercuChemin(c.apercuChemin);
+    setOrientationApercu("portrait");
+    setApercu(c.apercu);
+    setEtape("pret");
+    memoriserCreations([
+      ...creations().filter((x) => x.publicId !== c.publicId),
+      { ...c, sens: "portrait", source: "" },
+    ]);
   }
   function basculerAjout(id: string) {
     setAAjouter((liste) =>
@@ -1679,6 +1710,19 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         {/* ---------------------------- Commandes ------------------------ */}
         <div>
 
+          <Show
+            when={!modeCiel()}
+            fallback={
+              <div class="mt-5">
+                <CielEtoile
+                  langue={props.langue ?? LANGUE_DEFAUT}
+                  productId={Number(props.product.id)}
+                  occupe={occupe() || !!composer()}
+                  onCree={cielCree}
+                />
+              </div>
+            }
+          >
           {/* 1. Le style, EN PREMIER quand la boutique en propose : c'est lui
               qui fait la première génération, pas seulement les suivantes.
               Une carte par style — sa première image, son nom —, assez
@@ -1948,6 +1992,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               <p class="mt-2 text-sm text-ink-soft">{tr("ia.style_manquant")}</p>
             </Show>
           </Show>
+          </Show>
 
           {/* Les trois lignes, avec les règles des affiches personnalisables
               (packages/types/src/fonts.ts) : chaque ligne ne propose que SES
@@ -2144,6 +2189,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             </Show>
 
             <div class="mt-6 flex flex-wrap items-center gap-3">
+              {/* Le ciel se redessine par son propre formulaire, plus haut. */}
+              <Show when={!modeCiel()}>
               <button
                 type="button"
                 disabled={occupe()}
@@ -2152,6 +2199,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               >
                 {tr("ia.regenerer")}
               </button>
+              </Show>
               {/* Les mêmes boutons qu'ailleurs dans la boutique : deux
                   touches plutôt qu'un champ seul, parce que sur un
                   téléphone passer de 1 à 3 se fait au pouce sans ouvrir le

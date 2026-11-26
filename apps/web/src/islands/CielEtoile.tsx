@@ -37,8 +37,16 @@ export interface CielEtoileProps {
   langue: Langue;
   /** L'affiche « à partir d'une photo » qui accueille le ciel. */
   productId: number;
-  /** Son adresse, dans la langue de la page. */
-  adresseAffiche: string;
+  /** Son adresse, dans la langue de la page (page /ciel-etoile seule). */
+  adresseAffiche?: string;
+  /**
+   * Intégré à la fiche de l'affiche (AfficheIA, `?ciel=1`, 26/11) : le
+   * formulaire seul, et le ciel dessiné lui est rendu — elle le montre et
+   * enchaîne sur ses textes, ses personnages, son format.
+   */
+  onCree?: (c: { publicId: string; apercuChemin: string; apercu: string }) => void;
+  /** La fiche est occupée (création, composition) : le bouton s'éteint. */
+  occupe?: boolean;
 }
 
 export default function CielEtoile(props: CielEtoileProps): JSX.Element {
@@ -156,7 +164,9 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
       });
       const data = (await r.json().catch(() => null)) as { publicId?: string; apercu?: string } | null;
       if (!r.ok || !data?.publicId || !data.apercu) throw new Error(String(r.status));
-      setCreation({ publicId: data.publicId, apercuChemin: data.apercu, apercu: apercuAbsolu(data.apercu) });
+      const cree = { publicId: data.publicId, apercuChemin: data.apercu, apercu: apercuAbsolu(data.apercu) };
+      if (props.onCree) props.onCree(cree);
+      else setCreation(cree);
     } catch {
       setErreur(true);
     } finally {
@@ -185,7 +195,7 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
   const champ = "mt-1 w-full border border-ink/20 bg-paper px-3 py-2 text-base";
 
   return (
-    <div class="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div class={props.onCree ? "" : "grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"}>
       <form onSubmit={dessiner} class="space-y-4">
         <label class="block text-sm font-medium">
           {tr("ciel.date")}
@@ -253,7 +263,7 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
         </div>
         <button
           type="submit"
-          disabled={occupe()}
+          disabled={occupe() || !!props.occupe}
           class="rounded-full bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85 disabled:opacity-60"
         >
           {occupe() ? tr("ciel.calcul") : creation() ? tr("ciel.redessiner") : tr("ciel.dessiner")}
@@ -265,6 +275,7 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
         </Show>
       </form>
 
+      <Show when={!props.onCree}>
       <div>
         <Show
           when={creation()}
@@ -289,6 +300,7 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
           )}
         </Show>
       </div>
+      </Show>
     </div>
   );
 }
