@@ -13,6 +13,9 @@ import {
 
 const api = adminApi(Astro.request);
 
+/** « Voir sur un mur » du module de personnalisation (26/11) ; absent = proposé. */
+const REGLAGE_APERCU_MUR = "configurateur.mur";
+
 /**
  * Saisie en euros, stockée en centimes : jamais de flottant sur de l'argent
  * une fois en base.
@@ -48,15 +51,18 @@ if (Astro.request.method === "POST") {
       // tels quels (cadresProposesSurLeSite, prixDesCadresAffiches).
       const proposes = f.get("site") === "on";
       const prix = f.get("prix") === "on";
+      const mur = f.get("mur") === "on";
       await Promise.all([
         api.setSetting(REGLAGE_CADRES_SITE, proposes),
         api.setSetting(REGLAGE_PRIX_CADRES_SITE, prix),
+        api.setSetting(REGLAGE_APERCU_MUR, mur),
       ]);
-      flash = proposes
+      flash = (proposes
         ? prix
           ? "Les cadres sont proposés sur le site, avec leur supplément."
           : "Les cadres sont proposés sur le site, sans leur supplément sous chaque cadre : le prix total le compte toujours."
-        : "Les cadres ne sont plus proposés sur le site. Le stand continue de les proposer.";
+        : "Les cadres ne sont plus proposés sur le site. Le stand continue de les proposer.") +
+        (mur ? " « Voir sur un mur » est proposé." : " « Voir sur un mur » n'est plus proposé.");
     } else if (action === "archiver") {
       const restaurer = f.get("archived") === "false";
       const { commandes } = await api.archiverCadre(
@@ -114,11 +120,13 @@ let error: string | null = null;
 // comporte quand elle n'a jamais touché aux réglages.
 let surLeSite = true;
 let prixAffiches = true;
+let murPropose = true;
 try {
   const [liste, reglages] = await Promise.all([api.frames(), api.settings()]);
   tous = liste;
   surLeSite = cadresProposesSurLeSite(reglages[REGLAGE_CADRES_SITE]);
   prixAffiches = prixDesCadresAffiches(reglages[REGLAGE_PRIX_CADRES_SITE]);
+  murPropose = cadresProposesSurLeSite(reglages[REGLAGE_APERCU_MUR]);
 } catch (e) {
   error = String(e);
 }
@@ -182,6 +190,18 @@ function messageArchivage(c: Cadre): string {
               personnalisation, au panier et à la caisse. Au
               <strong>stand</strong>, aucun prix n'est jamais affiché : la
               vendeuse annonce ses tarifs.
+            </span>
+          </span>
+        </label>
+        <label class="flex items-start gap-3">
+          <input type="checkbox" name="mur" checked={murPropose} class="mt-1" />
+          <span>
+            <span class="text-sm font-medium">Proposer « Voir sur un mur »</span>
+            <span class="mt-0.5 block text-xs text-bo-muted">
+              Le bouton sous l'aperçu de l'affiche, dans le module de
+              personnalisation : l'affiche à l'échelle dans un salon, une
+              chambre d'enfant, une entrée, ou sur la photo du mur du client
+              (sa photo reste sur son appareil). Site et stand.
             </span>
           </span>
         </label>

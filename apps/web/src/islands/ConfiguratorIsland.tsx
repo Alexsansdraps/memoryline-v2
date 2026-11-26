@@ -60,6 +60,8 @@ export interface ConfiguratorIslandProps {
    * reste compté dans le total. Cf. StepFormat du configurateur.
    */
   sansPrixCadres?: boolean;
+  /** Faux : « Voir sur un mur » coupé au back-office (page Cadres). */
+  apercuMur?: boolean;
   /**
    * Faux quand le site ne propose pas les cadres (réglage du back-office,
    * jamais au stand) : la rubrique « Cadre » disparaît du configurateur, et
@@ -271,6 +273,7 @@ export default function ConfiguratorIsland(
               prices={props.prices}
               sansPrix={props.sansPrix}
               sansPrixCadres={props.sansPrixCadres}
+              apercuMur={props.apercuMur}
               foregroundUrl={props.foregroundUrl}
               defaults={props.defaults}
               initialConfig={props.initialConfig}

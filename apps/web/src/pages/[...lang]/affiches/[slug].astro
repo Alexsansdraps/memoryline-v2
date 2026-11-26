@@ -16,6 +16,7 @@ import {
   codeErreurApi,
   cadresSurLeSite,
   prixDesCadresSurLeSite,
+  apercuMurSurLeSite,
   encartVideoDuSite,
   formatPrice,
   livraisonDuSite,
@@ -91,6 +92,8 @@ const cadresProposes = Astro.locals.stand || (await cadresSurLeSite());
  * Au stand, `sansPrix` cache déjà tout montant : le réglage n'y est pas lu.
  */
 const prixCadres = Astro.locals.stand || (await prixDesCadresSurLeSite());
+/* « Voir sur un mur » (26/11) : coupé ou non depuis la page Cadres du BO. */
+const apercuMur = await apercuMurSurLeSite();
 
 /*
  * L'encart vidéo de la personnalisation.
@@ -754,6 +757,7 @@ const pageDesVoisines = retourAuStand ?? (voisinesDuRayon ? pageDuRayon! : pageD
             sansPrix={sansPrix}
             cadresProposes={cadresProposes}
             prixCadres={prixCadres}
+            apercuMur={apercuMur}
             video={encartVideo}
             product={{
               id: product.id,

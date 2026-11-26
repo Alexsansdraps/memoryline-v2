@@ -88,6 +88,11 @@ export interface ConfiguratorProps {
    */
   sansPrixCadres?: boolean;
   /**
+   * Le bouton « Voir sur un mur » sous l'aperçu (26/11). Faux : la boutique
+   * l'a coupé (page Cadres du back-office). Absent : proposé.
+   */
+  apercuMur?: boolean;
+  /**
    * Libellés traduits. Le paquet ne connaît pas les langues du site : l'hôte
    * fournit un dictionnaire déjà traduit, complété par le français.
    */
@@ -840,7 +845,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
         {/* L'affiche au mur, à l'échelle (26/11). Pas sur l'affiche tirée
             d'une photo, qui n'ouvre ici que ses personnages (sansTexte) :
             son écran a son propre aperçu. */}
-        <Show when={!props.sansTexte}>
+        <Show when={!props.sansTexte && props.apercuMur !== false}>
           <button
             type="button"
             class="ml-cfg-mur"

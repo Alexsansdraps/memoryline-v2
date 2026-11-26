@@ -739,6 +739,18 @@ export async function cadresSurLeSite(): Promise<boolean> {
  * détail : le prix du cadre reste dans le total. Réglages injoignables : oui,
  * comme avant que le réglage existe.
  */
+export async function apercuMurSurLeSite(): Promise<boolean> {
+  // « Voir sur un mur » (26/11), réglage de la page Cadres du back-office.
+  // Réglages injoignables : proposé.
+  try {
+    const all = await reglagesDeLaLangue("fr");
+    // Absent : proposé ; seul un « non » explicite le coupe, comme les cadres.
+    return cadresProposesSurLeSite(all["configurateur.mur"]);
+  } catch {
+    return true;
+  }
+}
+
 export async function prixDesCadresSurLeSite(): Promise<boolean> {
   try {
     const all = await reglagesDeLaLangue("fr");

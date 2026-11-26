@@ -88,6 +88,8 @@ export interface ProductConfiguratorProps {
    * reste compté dans le total. Absent : le supplément s'affiche.
    */
   prixCadres?: boolean;
+  /** Faux : « Voir sur un mur » coupé au back-office (page Cadres). */
+  apercuMur?: boolean;
   /** Langue de la page — pilote tous les libellés affichés. */
   langue?: Langue;
   /** Les mots de la fiche, traduits par la page. */
@@ -497,6 +499,7 @@ export default function ProductConfigurator(
                    vignette : elle serait tombée en panne au premier élément
                    ajouté dans la vignette, sans que rien ne le signale. */
                 sansPrixCadres={props.prixCadres === false}
+                apercuMur={props.apercuMur}
                 cadresProposes={props.cadresProposes}
                 quantite={quantite()}
                 foregroundUrl={props.foregroundUrl}
