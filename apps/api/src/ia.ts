@@ -51,6 +51,7 @@ import {
   appliquerVariables,
 } from "./ia-style.js";
 import { CLE_PLAFOND_FONDS, plafondDesFonds } from "./fonds-ia-consigne.js";
+import { consigneEnTexte } from "./consigne-texte.js";
 import { envoyer } from "./mail.js";
 
 /** Mêmes assets que le reste de l'API (cf. ASSETS_DIR dans index.ts). */
@@ -76,8 +77,27 @@ const OPENAI_BASE = (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1")
   "",
 );
 const OPENAI_IMAGES_EDITS = `${OPENAI_BASE}/images/edits`;
-/** Une génération d'image dépasse allègrement la minute : on laisse du temps. */
-const OPENAI_TIMEOUT_MS = 180_000;
+/**
+ * Une génération d'image dépasse allègrement la minute : on laisse du temps.
+ *
+ * 280 s et non plus 180 (26/11, « il faut que les affiches soient haute
+ * qualité ! ») : en qualité « high », une image de 1584 × 2240 compte 1,6 fois
+ * plus de jetons à produire qu'en 1024 × 1536, et 3 fois plus en 2416 × 3424
+ * (`jetonsDeSortie`) ; or OpenAI annonce déjà « up to 2 minutes » pour une
+ * consigne complexe. Couper à 180 s jetait une image déjà payée. Pas au-delà
+ * de 280 : le `fetch` de Node abandonne de lui-même à 300 s sans en-têtes
+ * reçus (undici, headersTimeout), et Firefox abandonne la requête du site au
+ * même seuil — il faut encore, après l'image, l'aperçu et la base. Ni Caddy
+ * (reverse_proxy sans délai de réponse) ni le serveur Node (requestTimeout ne
+ * vaut que pour RECEVOIR la requête) ne coupent avant.
+ *
+ * Coupée quand même, l'image est perdue mais PAYÉE : elle compte au plafond
+ * pour son coût attendu (`coutDUnEchec`, relecture du 26/11 — à 0 c, une
+ * taille trop lente pour ce délai faisait payer chaque nouvel essai de la
+ * cliente sans que le plafond le voie jamais). Pas de nouvel essai plus
+ * petit après un délai dépassé : il ferait attendre encore autant.
+ */
+const OPENAI_TIMEOUT_MS = 280_000;
 
 /* -------------------------------------------------------------------------- */
 /*  Réglages                                                                  */
@@ -221,6 +241,34 @@ async function alerterCreditEpuise(): Promise<void> {
 const TAILLE_PAYSAGE = "2240x1584";
 
 /**
+ * La taille d'une affiche en portrait qui passe partout (26/11) : la plus
+ * grande au format A que gpt-image-2 et ses suites font sans réserve
+ * (3 548 160 pixels, sous les 2560 × 1440 au-delà desquels OpenAI dit
+ * gpt-image-2.5 « expérimental »). C'est là que le filet de la taille ramène
+ * une taille refusée (`editerImages`).
+ */
+const TAILLE_SURE = "1584x2240";
+
+/**
+ * La plus grande image au format A que gpt-image-2 accepte (26/11,
+ * Alexandra : « faut que les affiches IA aient la même taille que les autres
+ * affiches tu vois ») : deux multiples de 16, rapport 1,417 (A : 1,414),
+ * 8 272 384 pixels pour 8 294 400 permis, aucun côté au-delà de 3840. Les
+ * fichiers d'impression de TOUTES les affiches font 2480 × 3508 en A4 et
+ * 3508 × 4960 en A3 (300 points par pouce, pdf.ts) : de là, une affiche IA
+ * s'imprime à 292 points par pouce en A4 et 207 en A3, au lieu de 192 et 136
+ * en 1584 × 2240. Environ 47 c l'image en haute qualité au lieu de 26
+ * (`coutAttenduCents`), et plus lente.
+ */
+const TAILLE_MAX = "2416x3424";
+/**
+ * La même, couchée : une affiche en paysage suit la taille maximale quand
+ * elle est réglée. ia-composition.ts la reconnaît comme une génération en
+ * paysage (TAILLES_GENERATION_PAYSAGE, un essai le vérifie).
+ */
+const TAILLE_PAYSAGE_MAX = "3424x2416";
+
+/**
  * Ce qui remplace, pour une affiche en paysage, la section « A3 VERTICAL —
  * MANDATORY » de la consigne officielle. En anglais, comme elle.
  */
@@ -239,7 +287,8 @@ Do not add borders, frames, text or letters.`;
 
 /** Tailles acceptées par l'API images : un réglage fantaisiste ferait 400. */
 const TAILLES = new Set([
-  "1584x2240",
+  TAILLE_SURE,
+  TAILLE_MAX,
   TAILLE_PAYSAGE,
   "1024x1024",
   "1024x1536",
@@ -685,6 +734,7 @@ async function editerImage(
    */
   references: { nom: string; donnees: Buffer }[] = [],
   surUsage?: (usage: UsageOpenAI | null) => void,
+  surEnvoi?: (envoi: EnvoiAuModele) => void,
 ): Promise<Buffer> {
   // L'ORDRE fait le sens : la photo d'abord, c'est elle qui porte la scène.
   // Une référence en premier ferait recopier son contenu, et le client
@@ -700,6 +750,7 @@ async function editerImage(
     qualite,
     fidelite,
     surUsage,
+    surEnvoi,
   );
 }
 
@@ -755,6 +806,118 @@ export function coutReelCents(modele: string, usage: UsageOpenAI | null | undefi
   return Math.max(1, Math.round(dollars * EUROS_PAR_DOLLAR * 100));
 }
 
+/**
+ * Les jetons qu'une image de gpt-image-2 coûte à PRODUIRE, d'après sa taille
+ * et sa qualité (26/11) : la règle du calculateur d'OpenAI (« Select a model,
+ * quality, and size to estimate output tokens »), relevée par un développeur
+ * sur le forum d'OpenAI et vérifiée par un essai sur les six prix qu'OpenAI
+ * publie pour ce modèle (1024 × 1024 et 1024 × 1536, en low, medium et
+ * high). Plus grande, l'image coûte plus, mais pas en proportion des pixels :
+ * 9 055 jetons en 1584 × 2240, 16 765 en 2416 × 3424, contre 5 488 en
+ * 1024 × 1536. null quand la règle ne dit rien (« auto », xhigh…).
+ */
+export function jetonsDeSortie(taille: string, qualite: string): number | null {
+  const facteur = ({ low: 16, medium: 48, high: 96 } as Record<string, number>)[qualite];
+  const [l = 0, h = 0] = taille.split("x").map(Number);
+  if (!facteur || !l || !h) return null;
+  const grille = facteur * Math.round((facteur * Math.min(l, h)) / Math.max(l, h));
+  return Math.ceil((grille * (2_000_000 + l * h)) / 4_000_000);
+}
+
+/**
+ * Ce que coûtera une affiche AVANT de la créer, en centimes d'euro (26/11) :
+ * la sortie (ci-dessus) au tarif publié, plus l'entrée — la photo, au plus
+ * 1 536 jetons d'image (1,2 c), et la consigne, 5 000 à 8 000 caractères
+ * (moins d'un centime) —, comptée pour 2 c. Pour gpt-image-2 seulement : la
+ * règle des jetons n'est vérifiée que pour lui. Le BO l'affiche ; le plafond,
+ * lui, compte le vrai coût de chaque image (`coutReelCents`).
+ */
+export function coutAttenduCents(modele: string, taille: string, qualite: string): number | null {
+  if (!/^gpt-image-2(-\d{4}-\d{2}-\d{2})?$/.test(modele)) return null;
+  const jetons = jetonsDeSortie(taille, qualite);
+  if (jetons === null) return null;
+  const dollars = (jetons * PRIX_PAR_MILLION["gpt-image-2"]!.sortie) / 1_000_000 + 0.02;
+  return Math.round(dollars * EUROS_PAR_DOLLAR * 100);
+}
+
+/**
+ * Ce qui part au modèle à chaque essai (26/11) : la taille, et la qualité —
+ * null quand elle ne part pas (le repli « sans option » : OpenAI choisit).
+ */
+export interface EnvoiAuModele {
+  taille: string;
+  qualite: string | null;
+}
+
+/**
+ * Le coût ATTENDU d'une image de ce modèle, ou null s'il ne se calcule pas
+ * (relecture du 26/11). gpt-image-2 a son tarif et sa règle des jetons. Ses
+ * suites sans tarif connu ici (gpt-image-2.5-sunburst, le modèle par défaut,
+ * gpt-image-2.5-flare…) font les mêmes tailles, jusqu'à 2416 × 3424 : elles
+ * comptent AU MOINS comme gpt-image-2 — sans cela, chacune de leurs images
+ * comptait 8 c au plafond, quelle que soit sa taille, pour 26 à 47 c
+ * attendus. Une qualité inconnue (« auto », pas envoyée) compte comme
+ * « high », la plus chère : un plafond doit compter large.
+ */
+export function coutAttenduDuModele(
+  modele: string,
+  taille: string,
+  qualite: string | null,
+): { cents: number; estime: boolean } | null {
+  if (!modele.startsWith("gpt-image-2")) return null;
+  const q = qualite && ["low", "medium", "high"].includes(qualite) ? qualite : "high";
+  const exact = coutAttenduCents(modele, taille, q);
+  if (exact !== null) return { cents: exact, estime: false };
+  const comme2 = coutAttenduCents("gpt-image-2", taille, q);
+  return comme2 === null ? null : { cents: comme2, estime: true };
+}
+
+/**
+ * Le coût à ranger pour une image créée (relecture du 26/11) : le vrai,
+ * d'après ce qu'OpenAI dit avoir consommé ; à défaut — modèle sans tarif
+ * ici, réponse sans `usage`, image coupée au délai —, l'estimation du
+ * réglage, mais jamais moins que le coût attendu pour sa taille et sa
+ * qualité (`coutAttenduDuModele`).
+ */
+export function coutDeLImage(
+  modele: string,
+  usage: UsageOpenAI | null,
+  envoi: EnvoiAuModele,
+  coutParImageCents: number,
+): number {
+  const reel = coutReelCents(modele, usage);
+  if (reel !== null) return reel;
+  return Math.max(coutParImageCents, coutAttenduDuModele(modele, envoi.taille, envoi.qualite)?.cents ?? 0);
+}
+
+/** Le délai dépassé : le nôtre (AbortSignal.timeout), ou celui de Node. */
+export function delaiDepasse(e: unknown): boolean {
+  const nom = (e as { name?: unknown } | null)?.name;
+  if (nom === "TimeoutError" || nom === "AbortError") return true;
+  const cause = (e as { cause?: { code?: unknown; name?: unknown } } | null)?.cause;
+  return (
+    cause?.name === "TimeoutError" ||
+    cause?.code === "UND_ERR_HEADERS_TIMEOUT" ||
+    cause?.code === "UND_ERR_BODY_TIMEOUT"
+  );
+}
+
+/**
+ * Ce que coûte une création ÉCHOUÉE (relecture du 26/11). Un refus d'OpenAI
+ * (400, modération, 500, crédit épuisé) n'est pas facturé : 0, comme avant.
+ * Mais une image coupée au délai a été dessinée, et payée : sans compte, le
+ * plafond ne la voyait pas, et une taille trop lente pour le délai faisait
+ * payer chaque nouvel essai de la cliente. Et une image reçue, puis perdue
+ * plus loin (disque, aperçu), a son vrai coût.
+ */
+export function coutDUnEchec(
+  erreur: unknown,
+  o: { modele: string; envoi: EnvoiAuModele; usage: UsageOpenAI | null; coutParImageCents: number },
+): number {
+  if (o.usage) return coutDeLImage(o.modele, o.usage, o.envoi, o.coutParImageCents);
+  return delaiDepasse(erreur) ? coutDeLImage(o.modele, null, o.envoi, o.coutParImageCents) : 0;
+}
+
 /** Le vrai coût est en ligne depuis le 25/11 à 20 h 15 (00b2d69) ; avant, 8 c fixes. */
 const VRAI_COUT_DEPUIS = Date.parse("2026-11-25T19:15:00Z");
 
@@ -769,6 +932,60 @@ export function coutEstime(modele: string | null, creeLe: Date | string | null):
   if (!modele || !PRIX_PAR_MILLION[modele.replace(/-\d{4}-\d{2}-\d{2}$/, "")]) return true;
   const le = creeLe ? new Date(creeLe).getTime() : Number.NaN;
   return !(le >= VRAI_COUT_DEPUIS);
+}
+
+/**
+ * Ce qu'une réponse 400 d'OpenAI refuse (26/11) : la taille, la fidélité
+ * d'entrée, la qualité (ou une option inconnue) — ou autre chose, qu'aucun
+ * nouvel essai ne réparerait (la modération, une photo illisible…).
+ *
+ * Le champ `param` de l'erreur d'abord, quand OpenAI le donne : une erreur
+ * sur un AUTRE champ (la photo trop lourde, la consigne trop longue) n'est
+ * réparée par aucun repli. Sinon les mots du message — la taille avant
+ * « unknown / unsupported » : « Unsupported size » ne doit pas faire retirer
+ * la qualité.
+ */
+export function optionRefusee(detail: string): "taille" | "fidelite" | "qualite" | null {
+  let message = detail;
+  let param = "";
+  try {
+    const erreur = (JSON.parse(detail) as { error?: { message?: unknown; param?: unknown } }).error;
+    if (erreur) {
+      message = String(erreur.message ?? detail);
+      param = String(erreur.param ?? "");
+    }
+  } catch {
+    // Pas du JSON : on lit le texte tel quel.
+  }
+  if (param)
+    return param === "size"
+      ? "taille"
+      : param === "input_fidelity"
+        ? "fidelite"
+        : param === "quality"
+          ? "qualite"
+          : null;
+  if (/input_fidelity/i.test(message) && !/quality/i.test(message)) return "fidelite";
+  if (/quality/i.test(message)) return "qualite";
+  if (/\bsize\b|resolution|dimension|pixel/i.test(message)) return "taille";
+  if (/unknown|unsupported/i.test(message)) return "qualite";
+  return null;
+}
+
+/**
+ * La taille où repartir quand OpenAI refuse celle demandée (26/11) : la
+ * taille sûre du même sens — 1584 × 2240 en portrait, 2240 × 1584 en
+ * paysage —, et seulement en DESCENDANT. Une taille déjà sûre ou plus petite
+ * (1024 × 1536, celle des fonds), un carré, « auto », ou un modèle qui ne
+ * fait que les tailles standard : rien, l'erreur reste une erreur.
+ */
+export function tailleDeRepli(modele: string, taille: string): string | null {
+  if (!modele.startsWith("gpt-image-2")) return null;
+  const [l = 0, h = 0] = taille.split("x").map(Number);
+  if (!l || !h || l === h) return null;
+  const sure = l < h ? TAILLE_SURE : TAILLE_PAYSAGE;
+  const [sl = 0, sh = 0] = sure.split("x").map(Number);
+  return l * h > sl * sh ? sure : null;
 }
 
 /**
@@ -791,9 +1008,28 @@ export async function editerImages(
   fidelite: string,
   /** Reçoit ce qu'OpenAI dit avoir consommé (25/11), pour le vrai coût. */
   surUsage?: (usage: UsageOpenAI | null) => void,
+  /**
+   * Reçoit, AVANT chaque essai, ce qui part au modèle : la taille, et la
+   * qualité (null : pas envoyée). Le dernier appel est donc la requête
+   * acceptée — sa taille est celle de l'image rendue, qui diffère de
+   * `taille` quand le filet de la taille est passé (26/11) —, ou celle qui a
+   * échoué : coupée au délai, c'est elle qui est payée (relecture du 26/11 :
+   * le journal et le coût disent ce qui est vraiment parti, pas le réglage).
+   */
+  surEnvoi?: (envoi: EnvoiAuModele) => void,
 ): Promise<Buffer> {
   if (!images.length) throw new Error("Aucune image à envoyer au modèle");
-  const envoyer = async (avecOptions: boolean): Promise<Response> => {
+  // gpt-image-2 lit TOUJOURS la photo en haute fidélité et refuse
+  // « input_fidelity » (OpenAI : « For gpt-image-2, omit this parameter ») :
+  // envoyé quand même, il faisait échouer le premier essai, et le repli
+  // retirait AUSSI la qualité — l'affiche partait en « auto » au lieu de la
+  // qualité réglée (26/11, Margaux : « qualité affiches IA pas top »).
+  const fideliteRefusee = /^gpt-image-2(-\d{4}-\d{2}-\d{2})?$/.test(modele);
+  const envoyer = async (
+    tailleEnvoyee: string,
+    avecQualite: boolean,
+    avecFidelite: boolean,
+  ): Promise<Response> => {
     const form = new FormData();
     // Une image seule part sous « image », plusieurs sous « image[] » : c'est
     // ce que faisait l'appel des affiches, à l'identique.
@@ -802,12 +1038,10 @@ export async function editerImages(
       form.append(champ, new Blob([new Uint8Array(im.donnees)], { type: im.type }), im.nom);
     form.append("prompt", consigne);
     form.append("model", modele);
-    form.append("size", taille);
+    form.append("size", tailleEnvoyee);
     form.append("n", "1");
-    if (avecOptions) {
-      if (qualite) form.append("quality", qualite);
-      if (fidelite) form.append("input_fidelity", fidelite);
-    }
+    if (avecQualite && qualite) form.append("quality", qualite);
+    if (avecFidelite && fidelite && !fideliteRefusee) form.append("input_fidelity", fidelite);
     return fetch(OPENAI_IMAGES_EDITS, {
       method: "POST",
       headers: { Authorization: `Bearer ${OPENAI_KEY}` },
@@ -816,26 +1050,55 @@ export async function editerImages(
     });
   };
 
-  let res = await envoyer(true);
-  if (!res.ok) {
+  // Les replis, chacun une fois au plus, dans l'ordre où OpenAI refuse.
+  //  - La TAILLE (26/11) : 2416 × 3424 est permise par la documentation de
+  //    gpt-image-2, mais pas « garantie » partout (gpt-image-2.5 la dit
+  //    expérimentale). Refusée, l'affiche repart à la taille sûre du même
+  //    sens, AVEC sa qualité : mieux vaut 1584 × 2240 que rien.
+  //  - Les options fines (qualité, fidélité d'entrée) n'existent pas sur tous
+  //    les modèles : plutôt que de perdre la génération, on réessaie sans
+  //    celle qui est refusée. La fidélité seule refusée ne retire plus la
+  //    qualité (26/11).
+  // Le journal dit chaque repli, avec la raison. Une réponse 400 arrive en
+  // une seconde : les replis ne rallongent pas l'attente de la cliente.
+  let tailleEnvoyee = taille;
+  let avecQualite = true;
+  let avecFidelite = true;
+  let tailleRepliee = false;
+  let res: Response;
+  for (;;) {
+    surEnvoi?.({ taille: tailleEnvoyee, qualite: avecQualite && qualite ? qualite : null });
+    res = await envoyer(tailleEnvoyee, avecQualite, avecFidelite);
+    if (res.ok) break;
     const detail = await res.text();
-    // Les options fines (qualité, fidélité d'entrée) n'existent pas sur tous
-    // les modèles : plutôt que de perdre la génération, on réessaie nu.
-    if (res.status === 400 && /quality|input_fidelity|unknown|unsupported/i.test(detail)) {
-      // Ce repli était MUET (26/11, Margaux : « qualité affiches IA pas
-      // top ») : nu, la qualité réglée (« high ») ne part plus, et OpenAI
-      // choisit seul. Or gpt-image-2 refuse « input_fidelity » (OpenAI :
-      // « omit this parameter »), envoyé à chaque fois : chaque affiche
-      // passerait par ici. Le journal le dit désormais, avec la raison.
+    const refus = res.status === 400 ? optionRefusee(detail) : null;
+    const raison = detail.replace(/\s+/g, " ").slice(0, 300);
+    const repli = tailleRepliee ? null : tailleDeRepli(modele, tailleEnvoyee);
+    if (refus === "taille" && repli) {
+      console.warn(
+        `[ia] ${modele} refuse la taille ${tailleEnvoyee} : nouvel essai en ${repli} ` +
+          `(taille sûre, mêmes options) — ${raison}`,
+      );
+      tailleEnvoyee = repli;
+      tailleRepliee = true;
+    } else if (refus === "fidelite" && avecFidelite && fidelite && !fideliteRefusee) {
+      console.warn(
+        `[ia] ${modele} refuse la fidélité « ${fidelite} » : nouvel essai avec la qualité ` +
+          `« ${qualite} », sans la fidélité — ${raison}`,
+      );
+      avecFidelite = false;
+    } else if (
+      refus === "qualite" &&
+      ((avecQualite && qualite) || (avecFidelite && fidelite && !fideliteRefusee))
+    ) {
       console.warn(
         `[ia] ${modele} refuse une option (qualité « ${qualite} », fidélité « ${fidelite} ») : ` +
-          `nouvel essai SANS qualité ni fidélité — ${detail.replace(/\s+/g, " ").slice(0, 300)}`,
+          `nouvel essai SANS qualité ni fidélité — ${raison}`,
       );
-      res = await envoyer(false);
+      avecQualite = false;
+      avecFidelite = false;
     } else throw new Error(`OpenAI HTTP ${res.status} ${detail.slice(0, 500)}`);
   }
-  if (!res.ok)
-    throw new Error(`OpenAI HTTP ${res.status} ${(await res.text()).slice(0, 500)}`);
 
   const json = (await res.json()) as {
     data?: { b64_json?: string; url?: string }[];
@@ -1689,13 +1952,25 @@ export function mountIaRoutes(app: Hono): void {
     // Le CLIENT choisit le sens. Par défaut l'A3 vertical, comme avant : la
     // consigne dit au modèle comment y adapter une photo en largeur. En
     // paysage, l'A3 couché — 2240 × 1584, le même rapport 420:297 et deux
-    // multiples de 16, comme le modèle l'exige.
+    // multiples de 16, comme le modèle l'exige ; 3424 × 2416 quand la taille
+    // maximale est réglée (26/11, « la même taille que les autres
+    // affiches ») : une affiche couchée ne doit pas sortir moins nette.
+    //
+    // Le paysage passe lui aussi par `tailleDuModele` (relecture du 26/11) :
+    // gpt-image-1.5 et 1-mini ne font que les tailles standard, et
+    // recevaient 2240 × 1584 — OpenAI répondait 400, et chaque affiche en
+    // paysage échouait. Ils la font désormais en 1536 × 1024 ; gpt-image-2
+    // et ses suites ne changent pas.
+    const taillePortrait = tailleDuModele(
+      reg["ia.modele"],
+      TAILLES.has(reg["ia.taille"]) ? reg["ia.taille"] : DEFAUTS["ia.taille"],
+    );
     const tailleChoisie = paysage
-      ? TAILLE_PAYSAGE
-      : tailleDuModele(
+      ? tailleDuModele(
           reg["ia.modele"],
-          TAILLES.has(reg["ia.taille"]) ? reg["ia.taille"] : DEFAUTS["ia.taille"],
-        );
+          taillePortrait === TAILLE_MAX ? TAILLE_PAYSAGE_MAX : TAILLE_PAYSAGE,
+        )
+      : taillePortrait;
 
     // LE BON PROMPT (25/11, Alexandra : « il faut que ça prenne le bon
     // prompt ») : un style qui a sa consigne part avec ELLE SEULE. La consigne
@@ -1703,20 +1978,27 @@ export function mountIaRoutes(app: Hono): void {
     // chaque création — 12 800 caractères, puis ceux du style : deux
     // consignes mêlées, que le modèle mélangeait. Elle ne sert plus que de
     // repli, pour une affiche sans style (ou un style sans consigne).
-    const consigneDuStyle = (style?.prompt ?? "").trim();
+    //
+    // En TEXTE (26/11) : les consignes s'écrivent au BO dans l'éditeur mis en
+    // forme, qui les range en HTML ; le modèle lisait les balises au milieu
+    // des phrases (consigneEnTexte). Un éditeur vidé (« <p><br></p> ») n'est
+    // plus une consigne : l'affiche repart sur la consigne générale. La
+    // conversion passe AVANT les marqueurs {{…}}, qui reçoivent la demande du
+    // client telle qu'il l'a tapée.
+    const consigneDuStyle = consigneEnTexte(style?.prompt);
     const consigne = ajouterDemandeClient(
       [
         consigneDuStyle
           ? ""
-          : appliquerVariables(reg["ia.stylePrompt"], {
+          : appliquerVariables(consigneEnTexte(reg["ia.stylePrompt"]), {
               OUTPUT_FORMAT: paysage ? "A3 horizontal (landscape) poster" : "A3 vertical poster",
               CUSTOMER_REQUEST: precision,
             }),
-        produit.aiStylePrompt ?? "",
+        consigneEnTexte(produit.aiStylePrompt),
         // Le style choisi vient APRÈS celui de l'affiche : de deux consignes
         // qui se contrediraient, c'est celle que la cliente a choisie qui doit
         // l'emporter, et le modèle retient mieux ce qui vient en dernier.
-        style?.prompt ?? "",
+        consigneDuStyle,
         // La consigne officielle impose « A3 VERTICAL — MANDATORY » en toutes
         // lettres. Plutôt que de la réécrire (elle est à la boutique, et se
         // règle au back-office), le paysage la contredit EN DERNIER,
@@ -1747,9 +2029,19 @@ export function mountIaRoutes(app: Hono): void {
       })
       .returning();
 
+    // La durée de chaque création, au journal (26/11) : c'est ce qui dira, en
+    // ligne, si « Comptez une à trois minutes » (site) et OPENAI_TIMEOUT_MS
+    // sont justes pour la taille et la qualité réglées.
+    const debut = Date.now();
+    const duree = () => `${Math.round((Date.now() - debut) / 1000)} s`;
+    // Ce qu'OpenAI dira avoir consommé, pour le vrai coût (25/11).
+    let usageOpenAI: UsageOpenAI | null = null;
+    // Ce qui est VRAIMENT parti au modèle, au dernier essai (relecture du
+    // 26/11) : la taille — celle demandée, sauf si OpenAI l'a refusée — et la
+    // qualité — celle du réglage, sauf après le repli « sans option ». Le
+    // journal, la ligne et le coût le disent, pas le réglage.
+    let envoi: EnvoiAuModele = { taille: tailleChoisie, qualite: reg["ia.qualite"] || null };
     try {
-      // Ce qu'OpenAI dira avoir consommé, pour le vrai coût (25/11).
-      let usageOpenAI: UsageOpenAI | null = null;
       const pleine = await editerImage(
         photo,
         nomPhoto,
@@ -1774,6 +2066,9 @@ export function mountIaRoutes(app: Hono): void {
         (u) => {
           usageOpenAI = u;
         },
+        (e) => {
+          envoi = e;
+        },
       );
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
@@ -1785,27 +2080,52 @@ export function mountIaRoutes(app: Hono): void {
       // toujours ceux déjà faits.
       const apercu = await fabriquerApercu(pleine, `${publicId}-apercu.jpg`);
 
+      // Le vrai coût, d'après ce qu'OpenAI a consommé (25/11) ; à défaut,
+      // l'estimation du réglage — jamais moins que le coût attendu pour la
+      // taille et la qualité parties (relecture du 26/11 : gpt-image-2.5
+      // comptait 8 c en 2416 × 3424).
+      const coutCents = coutDeLImage(reg["ia.modele"], usageOpenAI, envoi, reg["ia.coutParImageCents"]);
       await db
         .update(schema.aiGenerations)
         .set({
           status: "prete",
           previewPath: apercu,
           fullPath: `ia/${nomPleine}`,
-          // Le vrai coût, d'après ce qu'OpenAI a consommé (25/11) ; à
-          // défaut, l'estimation du réglage, comme avant.
-          costCents: coutReelCents(reg["ia.modele"], usageOpenAI) ?? reg["ia.coutParImageCents"],
+          // La taille de l'image rendue (26/11) : après un refus de la taille
+          // maximale, c'est la taille sûre — et c'est elle que relisent la
+          // galerie du BO, ses chiffres (« repli de la taille ») et
+          // ia-composition.ts (paysage ou non).
+          size: envoi.taille,
+          costCents: coutCents,
         })
         .where(eq(schema.aiGenerations.id, ligne!.id));
+      console.log(
+        `[ia] affiche ${publicId} prête en ${duree()} (${reg["ia.modele"]}, ${envoi.taille}, ` +
+          `qualité « ${envoi.qualite ?? "non envoyée"} », ${coutCents} c)`,
+      );
 
       // Jamais fullPath ici : l'affiche sans filigrane n'est pas encore payée.
       return c.json({ publicId, status: "prete", apercu: `/ia/apercu/${publicId}` });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      // Ce que l'échec a coûté (relecture du 26/11) : rien pour un refus
+      // d'OpenAI, mais une image coupée au délai est payée — elle compte au
+      // plafond (`coutDUnEchec`).
+      const coutCents = coutDUnEchec(e, {
+        modele: reg["ia.modele"],
+        envoi,
+        usage: usageOpenAI,
+        coutParImageCents: reg["ia.coutParImageCents"],
+      });
       await db
         .update(schema.aiGenerations)
-        .set({ status: "echec", erreur: message.slice(0, 1000) })
+        .set({ status: "echec", erreur: message.slice(0, 1000), size: envoi.taille, costCents: coutCents })
         .where(eq(schema.aiGenerations.id, ligne!.id));
-      console.error("Génération IA échouée (" + publicId + ") :", message);
+      console.error(
+        `Génération IA échouée (${publicId}, après ${duree()}, ${envoi.taille}, qualité « ${envoi.qualite ?? "non envoyée"} »` +
+          `${coutCents ? `, ${coutCents} c comptés au plafond` : ""}) :`,
+        message,
+      );
       // Plus de crédit : un message clair (402, « momentanément suspendue »
       // sur le site) et la boutique prévenue par courrier (25/11).
       if (CREDIT_EPUISE.test(message)) {
@@ -1998,7 +2318,9 @@ export function mountIaRoutes(app: Hono): void {
         ...l,
         apercu: l.aApercu ? `/ia/apercu/${l.publicId}` : null,
         pleine: l.aPleine ? `/admin/ia/full/${l.publicId}` : null,
-        coutEstime: coutEstime(l.model, l.createdAt),
+        // Un échec qui coûte (coupé au délai, relecture du 26/11) compte son
+        // coût ATTENDU, jamais une consommation lue : estimé, toujours.
+        coutEstime: coutEstime(l.model, l.createdAt) || l.status === "echec",
       })),
       total: Number(total?.n ?? 0),
       coutCents: Number(total?.coutCents ?? 0),
@@ -2097,6 +2419,53 @@ export function mountIaRoutes(app: Hono): void {
               detail: "Le prestataire a refusé la demande. Réessayez ; si cela persiste, prévenez-nous.",
             };
 
+    // Ce que coûtera une affiche avec les réglages du moment (26/11), taille
+    // et qualité comptées. Pour une suite de gpt-image-2 sans tarif connu
+    // (gpt-image-2.5…), sur les tarifs de gpt-image-2, marqué « estimé »
+    // (relecture du 26/11 : la tuile du BO promettait 625 aperçus sur les 8 c
+    // du réglage, pour environ 105 en 2416 × 3424).
+    const taillePortrait = tailleDuModele(reg["ia.modele"], reg["ia.taille"]);
+    const attendu = coutAttenduDuModele(reg["ia.modele"], taillePortrait, reg["ia.qualite"] || null);
+
+    // Le filet de la taille vu du BO (relecture du 26/11) : OpenAI refuse la
+    // taille maximale, et chaque affiche repart en 1584 × 2240 — payée et
+    // attendue comme telle, pendant que les réglages annoncent 2416 × 3424.
+    // Les affiches prêtes de ce modèle depuis le dernier enregistrement de la
+    // taille ou du modèle (et ce mois-ci) : combien, et combien à la taille
+    // sûre. Rien quand la taille réglée n'a pas de repli.
+    const sure = tailleDeRepli(reg["ia.modele"], taillePortrait);
+    let repliDeTaille: { depuis: Date; affiches: number; repliees: number; tailleSure: string } | null = null;
+    if (sure) {
+      // En millisecondes : une date lue par `raw` arrive en texte.
+      const [reglee] = await db
+        .select({ ms: raw<number | null>`(extract(epoch from max(${schema.settings.updatedAt})) * 1000)::float8` })
+        .from(schema.settings)
+        .where(inArray(schema.settings.key, ["ia.taille", "ia.modele"]));
+      const ms = Number(reglee?.ms ?? 0);
+      const depuis = ms > debut.getTime() ? new Date(ms) : debut;
+      const replis = [TAILLE_SURE, TAILLE_PAYSAGE];
+      const [n] = await db
+        .select({
+          affiches: raw<number>`count(*)::int`,
+          repliees: raw<number>`count(*) filter (where ${inArray(schema.aiGenerations.size, replis)})::int`,
+        })
+        .from(schema.aiGenerations)
+        .where(
+          and(
+            gte(schema.aiGenerations.createdAt, depuis),
+            eq(schema.aiGenerations.status, "prete"),
+            eq(schema.aiGenerations.model, reg["ia.modele"]),
+            clients,
+          ),
+        );
+      repliDeTaille = {
+        depuis,
+        affiches: Number(n?.affiches ?? 0),
+        repliees: Number(n?.repliees ?? 0),
+        tailleSure: sure,
+      };
+    }
+
     return c.json({
       // La clé elle-même ne sort jamais d'ici — seulement le fait qu'elle existe.
       configuree: iaConfiguree,
@@ -2117,6 +2486,14 @@ export function mountIaRoutes(app: Hono): void {
       plafondAtteint: depenseCents >= plafondCents,
       // Estimation : le coût par image est un réglage, pas une facture OpenAI.
       coutParImageCents: reg["ia.coutParImageCents"],
+      // Ce que coûtera une affiche avec les réglages du moment (26/11) — la
+      // taille et la qualité comptées, pour gpt-image-2 et ses suites ; null
+      // ailleurs. Le BO le montre au lieu des 8 c du réglage, faux d'un
+      // facteur 2 à 6. `coutAttenduEstime` : calculé sur les tarifs de
+      // gpt-image-2, faute de ceux du modèle réglé.
+      coutAttenduCents: attendu?.cents ?? null,
+      coutAttenduEstime: attendu?.estime ?? false,
+      repliDeTaille,
       purgeJours: reg["ia.purgeJours"],
       total: { essais: Number(tout?.essais ?? 0), coutCents: Number(tout?.coutCents ?? 0) },
       // Les fonds (Créer un fond), à part : leur dépense ne touche pas au

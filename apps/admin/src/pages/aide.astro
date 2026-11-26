@@ -587,6 +587,14 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           (illustration, aplats, couleurs, contours, texture, aucun texte,
           aucune bordure), pas toute la consigne.
         </p>
+        {/* 26/11 : la consigne part au modèle en texte (consigneEnTexte,
+            apps/api/src/consigne-texte.ts), et non plus en HTML. */}
+        <p>
+          La mise en forme sert à vous relire : le modèle reçoit le texte seul,
+          un paragraphe par ligne et chaque élément de liste précédé d'un
+          tiret. Le gras ne lui parvient pas : pour insister, écrivez-le en
+          toutes lettres (« IMPORTANT : », des majuscules).
+        </p>
         <p>
           Les titres se traduisent sous la liste (« Traductions des titres »,
           avec « Proposer les traductions manquantes »). Un style

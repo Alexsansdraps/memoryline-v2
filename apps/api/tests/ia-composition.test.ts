@@ -22,6 +22,7 @@ import { posterConfigSchema, type PosterConfig } from "@memoryline/types";
 import {
   MURET_OFFICIEL,
   TAILLE_GENERATION_PAYSAGE,
+  TAILLES_GENERATION_PAYSAGE,
   controlerLigneIA,
   controlerLigneIAModifiee,
   ligneIAAvecPersonnages,
@@ -313,19 +314,37 @@ test("des personnages en paysage : ia_personnages_paysage — par la ligne ou pa
     refus(ligneIAControlee(ligne({ orientation: "portrait" }), contexte({ generation: couchee }))),
     "ia_personnages_paysage",
   );
+  // La taille maximale couchée (26/11) : une génération en paysage aussi.
+  const coucheeMax = { ...GEN, size: "3424x2416" };
+  assert.equal(refus(ligneIAControlee(ligne(), contexte({ generation: coucheeMax }))), "ia_personnages_paysage");
   // Les tailles que le back-office donne aux affiches demandées EN PORTRAIT,
-  // « 1536 × 1024 — paysage » comprise : la feuille reste en hauteur.
-  for (const size of ["1584x2240", "1024x1536", "1024x1024", "1536x1024", "auto", null])
+  // « 1536 × 1024 — paysage » comprise, et la taille maximale (2416 × 3424,
+  // 26/11) : la feuille reste en hauteur.
+  for (const size of ["1584x2240", "2416x3424", "1024x1536", "1024x1024", "1536x1024", "auto", null])
     assert.equal(ligneIAControlee(ligne(), contexte({ generation: { ...GEN, size } })).ok, true, String(size));
   assert.equal(ligneIAControlee(ligne({ orientation: "portrait" }), contexte()).ok, true);
 });
 
-test("la taille d'une génération en paysage est bien celle d'ia.ts (TAILLE_PAYSAGE)", () => {
+test("les tailles d'une génération en paysage sont bien celles d'ia.ts (TAILLE_PAYSAGE, TAILLE_PAYSAGE_MAX)", () => {
   const source = readFileSync(fileURLToPath(new URL("../src/ia.ts", import.meta.url)), "utf8");
-  const lue = /const TAILLE_PAYSAGE = "(\d+x\d+)"/.exec(source)?.[1];
-  assert.equal(lue, TAILLE_GENERATION_PAYSAGE);
-  // Et c'est la seule taille qu'une demande en paysage reçoit.
-  assert.match(source, /const tailleChoisie = paysage\s*\?\s*TAILLE_PAYSAGE/);
+  const lue = (nom: string) => new RegExp(`const ${nom} = "(\\d+x\\d+)"`).exec(source)?.[1];
+  assert.equal(lue("TAILLE_PAYSAGE"), TAILLE_GENERATION_PAYSAGE);
+  assert.deepEqual(
+    new Set([lue("TAILLE_PAYSAGE"), lue("TAILLE_PAYSAGE_MAX")]),
+    new Set(TAILLES_GENERATION_PAYSAGE),
+  );
+  // La taille maximale couchée est bien la taille maximale tournée.
+  assert.equal(lue("TAILLE_PAYSAGE_MAX"), lue("TAILLE_MAX")!.split("x").reverse().join("x"));
+  // Et ce sont les seules tailles qu'une demande en paysage reçoit, passées
+  // par `tailleDuModele` (relecture du 26/11) : gpt-image-2 et ses suites
+  // les gardent ; gpt-image-1.5 et 1-mini, qui ne font que les tailles
+  // standard (2240 × 1584 les faisait échouer, 400), reçoivent 1536 × 1024 —
+  // que la génération ne dit pas couchée : c'est alors l'orientation de la
+  // ligne qui refuse les personnages.
+  assert.match(
+    source,
+    /const tailleChoisie = paysage\s*\?\s*tailleDuModele\(\s*reg\["ia\.modele"\],\s*taillePortrait === TAILLE_MAX\s*\?\s*TAILLE_PAYSAGE_MAX\s*:\s*TAILLE_PAYSAGE,?\s*\)\s*:/,
+  );
 });
 
 test("les textes (x/y compris) et les personnages ne bougent pas d'un chiffre", () => {

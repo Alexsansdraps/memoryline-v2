@@ -107,8 +107,15 @@ import {
   phraseDuJournal,
   refusDeCorrection,
   refusDuMontant,
-  refusDuMotif,
 } from "./montant-vente-stand.js";
+// « Marquer terminées » et « Remettre à imprimer » dans Ventes stand (26/11).
+import {
+  ACTIONS_ETAPE_STAND,
+  estActionEtapeStand,
+  raisonDejaFaite,
+  refusEtapeDuStand,
+} from "./etape-vente-stand.js";
+import { unPassageALaFois } from "./verrou-commande.js";
 import {
   numeroSuivant,
   numerosDuPrefixe,
@@ -341,8 +348,8 @@ export interface EtatCommandeASupprimer {
  *
  * SAUF une vente du STAND (19/11, Alexandra : « on va faire plein de tests,
  * donc faut qu'on puisse supprimer malgré la loi les commandes, et ceux qui
- * paient pas »). Elle naît payée et terminée (salon.ts), sans argent passé
- * par un prestataire : elle se supprime, payée, annulée ou non. Deux
+ * paient pas »). Elle naît payée (salon.ts), sans argent passé par un
+ * prestataire : elle se supprime, payée, annulée, terminée ou non. Deux
  * choses la retiennent encore, parce qu'elles vivent hors d'ici : une
  * facture numérotée (la suite des numéros de facture), et une étiquette
  * SendCloud (un achat réel chez le transporteur).
@@ -742,25 +749,9 @@ export function etapeDeLaCommande(
   };
 }
 
-/**
- * Un passage d'étape à la fois par commande.
- *
- * Deux clics rapprochés sur « Envoyée » expédiaient deux fois et
- * prévenaient deux fois la cliente. Le second attend ici la fin du premier,
- * relit la commande, et la trouve déjà envoyée. L'API tourne dans un seul
- * processus : un verrou en mémoire suffit, sans tenir de connexion ouverte.
- */
-const passagesEnCours = new Map<number, Promise<unknown>>();
-async function unPassageALaFois<T>(orderId: number, faire: () => Promise<T>): Promise<T> {
-  const avant = passagesEnCours.get(orderId) ?? Promise.resolve();
-  const celuiCi = avant.catch(() => undefined).then(faire);
-  passagesEnCours.set(orderId, celuiCi);
-  try {
-    return await celuiCi;
-  } finally {
-    if (passagesEnCours.get(orderId) === celuiCi) passagesEnCours.delete(orderId);
-  }
-}
+// Un passage d'étape à la fois par commande : verrou-commande.ts (sorti
+// d'ici le 26/11, pour que « Revenir à ma commande » de la tablette le
+// prenne aussi).
 
 /** Le nom des transporteurs de SendCloud, comme le formulaire « Expédier » de la fiche. */
 const NOM_TRANSPORTEUR_SENDCLOUD: Record<string, string> = {
@@ -1012,10 +1003,12 @@ function limiterAuStand(c: Context): SQL[] {
  * depuis la relecture (20/11) : Ventes stand demande de toute façon le sien,
  * mais une commande du site annulée et étiquetée n'est pas une vente de test.
  *
- * Dans la requête, et non après coup comme le filtre « tag » : la liste
- * s'arrête à cent lignes, et un filtre posé ensuite chercherait les ventes de
- * test parmi les cent plus récentes seulement — l'onglet « Test » perdrait
- * les plus anciennes, et « Toutes » montrerait moins de cent ventes.
+ * Dans la requête, et non après coup comme l'étaient, jusqu'au 26/11,
+ * l'étiquette et les statuts : la liste s'arrête à cent lignes, et un filtre
+ * posé ensuite chercherait les ventes de test parmi les cent plus récentes
+ * seulement — l'onglet « Test » perdrait les plus anciennes, et « Toutes »
+ * montrerait moins de cent ventes. (Les filtres calculés passent désormais
+ * avant la limite : LIGNES_LUES_AVANT_FILTRE.)
  */
 function conditionVentesDeTest(filtre: FiltreTest): SQL {
   const deTest = and(
@@ -1025,6 +1018,15 @@ function conditionVentesDeTest(filtre: FiltreTest): SQL {
   )!;
   return filtre === "seul" ? deTest : raw`not (${deTest})`;
 }
+
+/**
+ * Combien de commandes la liste lit, au plus, quand un filtre calculé
+ * (statut, étape, parcours, étiquette) doit passer AVANT sa limite (relecture
+ * du 26/11, GET /admin/orders). Large devant la boutique — quelques milliers
+ * de commandes, reprises de Shopify comprises — et borné quand même : la
+ * page ne doit jamais tout charger.
+ */
+const LIGNES_LUES_AVANT_FILTRE = 10_000;
 
 export function mountOrderRoutes(app: Hono): void {
   /**
@@ -1037,6 +1039,21 @@ export function mountOrderRoutes(app: Hono): void {
   app.get("/admin/orders", async (c) => {
     const q = c.req.query();
     const limit = Math.min(Number(q.limit ?? 100), 500);
+    // Statuts, étapes, parcours et étiquette se déduisent de plusieurs
+    // tables : ils se filtrent en JavaScript, plus bas. AVANT la limite
+    // désormais (relecture du 26/11) : filtrés après, une vente du stand « À
+    // imprimer » qui n'était pas parmi les 100 dernières ne sortait jamais
+    // sous « Statuts → À imprimer », alors que « À traiter » la comptait — et
+    // depuis le 26/11, chaque vente du stand attend que Margaux la marque
+    // terminée. Les lignes sont donc lues sans la limite (dans une borne
+    // large), filtrées, puis coupées ; seules celles qui restent sont
+    // complétées (aperçus, paiements, montant).
+    const fin = (q.financial ?? "").split(",").filter(Boolean);
+    const exp = (q.fulfillment ?? "").split(",").filter(Boolean);
+    const etapes = (q.etape ?? "").split(",").filter(Boolean);
+    const parcoursDemandes = (q.parcours ?? "").split(",").filter(Boolean);
+    const tag = (q.tag ?? "").trim().toLowerCase();
+    const filtreApres = fin.length > 0 || exp.length > 0 || etapes.length > 0 || parcoursDemandes.length > 0 || !!tag;
     const conditions = [];
     // Les archivées sont hors de la liste ordinaire, et « archived=1 » les
     // montre SEULES : c'est la vue « Commandes archivées ». Les mélanger aux
@@ -1080,7 +1097,7 @@ export function mountOrderRoutes(app: Hono): void {
       );
     }
 
-    const rows = await db
+    const lues = await db
       .select({
         id: schema.orders.id,
         number: schema.orders.number,
@@ -1097,6 +1114,11 @@ export function mountOrderRoutes(app: Hono): void {
         // montant-vente-stand.ts) : Ventes stand le dit au lieu de proposer
         // de le corriger.
         invoiceNumber: schema.orders.invoiceNumber,
+        // Avec la reprise de Shopify et la carte cadeau, ce que la règle de
+        // la correction lit (refusMontant, plus bas). Ni l'une ni l'autre ne
+        // repart dans la réponse.
+        legacyId: schema.orders.legacyId,
+        giftCardCents: schema.orders.giftCardCents,
         customerId: schema.orders.customerId,
         customerName: schema.customers.name,
         customerEmail: schema.customers.email,
@@ -1115,12 +1137,30 @@ export function mountOrderRoutes(app: Hono): void {
       )
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(schema.orders.createdAt))
-      .limit(limit);
+      .limit(filtreApres ? LIGNES_LUES_AVANT_FILTRE : limit);
 
     const [resume, bordereauxReels] = await Promise.all([
-      resumeCommandes(rows.map((r) => r.id)),
-      avecBordereauReel(rows.map((r) => r.id)),
+      resumeCommandes(lues.map((r) => r.id)),
+      avecBordereauReel(lues.map((r) => r.id)),
     ]);
+    // Les filtres calculés, puis la limite (relecture du 26/11, voir plus
+    // haut) : mêmes règles qu'avant, sur toutes les lignes lues.
+    const rows = filtreApres
+      ? lues
+          .filter((r) => {
+            const s = resume.get(r.id)!;
+            if (fin.length && !fin.includes(statutFinancier(r, s.rembourseCents))) return false;
+            if (exp.length && !exp.includes(statutExpedition(s.articles, s.expedies))) return false;
+            if (etapes.length || parcoursDemandes.length) {
+              const { parcours, etape } = etapeDeLaCommande(r, s, bordereauxReels.has(r.id));
+              if (etapes.length && !etapes.includes(etape)) return false;
+              if (parcoursDemandes.length && !parcoursDemandes.includes(parcours)) return false;
+            }
+            if (tag && !(r.tags ?? []).some((t) => t.toLowerCase() === tag)) return false;
+            return true;
+          })
+          .slice(0, limit)
+      : lues;
     // Les aperçus des premières affiches de chaque commande, pour la liste
     // (demande de la boutique : voir les affiches sans ouvrir la commande,
     // comme dans le panier). Trois au plus ; le reste se dit « +N ».
@@ -1214,7 +1254,41 @@ export function mountOrderRoutes(app: Hono): void {
         );
       for (const l of lignesPaiement) if (payeeEnEssai([l], config)) enEssai.add(l.orderId);
     }
-    let enrichies = rows.map(({ pickupPoint, relayPointId, relayPointLabel, ...r }) => {
+    // Le total d'une vente du stand se corrige DANS LA LIGNE de Ventes stand
+    // (26/11, Margaux : « commande stand pouvoir modifier directement le
+    // total dans la ligne. Car si elle applique des réductions par ex,
+    // faudrait juste le total indépendamment du reste. Juste les commandes
+    // stands ! »). La liste dit pour chaque vente du stand si son total se
+    // corrige, et sinon pourquoi (`refusMontant`) : la règle de la route qui
+    // corrige (refusDeCorrection, montant-vente-stand.ts), avec ce qu'elle
+    // lit au grand livre et aux remboursements, en deux requêtes pour toute
+    // la page. L'écran montre alors le total en texte, la raison en
+    // info-bulle. Les commandes du site n'en reçoivent pas : leur écran ne
+    // change pas.
+    const idsDuStand = rows.filter((r) => r.channel === "salon").map((r) => r.id);
+    const [avecOrigine, remboursementsParVente] = idsDuStand.length
+      ? await Promise.all([
+          db
+            .select({ orderId: schema.orderTransactions.orderId })
+            .from(schema.orderTransactions)
+            .where(
+              and(
+                inArray(schema.orderTransactions.orderId, idsDuStand),
+                eq(schema.orderTransactions.kind, "sale"),
+                eq(schema.orderTransactions.status, "success"),
+                isNull(schema.orderTransactions.parentId),
+              ),
+            )
+            .then((l) => new Set(l.map((e) => e.orderId))),
+          db
+            .select({ orderId: schema.refunds.orderId, n: raw<number>`count(*)::int` })
+            .from(schema.refunds)
+            .where(inArray(schema.refunds.orderId, idsDuStand))
+            .groupBy(schema.refunds.orderId)
+            .then((l) => new Map(l.map((e) => [e.orderId, Number(e.n)]))),
+        ])
+      : [new Set<number>(), new Map<number, number>()];
+    const enrichies = rows.map(({ pickupPoint, relayPointId, relayPointLabel, legacyId, giftCardCents, ...r }) => {
       const s = resume.get(r.id)!;
       const { parcours, etape } = etapeDeLaCommande(
         { ...r, pickupPoint, relayPointId, relayPointLabel },
@@ -1223,6 +1297,22 @@ export function mountOrderRoutes(app: Hono): void {
       );
       return {
         ...r,
+        ...(r.channel === "salon"
+          ? {
+              /** Null : le total se corrige dans la ligne ; sinon, pourquoi pas. */
+              refusMontant: refusDeCorrection({
+                number: r.number,
+                channel: r.channel,
+                status: r.status,
+                tags: r.tags,
+                legacyId,
+                invoiceNumber: r.invoiceNumber,
+                giftCardCents,
+                remboursements: remboursementsParVente.get(r.id) ?? 0,
+                encaissementDOrigine: avecOrigine.has(r.id),
+              }),
+            }
+          : {}),
         parcours,
         etapeTraitement: etape,
         payeeEnEssai: enEssai.has(r.id),
@@ -1238,29 +1328,10 @@ export function mountOrderRoutes(app: Hono): void {
       };
     });
 
-    // Statuts et étiquettes se filtrent après coup : ils se déduisent de
-    // plusieurs tables, les calculer en SQL rendrait la requête illisible
-    // pour un gain nul à cette échelle.
-    const fin = (q.financial ?? "").split(",").filter(Boolean);
-    if (fin.length)
-      enrichies = enrichies.filter((o) => fin.includes(o.statutFinancier));
-    const exp = (q.fulfillment ?? "").split(",").filter(Boolean);
-    if (exp.length)
-      enrichies = enrichies.filter((o) => exp.includes(o.statutExpedition));
-    // Les étapes de traitement (17/11) : « en_preparation,prete »… et le
-    // parcours (« livraison », « retrait », « stand »).
-    const etapes = (q.etape ?? "").split(",").filter(Boolean);
-    if (etapes.length)
-      enrichies = enrichies.filter((o) => etapes.includes(o.etapeTraitement));
-    const parcoursDemandes = (q.parcours ?? "").split(",").filter(Boolean);
-    if (parcoursDemandes.length)
-      enrichies = enrichies.filter((o) => parcoursDemandes.includes(o.parcours));
-    const tag = (q.tag ?? "").trim().toLowerCase();
-    if (tag)
-      enrichies = enrichies.filter((o) =>
-        (o.tags ?? []).some((t) => t.toLowerCase() === tag),
-      );
-
+    // Statuts, étapes de traitement (17/11 : « en_preparation,prete »…),
+    // parcours (« livraison », « retrait », « stand ») et étiquette sont
+    // filtrés plus haut, AVANT la limite (relecture du 26/11) : les calculer
+    // en SQL rendrait la requête illisible pour un gain nul à cette échelle.
     return c.json(enrichies);
   });
 
@@ -1525,6 +1596,56 @@ export function mountOrderRoutes(app: Hono): void {
         }
       }
       return c.json({ ok: true, count, prevenues, ecartees, annulees: 0 });
+    }
+
+    /*
+     * « Marquer terminées » et « Remettre à imprimer », les ventes cochées
+     * dans Ventes stand (26/11, Alexandra : « il faut que quand la personne
+     * créé une affiche, qu'elle ne soit pas directement terminée mais qu'on
+     * doive le faire soit dans la commande soit sur la liste avec case à
+     * cocher »). Chacune passe par la frise de la fiche (changerEtape) : la
+     * remise sans transporteur et la date de fin, ou leur annulation ; au
+     * journal, qui et quand ; aucun courriel. La garde n'y laisse que les
+     * ventes du stand payées (etape-vente-stand.ts). Les autres sont
+     * IGNORÉES, chacune avec son numéro et sa raison courte, que le message
+     * compte — comme celles qui étaient déjà à l'étape demandée : un double
+     * clic ne refait rien, le second envoi les trouve déjà terminées.
+     */
+    if (estActionEtapeStand(action)) {
+      const vers = ACTIONS_ETAPE_STAND[action];
+      // « Qui » : la session d'abord (une propriétaire, la garde de /admin/*
+      // l'a posée), le nom envoyé par le BO à défaut.
+      const auteur =
+        c.get("utilisateur")?.email?.trim() ||
+        (typeof b.auteur === "string" ? b.auteur.trim().slice(0, 200) : "") ||
+        null;
+      let count = 0;
+      const ignorees: { id: number; raison: string }[] = [];
+      for (const id of new Set(ids)) {
+        const r = await changerEtape(id, () => vers, { auteur, garde: refusEtapeDuStand });
+        if ("erreur" in r)
+          ignorees.push({
+            id,
+            raison: r.code === 404 ? "supprimée depuis l'affichage de la liste" : r.erreur,
+          });
+        else if (r.inchange) ignorees.push({ id, raison: raisonDejaFaite(vers) });
+        else count++;
+      }
+      const numeros = new Map(
+        (ignorees.length
+          ? await db
+              .select({ id: schema.orders.id, number: schema.orders.number })
+              .from(schema.orders)
+              .where(inArray(schema.orders.id, ignorees.map((i) => i.id)))
+          : []
+        ).map((o) => [o.id, o.number]),
+      );
+      return c.json({
+        ok: true,
+        etape: vers,
+        count,
+        ignorees: ignorees.map((i) => ({ ...i, numero: numeros.get(i.id) ?? `n° ${i.id}` })),
+      });
     }
 
     if (action === "tag" || action === "untag") {
@@ -2117,11 +2238,20 @@ export function mountOrderRoutes(app: Hono): void {
    * `previenirDeLExpedition` pour le courriel.
    *
    * `cible` reçoit le parcours et l'étape actuelle : null = rien à faire.
+   * `garde` (26/11) : une règle de plus, lue sur la commande relue sous le
+   * verrou ; sa raison refuse le passage. « Marquer terminées » et
+   * « Remettre à imprimer » de Ventes stand s'en servent pour n'agir que
+   * sur des ventes du stand payées (etape-vente-stand.ts).
    */
   async function changerEtape(
     id: number,
     cible: (parcours: ParcoursTraitement, de: EtapeTraitement) => string | null,
-    opts: { auteur?: string | null; carrier?: string | null; trackingNumber?: string | null } = {},
+    opts: {
+      auteur?: string | null;
+      carrier?: string | null;
+      trackingNumber?: string | null;
+      garde?: (order: typeof schema.orders.$inferSelect) => string | null;
+    } = {},
   ): Promise<
     | { erreur: string; code: 404 | 409 }
     | {
@@ -2146,6 +2276,8 @@ export function mountOrderRoutes(app: Hono): void {
     const fait = await unPassageALaFois<Fait>(id, async (): Promise<Fait> => {
       const [order] = await db.select().from(schema.orders).where(eq(schema.orders.id, id));
       if (!order) return { erreur: "Cette commande n'existe plus.", code: 404 as const };
+      const refus = opts.garde?.(order);
+      if (refus) return { erreur: refus, code: 409 as const };
       // Les reprises de Shopify ont été traitées là-bas (voir index.ts).
       if (order.legacyId != null)
         return {
@@ -2216,7 +2348,12 @@ export function mountOrderRoutes(app: Hono): void {
         author: opts.auteur?.trim() || null,
         message:
           `Traitement : ${libelleEtape(de, parcours)} → ${libelleEtape(etape, parcours)}.` +
-          (passage.annulerExpeditions ? " Les expéditions enregistrées sont annulées." : "") +
+          // Au stand, rien n'a voyagé : c'est la remise au client qui tombe.
+          (passage.annulerExpeditions
+            ? parcours === "stand"
+              ? " La remise enregistrée est annulée."
+              : " Les expéditions enregistrées sont annulées."
+            : "") +
           (envoi.trackingNumber ? ` Suivi ${envoi.trackingNumber}.` : ""),
       });
       return {
@@ -2935,9 +3072,10 @@ export function mountOrderRoutes(app: Hono): void {
     // les chiffres sous les yeux, et on dit quoi faire à la place : sans cela,
     // le refus ressemble à une panne.
     //
-    // Une vente du STAND naît remise (« Terminée », 19/11) : elle s'annule
-    // quand même — le client n'a pas payé, ou autre (Alexandra : « si elle
-    // paie pas ou autre, faut que Margaux puisse annuler »).
+    // Une vente du STAND, même remise (« Terminée », marquée au BO depuis le
+    // 26/11), s'annule quand même — le client n'a pas payé, ou autre
+    // (Alexandra : « si elle paie pas ou autre, faut que Margaux puisse
+    // annuler ») : sa remise tombe plus bas, avec les expéditions.
     if (resume.expedies > 0 && !auStand)
       return {
         erreur:
@@ -3714,8 +3852,10 @@ export function mountOrderRoutes(app: Hono): void {
    * validée (car des fois ils changent d'avis ils veulent un cadre par
    * exemple) le but est d'avoir les statistiques bon »).
    *
-   * Corps : { totalCents, motif, author }. Les règles, l'écriture de
-   * correction et la phrase du journal sont dans montant-vente-stand.ts.
+   * Corps : { totalCents, motif?, author }. Les règles, l'écriture de
+   * correction et la phrase du journal sont dans montant-vente-stand.ts. Le
+   * total se corrige quelle que soit l'étape de la vente (À imprimer, remise
+   * en partie, Terminée) : aucune règle ne lit ses remises.
    * Ici, la commande est relue sous son verrou — le même que prennent la
    * tablette pour rouvrir une vente (salon.ts) et la facture pour se
    * numéroter (numeroterLaFacture) : une facture éditée au même instant
@@ -3732,9 +3872,11 @@ export function mountOrderRoutes(app: Hono): void {
     const refusMontant = refusDuMontant(apresCents);
     if (refusMontant || apresCents === null)
       return c.json({ error: refusMontant ?? "Montant illisible." }, 400);
+    // Le motif est FACULTATIF depuis le 26/11 (Margaux : « faudrait juste le
+    // total indépendamment du reste ») : le total se corrige dans la ligne
+    // de Ventes stand, sans rien d'autre à saisir. Sans motif, le journal le
+    // dit (phraseDuJournal).
     const motif = lireMotif(b.motif);
-    const refusMotif = refusDuMotif(motif);
-    if (refusMotif) return c.json({ error: refusMotif }, 400);
     // « Qui » : la session d'abord (la garde de /admin/* l'a posée, une
     // propriétaire), le nom envoyé par le BO à défaut.
     const auteur =
@@ -3793,8 +3935,9 @@ export function mountOrderRoutes(app: Hono): void {
         amountCents: ecriture.amountCents,
         gateway: PASSERELLE_DU_STAND,
         parentId: origine,
-        // Le motif seul : la fiche et la facture le relisent tel quel.
-        message: motif,
+        // Le motif seul : la fiche et la facture le relisent tel quel. Sans
+        // motif (26/11), rien : la facture n'imprime alors aucune précision.
+        message: motif || null,
       });
       await tx.insert(schema.orderEvents).values({
         orderId: id,

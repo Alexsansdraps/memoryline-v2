@@ -1257,10 +1257,44 @@ async function renderBackground(
     const buf = await readSource(url);
     const isSvg = extname(fileNameFromUrl(url)).toLowerCase() === ".svg";
     if (isSvg) return sharp(await fondSvgRasterise(buf, W, H));
-    const pixels = await sharp(buf)
-      .resize({ width: W, height: H, fit: "cover", position: "centre" })
-      .png()
-      .toBuffer();
+    const fond = sharp(buf).resize({ width: W, height: H, fit: "cover", position: "centre" });
+    // L'image d'une affiche tirée d'une photo est AGRANDIE pour l'impression
+    // (× 1,6 en A4 et × 2,2 en A3 depuis 1584 × 2240 ; × 3,4 en A3 depuis
+    // 1024 × 1536) : l'interpolation adoucit les contours. Une accentuation
+    // douce, réglée sur l'agrandissement, les rend sans toucher aux aplats
+    // (m1 = 0). 26/11, Margaux : « qualité affiches IA pas top ». Dans le
+    // MÊME pipeline (un seul encodage), et sur la seule pleine définition :
+    // la vignette part de l'aperçu de 1024 px, réduit ensuite à 600.
+    //
+    // Sans halo (relecture du même jour, recadrages à l'appui) : σ plafonné
+    // à 1 et éclaircissement borné à 4 (y2). À σ 1,54 (1024 × 1536 en A3),
+    // un liseré clair longeait les contours sombres des aplats ; ainsi, 3,7
+    // fois moins de pixels y sortent de l'intervalle de leurs voisins. En
+    // 1584 × 2240 (σ 0,70 en A4, 1 en A3), le plafond ne joue pas, et
+    // l'éclaircissement borné ôte encore un cinquième des halos pour un
+    // dixième du gain de netteté. En 2416 × 3424, l'A4 n'est agrandi que de
+    // 1,03 : pas d'accentuation ; l'A3 de 1,45 (σ 0,65).
+    //
+    // Reconnue à son FICHIER, la pleine définition d'une génération
+    // (« ia/<id>-pleine.png », le seul nom qu'elles portent), et non plus à
+    // `aiPublicId` (relecture du 26/11) : le PDF de l'atelier du BO (« Créer
+    // une affiche » dans Affiches IA, configDeLAtelier) retire l'identifiant
+    // et pose la même image en fond — il sortait plus mou que le fichier de
+    // la commande de la cliente, pour la même image. Les décors tirés d'une
+    // IA (« decor-ia-….png », copiés parmi les décors) et les fonds de
+    // « Créer un fond » (ia/fonds/…) ne portent pas ce nom : inchangés.
+    if (/^\/?ia\/[^/]+-pleine\.png$/i.test(url.split("?")[0] ?? "")) {
+      const { width, height } = await sharp(buf).metadata();
+      const agrandissement = Math.max(W / (width || W), H / (height || H));
+      if (agrandissement > 1.2)
+        fond.sharpen({
+          sigma: Math.min(1, Math.max(0.5, 0.45 * agrandissement)),
+          m1: 0,
+          m2: 2,
+          y2: 4,
+        });
+    }
+    const pixels = await fond.png().toBuffer();
     return sharp(pixels);
   }
 

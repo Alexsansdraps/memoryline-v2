@@ -3,9 +3,10 @@
  *
  * Trois parcours, décidés par la propriétaire :
  *
- *   - « stand » : une vente prise sur la tablette. Elle naît « à encaisser »,
- *     Margaux la marque payée, puis elle s'imprime et se remet sur place :
- *     À imprimer → Terminée. AUCUN courriel : la personne est là.
+ *   - « stand » : une vente prise sur la tablette. Elle naît payée et « À
+ *     imprimer » (salon.ts, 26/11), s'imprime et se remet sur place, et
+ *     Margaux la marque « Terminée » elle-même, dans Ventes stand ou sur sa
+ *     fiche : À imprimer → Terminée. AUCUN courriel : la personne est là.
  *   - « livraison » : une commande du site qui voyage. Payée, elle est
  *     « En préparation » ; puis « Envoyée » (l'avis d'expédition part, avec
  *     le suivi s'il y en a un) ; puis « Livrée », sans courriel.

@@ -199,8 +199,13 @@ export const ui = {
     "ia.recommencer": "Repartir de zéro",
     "ia.envoi": "Envoi de votre photo…",
     "ia.generation": "Création de votre affiche…",
+    /* Une à trois minutes, et non plus « une bonne trentaine de secondes »
+       (26/11, Alexandra : « il faut que les affiches soient haute qualité ! ») :
+       en qualité « high » et en 1584 × 2240 ou 2416 × 3424, le modèle a 1,6 à
+       3 fois plus à dessiner qu'en 1024 × 1536 ; l'API attend jusqu'à 280 s
+       (OPENAI_TIMEOUT_MS, apps/api/src/ia.ts). Les 7 langues disent pareil. */
     "ia.generation_duree":
-      "Comptez une bonne trentaine de secondes. Laissez cette page ouverte.",
+      "Comptez une à trois minutes. Laissez cette page ouverte.",
     "ia.apercu_vide": "Votre affiche apparaîtra ici.",
     "ia.deplacer_ligne": "Glissez pour déplacer la ligne",
     "ia.apercu_alt": "Aperçu de l'affiche générée",
@@ -620,6 +625,10 @@ export const ui = {
     "compte.statut.expedition.fulfilled": "Expédiée",
     "compte.statut.expedition.delivered": "Livrée",
     "compte.statut.expedition.cancelled": "Annulée",
+    // Un achat au stand (26/11) : la façon dont l'affiche est remise, quelle
+    // que soit son étape au back-office (« À imprimer », « Terminée »). Les
+    // mots de « livraison.remiseStand » des courriels, dans chaque langue.
+    "compte.statut.expedition.stand": "Remise sur le stand",
 
     "compte.adresses.titre": "Mes adresses",
     "compte.adresses.vide": "Vous n'avez pas encore enregistré d'adresse.",
@@ -1074,7 +1083,7 @@ export const ui = {
     "ia.envoi": "Uploading your photo…",
     "ia.generation": "Creating your poster…",
     "ia.generation_duree":
-      "Allow a good thirty seconds. Keep this page open.",
+      "Allow one to three minutes. Keep this page open.",
     "ia.apercu_vide": "Your poster will appear here.",
     "ia.deplacer_ligne": "Drag to move the line",
     "ia.apercu_alt": "Preview of the generated poster",
@@ -1453,6 +1462,7 @@ export const ui = {
     "compte.statut.expedition.fulfilled": "Shipped",
     "compte.statut.expedition.delivered": "Delivered",
     "compte.statut.expedition.cancelled": "Cancelled",
+    "compte.statut.expedition.stand": "Collected at our stand",
 
     "compte.adresses.titre": "My addresses",
     "compte.adresses.vide": "You haven't saved an address yet.",
@@ -1892,7 +1902,7 @@ export const ui = {
     "ia.envoi": "Ihr Foto wird hochgeladen…",
     "ia.generation": "Ihr Poster entsteht…",
     "ia.generation_duree":
-      "Rechnen Sie mit gut dreißig Sekunden. Lassen Sie diese Seite geöffnet.",
+      "Rechnen Sie mit ein bis drei Minuten. Lassen Sie diese Seite geöffnet.",
     "ia.apercu_vide": "Hier erscheint Ihr Poster.",
     "ia.deplacer_ligne": "Ziehen, um die Zeile zu verschieben",
     "ia.apercu_alt": "Vorschau des erstellten Posters",
@@ -2273,6 +2283,7 @@ export const ui = {
     "compte.statut.expedition.fulfilled": "Versandt",
     "compte.statut.expedition.delivered": "Zugestellt",
     "compte.statut.expedition.cancelled": "Storniert",
+    "compte.statut.expedition.stand": "Übergabe an unserem Stand",
 
     "compte.adresses.titre": "Meine Adressen",
     "compte.adresses.vide": "Sie haben noch keine Adresse gespeichert.",
@@ -2716,7 +2727,7 @@ export const ui = {
     "ia.envoi": "Caricamento della tua foto…",
     "ia.generation": "Creazione del tuo poster…",
     "ia.generation_duree":
-      "Ci vuole una trentina di secondi abbondante. Lascia aperta questa pagina.",
+      "Ci vogliono da uno a tre minuti. Lascia aperta questa pagina.",
     "ia.apercu_vide": "Il tuo poster apparirà qui.",
     "ia.deplacer_ligne": "Trascina per spostare la riga",
     "ia.apercu_alt": "Anteprima del poster creato",
@@ -3094,6 +3105,7 @@ export const ui = {
     "compte.statut.expedition.fulfilled": "Spedito",
     "compte.statut.expedition.delivered": "Consegnato",
     "compte.statut.expedition.cancelled": "Annullato",
+    "compte.statut.expedition.stand": "Ritiro al nostro stand",
 
     "compte.adresses.titre": "I miei indirizzi",
     "compte.adresses.vide": "Non hai ancora salvato nessun indirizzo.",
@@ -3532,7 +3544,7 @@ export const ui = {
     "ia.envoi": "Enviando tu foto…",
     "ia.generation": "Creando tu lámina…",
     "ia.generation_duree":
-      "Cuenta con unos treinta segundos largos. Deja esta página abierta.",
+      "Cuenta con uno a tres minutos. Deja esta página abierta.",
     "ia.apercu_vide": "Aquí aparecerá tu lámina.",
     "ia.deplacer_ligne": "Arrastra para mover la línea",
     "ia.apercu_alt": "Vista previa de la lámina creada",
@@ -3910,6 +3922,7 @@ export const ui = {
     "compte.statut.expedition.fulfilled": "Enviado",
     "compte.statut.expedition.delivered": "Entregado",
     "compte.statut.expedition.cancelled": "Anulado",
+    "compte.statut.expedition.stand": "Entrega en nuestro stand",
 
     "compte.adresses.titre": "Mis direcciones",
     "compte.adresses.vide": "Todavía no has guardado ninguna dirección.",
@@ -4330,7 +4343,7 @@ export const ui = {
     "ia.recommencer": "最初からやり直す",
     "ia.envoi": "写真を送信中…",
     "ia.generation": "ポスターを作成中…",
-    "ia.generation_duree": "30秒ほどかかります。このページを開いたままお待ちください。",
+    "ia.generation_duree": "1〜3分ほどかかります。このページを開いたままお待ちください。",
     "ia.apercu_vide": "ここにポスターが表示されます。",
     "ia.deplacer_ligne": "ドラッグして行を移動",
     "ia.apercu_alt": "作成したポスターのプレビュー",
@@ -4643,6 +4656,7 @@ export const ui = {
     "compte.statut.expedition.fulfilled": "発送済み",
     "compte.statut.expedition.delivered": "配達済み",
     "compte.statut.expedition.cancelled": "キャンセル済み",
+    "compte.statut.expedition.stand": "スタンドでのお渡し",
     "compte.adresses.titre": "住所録",
     "compte.adresses.vide": "まだ住所が登録されていません。",
     "compte.adresses.nouvelle": "新しい住所",
@@ -5007,7 +5021,7 @@ export const ui = {
     "ia.recommencer": "重新开始",
     "ia.envoi": "正在上传您的照片…",
     "ia.generation": "正在制作您的海报…",
-    "ia.generation_duree": "大约需要三十秒左右，请保持此页面打开。",
+    "ia.generation_duree": "大约需要一到三分钟，请保持此页面打开。",
     "ia.apercu_vide": "您的海报将显示在此处。",
     "ia.deplacer_ligne": "拖动以移动此行",
     "ia.apercu_alt": "生成海报预览",
@@ -5320,6 +5334,7 @@ export const ui = {
     "compte.statut.expedition.fulfilled": "已发货",
     "compte.statut.expedition.delivered": "已送达",
     "compte.statut.expedition.cancelled": "已取消",
+    "compte.statut.expedition.stand": "在摊位交付",
     "compte.adresses.titre": "我的地址",
     "compte.adresses.vide": "您还没有保存地址。",
     "compte.adresses.nouvelle": "新地址",

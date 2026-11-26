@@ -78,6 +78,22 @@ export const MURET_OFFICIEL = "/assets/muret_officiel.svg";
 export const TAILLE_GENERATION_PAYSAGE = "2240x1584";
 
 /**
+ * Toutes les tailles d'une génération demandée en paysage : 2240 × 1584, et
+ * depuis le 26/11 3424 × 2416 (TAILLE_PAYSAGE_MAX, ia.ts), quand la taille
+ * maximale est réglée — « faut que les affiches IA aient la même taille que
+ * les autres affiches » (Alexandra). « 1536 × 1024 » n'en est toujours pas :
+ * c'est une taille du menu, pour une affiche demandée EN PORTRAIT. (Depuis
+ * la relecture du 26/11, c'est aussi celle d'une demande en paysage avec
+ * gpt-image-1.5 ou 1-mini, qui ne font pas 2240 × 1584 : la génération ne
+ * se dit alors pas couchée, et c'est l'orientation de la ligne qui refuse
+ * les personnages.)
+ */
+export const TAILLES_GENERATION_PAYSAGE: ReadonlySet<string> = new Set([
+  TAILLE_GENERATION_PAYSAGE,
+  "3424x2416",
+]);
+
+/**
  * Une valeur venue du navigateur, rendue sûre pour une ligne de journal : un
  * retour à la ligne y écrirait une fausse ligne, une adresse de dix mille
  * caractères noierait les autres.
@@ -166,7 +182,7 @@ export function ligneIAControlee(config: PosterConfig, ctx: ContexteLigneIA): Ve
   // 6. En hauteur seulement (Q6, 20/11). Le sens se lit sur la ligne, et sur
   //    la génération : une génération demandée en paysage n'a pas sa place
   //    sur une feuille en hauteur, quoi que la ligne en dise.
-  if (config.orientation === "paysage" || gen.size === TAILLE_GENERATION_PAYSAGE)
+  if (config.orientation === "paysage" || TAILLES_GENERATION_PAYSAGE.has(gen.size ?? ""))
     return { ok: false, code: "ia_personnages_paysage" };
 
   const remarques: string[] = [];

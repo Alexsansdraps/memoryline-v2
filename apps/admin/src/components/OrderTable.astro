@@ -31,7 +31,7 @@ import {
   faireActionDeLaListe,
   type ResultatActionListe,
 } from "../lib/actions-liste-commandes.ts";
-import { choixDeLAffiche } from "../lib/montant-vente.ts";
+import { choixDeLAffiche, saisieDuTotal } from "../lib/montant-vente.ts";
 
 /**
  * Les filtres de la liste, plus celui des ventes de test (20/11) : l'API le
@@ -69,13 +69,32 @@ const estProprietaire = Astro.locals.user?.role === "owner";
 // avant de lire ses chiffres (Ventes stand) — alors seul leur message reste.
 let flash: string | null = actionFaite?.flash ?? null;
 let erreurAction: string | null = actionFaite?.erreurAction ?? null;
+/**
+ * Les totaux qu'on vient de corriger dans les lignes (26/11) : le résultat
+ * de chacun se lit sous son champ. Plusieurs d'un coup depuis la relecture
+ * du 26/11 : Entrée sur une ligne enregistre aussi les totaux tapés sur les
+ * autres (lib/montant-vente-bo.ts), au lieu de les perdre sans rien dire.
+ */
+let lignesCorrigees = actionFaite?.lignes ?? [];
 if (!actionFaite && Astro.request.method === "POST" && estProprietaire) {
-  ({ flash, erreurAction } = await faireActionDeLaListe(
+  ({ flash, erreurAction, lignes: lignesCorrigees = [] } = await faireActionDeLaListe(
     await Astro.request.formData(),
     api,
     Astro.locals.user?.email ?? undefined,
   ));
 }
+/** Le résultat d'un total corrigé dans cette ligne, s'il y en a un. */
+const resultatDeLaLigne = (id: number) => lignesCorrigees.find((l) => l.id === id) ?? null;
+
+/**
+ * Le total d'une vente du stand se corrige DANS LA LIGNE (26/11, Margaux :
+ * « commande stand pouvoir modifier directement le total dans la ligne […]
+ * Juste les commandes stands ! ») : par la propriétaire, sur Ventes stand,
+ * quand l'API dit qu'il se corrige (`refusMontant` nul). Sinon le total
+ * reste en texte, et la raison se lit en info-bulle.
+ */
+const totalEnLigne = (o: OrderRow) =>
+  estProprietaire && channel === "salon" && o.refusMontant === null;
 
 /* --- Onglets ------------------------------------------------------------- */
 
@@ -99,9 +118,10 @@ const ONGLETS: {
   // Un seul statut, en étapes (17/11) : les onglets suivent les étapes.
   ...(channel === "salon"
     ? [
-        // Une vente du stand naît payée et terminée (19/11) : il ne reste
-        // qu'à voir celles qu'on a annulées (Alexandra : « laisse toutes et
-        // annulées »).
+        // Au stand, « Toutes » et « Annulées » seulement (19/11, Alexandra :
+        // « laisse toutes et annulées »). Depuis le 26/11, une vente y naît
+        // « À imprimer » : le filtre « Statuts » les isole, et la barre de
+        // la sélection les marque terminées.
         {
           cle: "annulees",
           label: "Annulées",
@@ -318,6 +338,8 @@ const filtreActif =
   Boolean(params.get("etape"));
 ---
 
+{/* Où revient la barre de la sélection de Ventes stand (#ventes, 26/11). */}
+{channel === "salon" && <span id="ventes" class="block scroll-mt-4" aria-hidden="true" />}
 {flash && (
   <p class="mb-4 text-sm rounded bg-green-50 border border-green-200 px-3 py-2">
     {flash}
@@ -469,8 +491,16 @@ const filtreActif =
     </a>
   </form>
 
-  {/* Barre d'actions groupées : n'apparaît qu'une fois des cases cochées. */}
-  <form method="POST" id="bo-masse" class="hidden border-t border-bo-border bg-bo-bg px-4 py-2">
+  {/* Barre d'actions groupées : n'apparaît qu'une fois des cases cochées.
+      Au stand, la page revient sur la liste (#ventes) et son message, au
+      lieu du haut de la page et de ses stands (26/11) : « Marquer
+      terminées » se fait plusieurs fois par jour. */}
+  <form
+    method="POST"
+    id="bo-masse"
+    action={channel === "salon" ? "#ventes" : undefined}
+    class="hidden border-t border-bo-border bg-bo-bg px-4 py-2"
+  >
     <input type="hidden" name="_action" value="masse" />
     <input type="hidden" name="ids" id="bo-ids" />
     <input type="hidden" name="bulk" id="bo-bulk" />
@@ -480,7 +510,9 @@ const filtreActif =
       {estProprietaire && (
         <>
           {/* Pas d'« Étape suivante » au stand (20/11, Alexandra : « enlève
-              étape suivante ») : une vente y naît payée et terminée. */}
+              étape suivante ») : une vente y naît payée et « À imprimer »
+              (26/11), et se marque terminée par « Marquer terminées »,
+              ci-dessous, ou sur sa fiche. */}
           {channel !== "salon" && (
             <button
               type="button"
@@ -490,6 +522,33 @@ const filtreActif =
             >
               Étape suivante
             </button>
+          )}
+          {/* Au stand, une vente naît « À imprimer » et se marque terminée
+              d'ici (26/11, Alexandra : « qu'on doive le faire soit dans la
+              commande soit sur la liste avec case à cocher ») ; « Remettre à
+              imprimer » rattrape une erreur. Ni l'un ni l'autre n'écrit au
+              client, et les deux se refont dans l'autre sens : pas de
+              confirmation. L'API ignore, en les comptant, les ventes qui ne
+              s'y prêtent pas (annulées, de test, déjà à l'étape…). */}
+          {channel === "salon" && onglet.cle !== "test" && !vueArchivees && (
+            <>
+              <button
+                type="button"
+                data-bulk="terminer-stand"
+                title="Les ventes cochées passent « Terminée » : leurs affiches sont imprimées et remises. Aucun courriel."
+                class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+              >
+                Marquer terminées
+              </button>
+              <button
+                type="button"
+                data-bulk="remettre-a-imprimer"
+                title="Les ventes cochées reviennent « À imprimer » : leur remise est annulée. Aucun courriel."
+                class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg"
+              >
+                Remettre à imprimer
+              </button>
+            </>
           )}
           <button type="button" data-bulk="tag" class="rounded border border-bo-border bg-bo-surface px-3 py-1.5 hover:bg-bo-bg">
             Ajouter une étiquette
@@ -633,7 +692,17 @@ const filtreActif =
               le stand ». Les commandes du site gardent leur livraison. */}
           <th class="px-4 py-2 font-medium">{channel === "salon" ? "Format et cadre" : "Livraison"}</th>
           {estProprietaire && <th class="px-4 py-2 font-medium">Étiquettes</th>}
-          <th class="px-4 py-2 font-medium text-right">Total</th>
+          {/* Au stand, la colonne du total reste à droite de l'écran quand le
+              tableau déborde (26/11) : c'est là que Margaux corrige les
+              montants, elle ne doit pas avoir à faire défiler pour l'y
+              trouver. */}
+          <th
+            class={`px-4 py-2 font-medium text-right ${
+              channel === "salon" ? "sticky right-0 z-10 bg-bo-bg" : ""
+            }`}
+          >
+            Total
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -649,7 +718,10 @@ const filtreActif =
               ? BADGE_PAIEMENT[o.statutFinancier]!
               : null;
           return (
-            <tr class="border-t border-bo-border hover:bg-bo-bg/50">
+            <tr
+              class="border-t border-bo-border hover:bg-bo-bg/50"
+              id={channel === "salon" ? `vente-${o.id}` : undefined}
+            >
               <td class="px-3 py-2 align-top">
                 <input type="checkbox" class="bo-coche" value={o.id} />
               </td>
@@ -713,8 +785,12 @@ const filtreActif =
                     </button>
                   </form>
                 )}
-                {/* L'étape d'après, d'un clic : l'action du matin. */}
-                {estProprietaire && statut?.suivante && (
+                {/* L'étape d'après, d'un clic : l'action du matin. Pas au
+                    stand (26/11) : une vente s'y marque terminée en cochant
+                    des cases (« Marquer terminées ») ou sur sa fiche, comme
+                    l'a demandé Alexandra — un bouton de plus par ligne
+                    côtoierait le total qu'on y corrige. */}
+                {estProprietaire && channel !== "salon" && statut?.suivante && (
                   <form
                     method="POST"
                     class="mt-1"
@@ -834,7 +910,9 @@ const filtreActif =
                     boutique) : « PDF » pour une affiche seule, sinon un bouton
                     par affiche — « 1 », « 2 »…, dans l'ordre des vignettes —
                     et « Tout » pour l'archive. Seulement une fois payée, comme
-                    sur la fiche. */}
+                    sur la fiche — et non une fois terminée : une vente du
+                    stand, qui naît payée et « À imprimer » (26/11), a ses PDF
+                    dès sa validation. */}
                 {o.status === "paid" && (o.affiches?.length ?? 0) > 0 ? (
                   <div
                     data-pdf-groupe
@@ -925,71 +1003,90 @@ const filtreActif =
                 )}
               </td>
               )}
-              <td class="px-4 py-2 text-right whitespace-nowrap align-top">
-                {formatPrice(o.totalCents)}
+              {/* `data-tri` : le montant, pour le tri de la colonne
+                  (lib/tri-tableaux.ts). Avec le champ du total, le texte de
+                  la cellule n'est plus le prix mais « € OK » : un clic sur
+                  « Total » ne triait plus rien (relecture du 26/11). */}
+              <td
+                class={`px-4 py-2 text-right whitespace-nowrap align-top ${
+                  channel === "salon"
+                    ? "sticky right-0 bg-bo-surface shadow-[-8px_0_8px_-8px_rgb(0_0_0/0.3)]"
+                    : ""
+                }`}
+                data-tri={o.totalCents}
+              >
+                {/* Le total d'une vente du stand se corrige ICI, dans la
+                    ligne (26/11, Margaux : « commande stand pouvoir modifier
+                    directement le total dans la ligne. Car si elle applique
+                    des réductions par ex, faudrait juste le total
+                    indépendamment du reste ») : le champ, « OK », ou Entrée.
+                    Ni confirmation ni motif (lib/montant-vente-bo.ts) ; la
+                    page revient sur la ligne (#vente-…) et y dit le
+                    résultat. Un total tapé et pas encore envoyé se voit
+                    (cadre ambre), part avec le prochain Entrée de n'importe
+                    quelle ligne, et la page retient avant qu'on la quitte
+                    (relecture du 26/11). Une vente dont le total ne se
+                    corrige pas (facturée, annulée, de test…) le montre en
+                    texte, la raison en info-bulle. */}
+                {totalEnLigne(o) ? (
+                  <form
+                    method="POST"
+                    action={`#vente-${o.id}`}
+                    class="flex items-center justify-end gap-1"
+                    data-montant-ligne
+                    data-avant={o.totalCents}
+                  >
+                    <input type="hidden" name="_action" value="montant-ligne" />
+                    <input type="hidden" name="id" value={o.id} />
+                    <input type="hidden" name="numero" value={o.number} />
+                    <input type="hidden" name="avant" value={o.totalCents} />
+                    <input
+                      name="montant"
+                      inputmode="decimal"
+                      autocomplete="off"
+                      required
+                      value={saisieDuTotal(o.totalCents)}
+                      aria-label={`Total de la vente ${o.number}, en euros`}
+                      title="Tapez le nouveau total (59, 59,50 ou 59 €), puis Entrée ou OK."
+                      class="w-[4.75rem] rounded border border-bo-border bg-bo-surface px-1.5 py-0.5 text-right text-sm text-bo-ink"
+                    />
+                    <span class="text-bo-muted" aria-hidden="true">€</span>
+                    <button class="rounded border border-bo-border px-1.5 py-0.5 text-xs hover:bg-bo-bg">
+                      OK
+                    </button>
+                  </form>
+                ) : (
+                  <span
+                    title={estProprietaire && channel === "salon" ? (o.refusMontant ?? undefined) : undefined}
+                    class={estProprietaire && channel === "salon" && o.refusMontant ? "cursor-help underline decoration-dotted decoration-bo-muted underline-offset-4" : undefined}
+                  >
+                    {formatPrice(o.totalCents)}
+                  </span>
+                )}
                 {(o.rembourseCents ?? 0) > 0 && (
                   <div class="text-xs text-violet-700">
                     − {formatPrice(o.rembourseCents ?? 0)} remboursé
                   </div>
                 )}
-                {/* Le montant d'une vente du stand validée se corrige d'ici
-                    (26/11, Margaux : « des fois ils changent d'avis ils
-                    veulent un cadre par exemple […] le but est d'avoir les
-                    statistiques bon ») : nouveau total et motif, avec
-                    confirmation (lib/montant-vente-bo.ts). L'API refuse le
-                    reste en clair ; une vente facturée le dit sans
-                    formulaire. */}
-                {estProprietaire && channel === "salon" && o.status === "paid" && !o.number?.startsWith("SHOP-") && (
-                  <details class="mt-1 text-left whitespace-normal">
-                    <summary
-                      class="ml-auto w-fit cursor-pointer rounded border border-bo-border px-2 py-0.5 text-xs text-bo-muted hover:bg-bo-bg"
-                      title="Corriger le montant de la vente"
-                    >
-                      Corriger…
-                    </summary>
-                    {o.invoiceNumber ? (
-                      <p class="mt-1 w-56 text-xs text-bo-muted">
-                        Déjà facturée ({o.invoiceNumber}) : une facture émise ne
-                        se modifie pas, son montant non plus.
-                      </p>
-                    ) : (
-                      <form
-                        method="POST"
-                        class="mt-1 flex w-56 flex-col gap-1"
-                        data-montant-vente
-                        data-numero={o.number}
-                        data-avant={o.totalCents}
-                      >
-                        <input type="hidden" name="_action" value="montant-vente" />
-                        <input type="hidden" name="id" value={o.id} />
-                        <label class="text-xs text-bo-muted">
-                          Nouveau montant total (€)
-                          <input
-                            type="number"
-                            name="montant"
-                            step="0.01"
-                            min="0.01"
-                            required
-                            value={(o.totalCents / 100).toFixed(2)}
-                            class="mt-0.5 block w-full rounded border border-bo-border px-2 py-1 text-sm text-bo-ink"
-                          />
-                        </label>
-                        <label class="text-xs text-bo-muted">
-                          Motif
-                          <input
-                            name="motif"
-                            required
-                            maxlength="120"
-                            placeholder="cadre ajouté"
-                            class="mt-0.5 block w-full rounded border border-bo-border px-2 py-1 text-sm text-bo-ink"
-                          />
-                        </label>
-                        <button class="rounded border border-bo-border px-2 py-1 text-xs hover:bg-bo-bg">
-                          Enregistrer le montant
-                        </button>
-                      </form>
-                    )}
-                  </details>
+                {totalEnLigne(o) && (
+                  <p
+                    data-montant-ligne-message
+                    role="status"
+                    hidden={!resultatDeLaLigne(o.id)}
+                    class={`mt-1 ml-auto max-w-[14rem] text-xs whitespace-normal ${
+                      resultatDeLaLigne(o.id)?.erreur ? "text-red-700" : "text-green-700"
+                    }`}
+                  >
+                    {resultatDeLaLigne(o.id)?.texte ?? ""}
+                  </p>
+                )}
+                {/* La raison du refus, après un envoi refusé (vente facturée
+                    entre-temps…) : la ligne n'a plus de champ, la raison se
+                    lit quand même à sa place. */}
+                {!totalEnLigne(o) && resultatDeLaLigne(o.id) && (
+                  <p class={`mt-1 ml-auto max-w-[14rem] text-xs whitespace-normal ${resultatDeLaLigne(o.id)!.erreur ? "text-red-700" : "text-green-700"}`} role="status">
+                    {resultatDeLaLigne(o.id)!.texte}
+                  </p>
                 )}
               </td>
             </tr>
@@ -1008,8 +1105,8 @@ const filtreActif =
 </section>
 <p class="mt-2 text-sm text-bo-muted">{orders.length} commande(s) affichée(s).</p>
 
-{/* Les PDF d'impression de la colonne « Impression », et la confirmation
-    de « Corriger… » sous le total d'une vente du stand (26/11). */}
+{/* Les PDF d'impression de la colonne « Impression », et le total d'une
+    vente du stand corrigé dans sa ligne (26/11). */}
 <script>
   import "../lib/impression-bo.ts";
   import "../lib/montant-vente-bo.ts";
@@ -1057,6 +1154,10 @@ const filtreActif =
     b.addEventListener("click", () => {
       const ids = selection();
       if (!ids.length) return;
+      // Un second clic pendant l'envoi ne renvoie rien (26/11 : « Marquer
+      // terminées » cliqué deux fois). L'API, de toute façon, ne refait rien
+      // pour une vente déjà terminée.
+      if (barre.dataset.envoye === "1") return;
       const quoi = b.dataset.bulk;
       // Une action qui retire des commandes de la liste s'annonce, et dit ce
       // qu'elle change — et ce qu'elle ne change pas.
@@ -1073,8 +1174,15 @@ const filtreActif =
       }
       document.getElementById("bo-ids").value = ids.join(",");
       document.getElementById("bo-bulk").value = quoi;
+      barre.dataset.envoye = "1";
+      b.setAttribute("aria-busy", "true");
       barre.submit();
     });
+  });
+  // Une page resservie par la flèche retour garde sa barre utilisable.
+  window.addEventListener("pageshow", () => {
+    delete barre.dataset.envoye;
+    document.querySelectorAll("[data-bulk][aria-busy]").forEach((b) => b.removeAttribute("aria-busy"));
   });
 
   document.getElementById("bo-export")?.addEventListener("click", () => {

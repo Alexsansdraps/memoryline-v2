@@ -60,6 +60,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { db, schema } from "./db/client.js";
+import { consigneEnTexte } from "./consigne-texte.js";
 import {
   IA_DIR,
   PHOTO_MAX_OCTETS,
@@ -201,14 +202,18 @@ async function stylesProposables() {
     .orderBy(asc(schema.aiPrompts.position), asc(schema.aiPrompts.id));
 }
 
-/** La consigne d'un style, lue AU MOMENT du dessin : ce que Margaux y a écrit en dernier. */
+/**
+ * La consigne d'un style, lue AU MOMENT du dessin : ce que Margaux y a écrit
+ * en dernier. En TEXTE (26/11) : l'éditeur du BO la range en HTML, et le
+ * modèle lisait les balises (consigneEnTexte, comme pour les affiches).
+ */
 async function consigneDuStyle(styleId: number | null): Promise<string> {
   if (!styleId) return "";
   const [s] = await db
     .select({ prompt: schema.aiPrompts.prompt })
     .from(schema.aiPrompts)
     .where(eq(schema.aiPrompts.id, styleId));
-  return s?.prompt ?? "";
+  return consigneEnTexte(s?.prompt);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -586,7 +591,9 @@ function dessinerMessage(
       ]);
       consigne = composerConsigneFond({
         style: await consigneDuStyle(fond.styleId),
-        gabarit: fr.consigne,
+        // Saisie dans une zone de texte : sans balise, elle ne fait que
+        // perdre ses « \r\n » ; collée depuis une page, elle perd le HTML.
+        gabarit: consigneEnTexte(fr.consigne),
         lieu: fond.nom,
         nbPhotos,
         nbExemples,

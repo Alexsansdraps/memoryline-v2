@@ -109,7 +109,7 @@ import {
   demarrerRelancePanier,
   mountRelancePanier,
 } from "./relance-panier.js";
-import { mountSalonRoutes } from "./salon.js";
+import { mountSalonRoutes, rattraperLesVentesDeLAncienneRegle } from "./salon.js";
 import { bornesDuVendeur, standsDuVendeur } from "./vendeurs.js";
 import {
   lieuxRetraitPublics,
@@ -3008,6 +3008,7 @@ app.get("/admin/stats/orders", async (c) => {
       totalCents: schema.orders.totalCents,
       shippingCents: schema.orders.shippingCents,
       fulfilledAt: schema.orders.fulfilledAt,
+      channel: schema.orders.channel,
     })
     .from(schema.orders)
     .where(and(...conditions));
@@ -3049,9 +3050,13 @@ app.get("/admin/stats/orders", async (c) => {
   const serie = joursDeLaPeriode.map((j) => parJour.get(j) ?? 0);
 
   // Ce qui reste à préparer sur la période : le chiffre qui dit quoi faire
-  // aujourd'hui, là où les autres disent ce qui s'est passé.
+  // aujourd'hui, là où les autres disent ce qui s'est passé. Une vente du
+  // stand « À imprimer » (26/11 : elle ne passe plus terminée d'elle-même)
+  // ne compte qu'aux chiffres du stand : sans canal, c'est la carte « À
+  // préparer » de l'accueil, qui mène aux commandes du SITE.
   const aTraiter = lignes.filter(
-    (l) => dansPeriode(l.createdAt) && !l.fulfilledAt,
+    (l) =>
+      dansPeriode(l.createdAt) && !l.fulfilledAt && (canal === "salon" || l.channel !== "salon"),
   ).length;
 
   return c.json({
@@ -3777,6 +3782,10 @@ serve({ fetch: app.fetch, port }, (info) => {
   // automatique les jours de marché, et « Retrait au stand » à la caisse tant
   // qu'il est temps. Au démarrage, puis toutes les minutes.
   demarrerCalendrierDesStands();
+  // Les ventes du stand validées par l'ANCIENNE API pendant la mise en ligne
+  // (entre les migrations et ce redémarrage) repassent « À imprimer » : la
+  // migration 0114, rejouée, sans effet sur tout le reste (salon.ts, 26/11).
+  void rattraperLesVentesDeLAncienneRegle();
 });
 
 export type AppType = typeof app;

@@ -792,6 +792,20 @@
       "when": 1795230000000,
       "tag": "0113_relais_photo_du_site",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1795240000000,
+      "tag": "0114_ventes_stand_a_imprimer",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1795250000000,
+      "tag": "0115_ia_taille_impression",
+      "breakpoints": true
     }
   ]
 }

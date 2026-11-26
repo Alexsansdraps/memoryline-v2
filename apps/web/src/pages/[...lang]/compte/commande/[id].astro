@@ -86,6 +86,15 @@ const expeditions = (detail?.expeditions ?? []).filter(
  */
 const cartesSeules =
   !!detail && detail.items.length > 0 && detail.items.every((l) => Boolean(l.giftCard));
+/**
+ * Un achat au stand (26/11) : l'affiche est remise sur place, rien ne
+ * voyage. Son traitement se dit « Remise sur le stand » (l'API, quelle que
+ * soit son étape au back-office), et la rubrique « Expéditions » ne
+ * s'affiche pas pour dire « Aucun numéro de suivi pour le moment », comme si
+ * un colis allait partir — sauf si l'affiche a bel et bien voyagé, suivi
+ * compris.
+ */
+const achatAuStand = detail?.order.channel === "salon";
 ---
 
 <CompteCadre
@@ -274,7 +283,7 @@ const cartesSeules =
           </dl>
         </section>
 
-        <section hidden={cartesSeules}>
+        <section hidden={cartesSeules || (achatAuStand && !expeditions.length)}>
           <h2 class="mb-3 text-2xl">{tr("compte.commande.expeditions")}</h2>
           {expeditions.length ? (
             <ul class="space-y-2">

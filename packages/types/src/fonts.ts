@@ -197,9 +197,18 @@ const POLICES_PAR_LIGNE: readonly (readonly string[])[] = [
  * Ces caractères-là sont donc écrits en Caveat, l'autre manuscrite de la
  * maison, déjà installée des deux côtés. Le jour où la licence complète sera
  * achetée, il suffira de vider cette liste.
+ *
+ * ¢ £ ¤ ¥ ƒ ₤ aussi (26/11, relecture de « qualité affiches IA pas top ») :
+ * tout le jeu de la police d'essai (364 caractères), rendu par le moteur du
+ * PDF, rogné et comparé au tampon, n'en a pas d'autres — et Caveat a ces
+ * six-là, vrais dessins à l'appui (planche de la relecture). « Londres £ »
+ * sortait avec un tampon, à l'écran comme sur le papier. « ¢ » avait échappé
+ * à la première comparaison : son tampon est décalé d'un pixel (relecture
+ * suivante, même jour) ; le caractère suivant le plus proche du tampon en
+ * est loin (0,296 contre 0,037).
  */
 const CARACTERES_ABSENTS: Readonly<Record<string, RegExp>> = {
-  shabby: /[0-9€$&@#]/,
+  shabby: /[0-9€$&@#¢£¤¥ƒ₤]/,
 };
 
 /** La police qui prend le relais sur ces caractères-là. */

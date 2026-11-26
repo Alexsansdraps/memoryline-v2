@@ -1,8 +1,10 @@
 /**
  * Les gestes de la liste des commandes (components/OrderTable.astro) :
- * « Annuler la vente » et « Supprimer » d'une ligne du stand, l'étape
- * suivante d'une ligne, et la barre de la sélection (« masse » : étape
- * suivante, « Mettre en test », étiquettes, archivage, suppression).
+ * « Annuler la vente » et « Supprimer » d'une ligne du stand, son total
+ * corrigé dans la ligne (26/11), l'étape suivante d'une ligne, et la barre
+ * de la sélection (« masse » : étape suivante, « Marquer terminées » et
+ * « Remettre à imprimer » au stand (26/11), « Mettre en test », étiquettes,
+ * archivage, suppression).
  *
  * Sortis du composant à la relecture du 20/11, tels quels : Ventes stand les
  * fait désormais AVANT de lire ses chiffres (pages/ventes-salon.astro). Faits
@@ -19,8 +21,17 @@ import {
   type ParcoursTraitement,
 } from "@memoryline/types";
 import type { adminApi } from "./api.ts";
-import { centimesSaisis, messageDeCorrection } from "./montant-vente.ts";
+import {
+  centimesSaisis,
+  envoiDuTotal,
+  messageDeCorrection,
+  messagesDesTotaux,
+  resultatDuTotal,
+  SAISIE_ILLISIBLE,
+  totauxDeLEnvoi,
+} from "./montant-vente.ts";
 import { compteRenduMiseEnTest } from "./vente-de-test.ts";
+import { compteRenduEtapeStand, estGesteEtapeStand } from "./etape-vente-stand.ts";
 
 type Api = ReturnType<typeof adminApi>;
 
@@ -34,6 +45,9 @@ export const ACTIONS_DE_LA_LISTE: readonly string[] = [
   // Corriger le montant d'une vente du stand (26/11) : fait avant que Ventes
   // stand lise ses chiffres, la carte du stand montre déjà le nouveau total.
   "montant-vente",
+  // Le même, tapé dans la cellule du total de la ligne (26/11, Margaux :
+  // « commande stand pouvoir modifier directement le total dans la ligne »).
+  "montant-ligne",
   "etape",
   "masse",
 ];
@@ -42,6 +56,13 @@ export const ACTIONS_DE_LA_LISTE: readonly string[] = [
 export interface ResultatActionListe {
   flash: string | null;
   erreurAction: string | null;
+  /**
+   * Les totaux corrigés dans les lignes (26/11) : la page revient sur la
+   * ligne d'Entrée (#vente-…), et le résultat de chacun s'y lit, sous son
+   * champ, sans remonter en tête de la liste. Plusieurs depuis la relecture
+   * du 26/11 : les totaux tapés sur d'autres lignes partent avec elle.
+   */
+  lignes?: { id: number; texte: string; erreur: boolean }[];
 }
 
 /**
@@ -95,6 +116,59 @@ export async function faireActionDeLaListe(
           erreurAction: refus instanceof Error ? refus.message : String(refus),
         };
       }
+    } else if (action === "montant-ligne") {
+      // Le total tapé dans la ligne de Ventes stand (26/11, Margaux : « si
+      // elle applique des réductions par ex, faudrait juste le total
+      // indépendamment du reste ») : ni confirmation, ni motif — le journal
+      // dit qu'il n'y en a pas. Sans script, la règle du navigateur tient
+      // ici : une valeur inchangée ou illisible n'envoie rien à l'API.
+      //
+      // Avec les totaux tapés sur les AUTRES lignes et pas encore envoyés
+      // (relecture du 26/11 : ils étaient perdus sans rien dire), un par un,
+      // chacun avec son résultat sous son champ (montant-vente.ts).
+      const totaux = totauxDeLEnvoi({
+        id: f.get("id"),
+        numero: f.get("numero"),
+        avant: f.get("avant"),
+        montant: f.get("montant"),
+        autres: f.get("autres"),
+      });
+      const resultats: { id: number; numero: string; texte: string; erreur: boolean }[] = [];
+      for (const t of totaux) {
+        const envoi = envoiDuTotal(t.saisie, t.avantCents);
+        if (!envoi.envoyer) {
+          if (envoi.raison === "illisible")
+            resultats.push({ id: t.id, numero: t.numero, texte: SAISIE_ILLISIBLE, erreur: true });
+          // « Inchangé » ne se dit que pour une ligne envoyée seule.
+          else if (totaux.length === 1)
+            resultats.push({
+              id: t.id,
+              numero: t.numero,
+              texte: resultatDuTotal({ numero: t.numero, avantCents: t.avantCents, apresCents: t.avantCents, inchange: true }),
+              erreur: false,
+            });
+          continue;
+        }
+        try {
+          const r = await api.corrigerMontantVente(t.id, {
+            totalCents: envoi.cents,
+            motif: "",
+            author: auteur,
+          });
+          resultats.push({ id: t.id, numero: t.numero, texte: resultatDuTotal(r), erreur: false });
+        } catch (refus) {
+          // La vente facturée, annulée… entre l'affichage et l'envoi : la
+          // phrase de l'API, telle quelle, sous le champ.
+          const texte = refus instanceof Error ? refus.message : String(refus);
+          resultats.push({ id: t.id, numero: t.numero, texte, erreur: true });
+        }
+      }
+      const messages = messagesDesTotaux(resultats);
+      return {
+        flash: messages.flash,
+        erreurAction: messages.erreur,
+        lignes: resultats.map(({ id, texte, erreur }) => ({ id, texte, erreur })),
+      };
     } else if (action === "etape") {
       // L'étape suivante, d'un clic dans la liste (17/11) : la même règle que
       // la frise de la fiche (courriel compris).
@@ -141,6 +215,14 @@ export async function faireActionDeLaListe(
         // écarte, avec sa raison, ce qui n'est pas une vente du stand.
         const r = await api.bulkOrders(ids, "test", undefined, auteur);
         flash = compteRenduMiseEnTest(r);
+      } else if (estGesteEtapeStand(quoi)) {
+        // « Marquer terminées » et « Remettre à imprimer » (26/11,
+        // Alexandra : « qu'on doive le faire soit dans la commande soit sur
+        // la liste avec case à cocher ») : l'API ignore ce qui n'est pas une
+        // vente du stand payée, ou déjà à l'étape demandée, et le message
+        // compte ces ventes-là, chacune avec sa raison.
+        const r = await api.bulkOrders(ids, quoi, undefined, auteur);
+        flash = compteRenduEtapeStand(quoi, r);
       } else if (quoi === "tag" || quoi === "untag") {
         // « test » posé à la main sur une vente du stand qui compte encore :
         // l'API refuse toute la sélection (relecture du 20/11,

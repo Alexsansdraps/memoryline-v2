@@ -40,6 +40,7 @@ import {
   correctionsDuMontant,
   estCorrectionDuMontant,
   messageDeCorrection,
+  saisieDuTotal,
 } from "../../lib/montant-vente.ts";
 
 const id = Number(Astro.params.id);
@@ -73,13 +74,17 @@ if (Astro.request.method === "POST" && estProprietaire) {
       });
       const nom = libelleEtape(r.etape as EtapeTraitement, r.parcours as ParcoursTraitement);
       flash = r.inchange
-        ? `La commande est déjà « ${nom} ».`
-        : `Commande passée à « ${nom} ».` +
-          (r.courrier
-            ? r.courrier.parti
-              ? ` Courriel « ${r.courrier.sujet} » envoyé à ${r.courrier.email}.`
-              : ` Le courriel « ${r.courrier.sujet} » n'a PAS pu partir vers ${r.courrier.email}.`
-            : "");
+        ? `${r.parcours === "stand" ? "La vente" : "La commande"} est déjà « ${nom} ».`
+        : r.parcours === "stand"
+          ? // « Marquer terminée » et « Remettre à imprimer » (26/11) : le
+            // stand ne reçoit jamais de courriel, on le redit.
+            `${r.etape === "terminee" ? "Vente marquée terminée." : "Vente remise « À imprimer »."} Aucun courriel n'est parti.`
+          : `Commande passée à « ${nom} ».` +
+            (r.courrier
+              ? r.courrier.parti
+                ? ` Courriel « ${r.courrier.sujet} » envoyé à ${r.courrier.email}.`
+                : ` Le courriel « ${r.courrier.sujet} » n'a PAS pu partir vers ${r.courrier.email}.`
+              : "");
     } else if (action === "archiver-commande") {
       const restaurer = String(f.get("archived") ?? "") === "false";
       await api.archiverCommande(id, !restaurer);
@@ -543,12 +548,14 @@ const badgeRemboursement =
 /** Les étapes de la frise, avec ce que demanderait chacune depuis l'étape actuelle. */
 const rangActuel = traitement ? rangEtape(parcoursT, etapeT) : null;
 const etapesFrise = traitement
-  ? ETAPES_DU_PARCOURS[parcoursT]
-      // Au stand, « À imprimer » n'existe plus (20/11, Alexandra : « cet état
-      // n'existe plus en ventes stand ») : la vente naît payée et remise
-      // (salon.ts). Plus de « Revenir à « À imprimer » » sous une vente
-      // terminée ; une vente d'avant qui y serait encore la garde affichée.
-      .filter((e) => !(parcoursT === "stand" && e === "a_imprimer" && etapeT !== "a_imprimer"))
+  ? // Au stand, « À imprimer » revient (26/11, Alexandra : « il faut que
+    // quand la personne créé une affiche, qu'elle ne soit pas directement
+    // terminée mais qu'on doive le faire soit dans la commande soit sur la
+    // liste avec case à cocher ») : la vente y naît (salon.ts), « Marquer
+    // terminée » la fait avancer, « Remettre à imprimer » rattrape une
+    // erreur. Du 20 au 26/11, la frise cachait cette étape (« cet état
+    // n'existe plus en ventes stand ») : la vente naissait remise.
+    ETAPES_DU_PARCOURS[parcoursT]
       .map((e) => ({
         etape: e,
         libelle: libelleEtape(e, parcoursT),
@@ -1097,11 +1104,26 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 const courrier = p.ok && !p.inchange ? p.courrier : null;
                 const arriere = p.ok && !p.inchange && p.sens === "arriere";
                 const expedier = p.ok && !p.inchange && p.expedier;
+                // Au stand (26/11), « Remettre à imprimer » ne se confirme
+                // pas : rien n'a voyagé, aucun courriel ne part, et « Marquer
+                // terminée » le défait aussitôt.
                 const confirmer = courrier
                   ? `Passer la commande à « ${e.libelle} » ? ${ANNONCE_COURRIER[courrier]}`
-                  : p.ok && !p.inchange && p.annulerExpeditions
+                  : p.ok && !p.inchange && p.annulerExpeditions && parcoursT !== "stand"
                     ? `Revenir à « ${e.libelle} » ? Les expéditions enregistrées seront annulées (aucun courriel ne part).`
                     : null;
+                // Les mots du geste, au stand (26/11, Alexandra : « qu'on
+                // doive le faire soit dans la commande soit sur la liste ») :
+                // « Marquer terminée », et pour l'erreur « Remettre à
+                // imprimer ».
+                const geste =
+                  parcoursT === "stand"
+                    ? e.etape === "terminee"
+                      ? "Marquer terminée"
+                      : "Remettre à imprimer"
+                    : faite
+                      ? `↩ Revenir à « ${e.libelle} »`
+                      : e.libelle;
                 return (
                   <li class="flex items-start gap-2 sm:max-w-xs sm:flex-1">
                     {i > 0 && <span class="hidden pt-2.5 text-bo-muted sm:inline" aria-hidden="true">→</span>}
@@ -1164,7 +1186,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                                 : "w-full rounded-lg bg-bo-nav px-4 py-2.5 text-left text-base text-white hover:opacity-90"
                             }
                           >
-                            {faite ? `↩ Revenir à « ${e.libelle} »` : e.libelle}
+                            {geste}
                           </button>
                           <span class="mt-1 block text-xs text-bo-muted">
                             {courrier
@@ -1218,7 +1240,10 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 Articles
                 <span class="ml-2 text-sm font-normal text-bo-muted">
                   {nbArticles} article{nbArticles > 1 ? "s" : ""}
-                  {resteAExpedier > 0 && ` · ${resteAExpedier} à envoyer`}
+                  {/* Au stand, rien ne s'envoie : la vente naît « À
+                      imprimer » depuis le 26/11, et l'en-tête disait « 1 à
+                      envoyer » (relecture du 26/11). */}
+                  {resteAExpedier > 0 && ` · ${resteAExpedier} ${auStand ? "à imprimer" : "à envoyer"}`}
                 </span>
               </h3>
               {/* Au stand, le choix du client à la place de « Remise sur le
@@ -1450,10 +1475,14 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
               </div>
             )}
 
+            {/* Une vente du stand annulée « À imprimer » (elle naît ainsi
+                depuis le 26/11) : rien ne « part » au stand (relecture du
+                26/11). */}
             {resteAExpedier > 0 && annulee && (
               <p class="border-t border-bo-border px-4 py-3 text-sm text-bo-muted">
-                {resteAExpedier} article(s) ne partiront pas : la commande est
-                annulée.
+                {auStand
+                  ? "Vente annulée : ses affiches ne sont plus à imprimer."
+                  : `${resteAExpedier} article(s) ne partiront pas : la commande est annulée.`}
               </p>
             )}
 
@@ -2047,27 +2076,31 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                       totaux du stand, l'export et la page Finances suivent. Le
                       grand livre garde l'encaissement d'origine et reçoit une
                       écriture de correction ; le journal de la vente dit l'ancien
-                      et le nouveau montant, le motif et qui l'a changé. Les
-                      affiches, elles, ne changent pas.
+                      et le nouveau montant, le motif s'il y en a un, et qui l'a
+                      changé. Les affiches, elles, ne changent pas. Le total se
+                      corrige aussi directement dans la ligne de Ventes stand.
                     </p>
                     <div class="flex flex-wrap items-end gap-3">
+                      {/* Comme le champ de la ligne de Ventes stand (26/11) :
+                          « 59 », « 59,5 », « 59.50 », « 59 € » se lisent tous. */}
                       <label class="text-sm">
                         <span class="mb-1 block text-xs text-bo-muted">Nouveau montant total (€)</span>
                         <input
-                          type="number"
                           name="montant"
-                          step="0.01"
-                          min="0.01"
+                          inputmode="decimal"
+                          autocomplete="off"
                           required
-                          value={(total / 100).toFixed(2)}
+                          value={saisieDuTotal(total)}
                           class="w-32 rounded border border-bo-border px-2 py-1"
                         />
                       </label>
+                      {/* Facultatif depuis le 26/11 (Margaux : « faudrait
+                          juste le total indépendamment du reste ») : sans
+                          motif, le journal le dit. */}
                       <label class="min-w-[12rem] flex-1 text-sm">
-                        <span class="mb-1 block text-xs text-bo-muted">Motif, en quelques mots</span>
+                        <span class="mb-1 block text-xs text-bo-muted">Motif, en quelques mots (facultatif)</span>
                         <input
                           name="motif"
-                          required
                           maxlength="120"
                           placeholder="cadre ajouté, erreur de saisie…"
                           class="w-full rounded border border-bo-border px-2 py-1"
@@ -2076,7 +2109,7 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                     </div>
                     <p class="text-xs text-bo-muted">
                       Si le montant augmente, une facture éditée ensuite porte
-                      l'écart sur une ligne « Ajustement du prix », avec ce motif.
+                      l'écart sur une ligne « Ajustement du prix », avec ce motif s'il y en a un.
                     </p>
                     <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
                       Enregistrer le nouveau montant
@@ -2535,10 +2568,12 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           {/* Annuler : le geste qu'on cherche neuf fois sur dix quand on
               croit vouloir supprimer. Il se range donc JUSTE AVANT la
               suppression, pour qu'on le rencontre en premier. */}
-          {/* Une vente du stand naît payée et terminée (19/11) : elle s'annule
-              quand même, à tout moment, si le client ne paie pas ou autre.
-              Rien à rembourser (l'argent se règle de la main à la main) :
-              son encaissement sur place sort du grand livre. */}
+          {/* Une vente du stand, payée dès sa validation (19/11), « À
+              imprimer » ou marquée terminée (26/11), s'annule quand même, à
+              tout moment, si le client ne paie pas ou autre. Rien à
+              rembourser (l'argent se règle de la main à la main) : son
+              encaissement sur place sort du grand livre, et sa remise
+              tombe avec les expéditions. */}
           {!annulee && !estPanier && (
             <section class="rounded-lg border border-amber-300 bg-bo-surface px-4 py-3">
               <h3 class="mb-2 font-medium text-amber-900">

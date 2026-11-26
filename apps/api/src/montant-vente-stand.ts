@@ -4,14 +4,21 @@
  * Margaux, relayée par Alexandra : « pouvoir modifier le montant € de la
  * commande stand une fois qu'elle est validée (car des fois ils changent
  * d'avis ils veulent un cadre par exemple) le but est d'avoir les
- * statistiques bon ». Une vente du stand naît payée et terminée à la
- * validation (salon.ts), et la tablette ne la rouvre qu'un quart d'heure. Un
+ * statistiques bon ». Une vente du stand naît payée à la validation
+ * (salon.ts), et la tablette ne la rouvre qu'un quart d'heure. Un
  * client qui revenait plus tard prendre un cadre laissait une vente à 29 €
  * pour 39 € encaissés : les statistiques, les totaux du stand et la page
  * Finances restaient faux.
  *
- * La propriétaire saisit au BO le nouveau total et un motif court. Ce qui
- * change, d'un bloc (POST /admin/orders/:id/montant, commandes.ts) :
+ * La propriétaire saisit au BO le nouveau total, et un motif court si elle
+ * veut : il est FACULTATIF depuis le 26/11 (Margaux : « commande stand
+ * pouvoir modifier directement le total dans la ligne. Car si elle applique
+ * des réductions par ex, faudrait juste le total indépendamment du reste »)
+ * — le total se corrige dans la ligne de Ventes stand, sans confirmation ni
+ * motif, ou dans le bloc de la fiche, motif au choix. Le total se corrige
+ * quelle que soit l'étape de la vente (À imprimer, remise en partie,
+ * Terminée) : aucune règle ici ne lit ses remises. Ce qui change, d'un bloc
+ * (POST /admin/orders/:id/montant, commandes.ts) :
  *   - `order.total_cents`, que lisent les statistiques, la carte de
  *     l'accueil, les totaux par stand et l'export ;
  *   - le GRAND LIVRE, par une écriture de correction AJOUTÉE. L'encaissement
@@ -45,8 +52,10 @@ export const PASSERELLE_DU_STAND = "stand";
 /**
  * Le plus haut total accepté, 10 000 € : un garde-fou contre une saisie
  * aberrante, comme celui des cartes cadeaux. Une faute plus petite (390 €
- * pour 39 €) se voit à la confirmation, qui redit l'ancien et le nouveau
- * montant avant d'envoyer (apps/admin/src/lib/montant-vente-bo.ts).
+ * pour 39 €) se voit au message qui suit l'enregistrement, dans la ligne
+ * même (« SAL-0036 : 39,00 € → 390,00 € »), et se corrige aussitôt ; la
+ * fiche, elle, redit l'ancien et le nouveau montant avant d'envoyer
+ * (apps/admin/src/lib/montant-vente-bo.ts).
  */
 export const MONTANT_MAX_CENTS = 1_000_000;
 
@@ -135,19 +144,15 @@ export function refusDuMontant(apresCents: number | null): string | null {
   return null;
 }
 
-/** Le motif saisi, sur une ligne, sans espaces en trop, borné à MOTIF_MAX. */
+/**
+ * Le motif saisi, sur une ligne, sans espaces en trop, borné à MOTIF_MAX.
+ * Vide quand il n'y en a pas : il n'est plus demandé (26/11, voir l'en-tête).
+ */
 export function lireMotif(brut: unknown): string {
   return String(brut ?? "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MOTIF_MAX);
-}
-
-/** Un motif est demandé : c'est lui qui expliquera l'écart, des mois plus tard. */
-export function refusDuMotif(motif: string): string | null {
-  return motif
-    ? null
-    : "Dites en quelques mots pourquoi le montant change (« cadre ajouté »…) : c'est ce qui l'expliquera dans le journal de la vente.";
 }
 
 /**
@@ -342,8 +347,13 @@ export function articlesInexpliques(a: {
   return !remiseAutomatique;
 }
 
-/** La ligne du journal de la commande : avant → après, l'écart et le motif. */
+/**
+ * La ligne du journal de la commande : avant → après, l'écart et le motif —
+ * ou, sans motif (26/11), qu'il n'y en a pas eu : des mois plus tard, on
+ * saura que personne n'en a donné, plutôt que de le chercher.
+ */
 export function phraseDuJournal(avantCents: number, apresCents: number, motif: string): string {
   const ecart = apresCents - avantCents;
-  return `Montant de la vente corrigé : ${euros(avantCents)} → ${euros(apresCents)} (${ecart > 0 ? "+" : "−"}${euros(Math.abs(ecart))}). Motif : « ${motif} ».`;
+  const raison = motif.trim();
+  return `Montant de la vente corrigé : ${euros(avantCents)} → ${euros(apresCents)} (${ecart > 0 ? "+" : "−"}${euros(Math.abs(ecart))}). ${raison ? `Motif : « ${raison} ».` : "Aucun motif saisi."}`;
 }

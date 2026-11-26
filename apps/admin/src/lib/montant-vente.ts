@@ -95,6 +95,164 @@ export function questionDeCorrection(
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Le total corrigé DANS LA LIGNE de Ventes stand (26/11)                     */
+/* -------------------------------------------------------------------------- */
+/*
+ * Margaux, en vidéo : « commande stand pouvoir modifier directement le total
+ * dans la ligne. Car si elle applique des réductions par ex, faudrait juste
+ * le total indépendamment du reste. Juste les commandes stands ! ». Dans la
+ * cellule du total, un champ et un petit « OK » ; Entrée enregistre ; pas de
+ * fenêtre de confirmation, elle en corrigera beaucoup ; pas de motif à
+ * saisir (le journal dit qu'il n'y en a pas). Une valeur inchangée n'envoie
+ * rien. Le résultat s'affiche dans la ligne : « SAL-0036 : 69,00 € → 59,00 € ».
+ */
+
+/** « 69,00 € » : au centime près, comme le journal de la vente. */
+export function eurosAuCentime(cents: number): string {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+/** La valeur du champ, sans le symbole : « 69,00 ». */
+export function saisieDuTotal(cents: number): string {
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+/**
+ * Ce que fait le champ à l'envoi (Entrée ou « OK ») : rien quand la valeur
+ * n'a pas changé (« 69 » pour 69,00 € compris), rien non plus quand elle ne
+ * se lit pas — la ligne le dit —, sinon le nouveau total en centimes. Zéro
+ * ou un montant négatif partent : le serveur les refuse avec sa phrase.
+ */
+export function envoiDuTotal(
+  saisie: string,
+  avantCents: number,
+): { envoyer: false; raison: "inchange" | "illisible" } | { envoyer: true; cents: number } {
+  const cents = centimesSaisis(saisie);
+  if (cents === null) return { envoyer: false, raison: "illisible" };
+  if (cents === avantCents) return { envoyer: false, raison: "inchange" };
+  return { envoyer: true, cents };
+}
+
+/** Ce que dit la ligne quand la saisie ne se lit pas. */
+export const SAISIE_ILLISIBLE = "Montant illisible : tapez par exemple 59, 59,50 ou 59 €.";
+
+/** Le résultat, dans la ligne et en tête de la liste : « SAL-0036 : 69,00 € → 59,00 € ». */
+export function resultatDuTotal(r: {
+  numero: string;
+  avantCents: number;
+  apresCents: number;
+  inchange?: boolean;
+}): string {
+  return r.inchange
+    ? `${r.numero} : ${eurosAuCentime(r.apresCents)}, inchangé`
+    : `${r.numero} : ${eurosAuCentime(r.avantCents)} → ${eurosAuCentime(r.apresCents)}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Plusieurs totaux d'un coup (relecture du 26/11)                            */
+/* -------------------------------------------------------------------------- */
+/*
+ * Chaque ligne est son formulaire : un total tapé sur une ligne, sans
+ * Entrée, puis Entrée sur une autre, était PERDU sans rien dire — le champ
+ * gardait la valeur tapée jusqu'au rechargement, comme enregistrée, et la
+ * base l'ancienne. Margaux « en corrigera beaucoup ». Désormais, un total
+ * tapé et pas encore envoyé se voit (cadre ambre, « Pas encore
+ * enregistré »), part avec le prochain Entrée de N'IMPORTE QUELLE ligne
+ * (champ caché « autres »), et la page retient avant qu'on la quitte.
+ */
+
+/** Où en est un champ de total : rien tapé, tapé (à envoyer), ou illisible. */
+export function etatDuTotal(saisie: string, avantCents: number): "inchange" | "modifie" | "illisible" {
+  const envoi = envoiDuTotal(saisie, avantCents);
+  return envoi.envoyer ? "modifie" : envoi.raison;
+}
+
+/** Ce que dit, sous son champ, un total tapé et pas encore envoyé. */
+export const TOTAL_EN_ATTENTE = "Pas encore enregistré : Entrée ou OK.";
+
+/** Un total tapé dans une ligne de Ventes stand, tel que le formulaire le porte. */
+export interface TotalTape {
+  id: number;
+  numero: string;
+  avantCents: number;
+  saisie: string;
+}
+
+/** Au plus tant de lignes par envoi : une page de Ventes stand en montre 100. */
+const TOTAUX_PAR_ENVOI = 200;
+
+/**
+ * Les totaux d'un envoi « montant-ligne » : celui de la ligne où l'on a fait
+ * Entrée, puis ceux tapés sur les autres lignes (champ « autres », en JSON,
+ * posé par lib/montant-vente-bo.ts) — chacun une fois, la ligne d'Entrée
+ * d'abord. Ce qui ne se lit pas (identifiant, JSON abîmé) est écarté sans
+ * bruit : le serveur ne corrige que ce qu'on lui désigne clairement.
+ */
+export function totauxDeLEnvoi(champs: {
+  id: unknown;
+  numero: unknown;
+  avant: unknown;
+  montant: unknown;
+  autres?: unknown;
+}): TotalTape[] {
+  const totaux: TotalTape[] = [];
+  const vus = new Set<number>();
+  const ajouter = (t: { id: unknown; numero: unknown; avant: unknown; montant: unknown }) => {
+    const id = Number(t.id);
+    const avantCents = Number(t.avant);
+    if (!Number.isInteger(id) || id <= 0 || vus.has(id) || !Number.isInteger(avantCents)) return;
+    if (totaux.length >= TOTAUX_PAR_ENVOI) return;
+    vus.add(id);
+    totaux.push({
+      id,
+      numero: String(t.numero ?? "").slice(0, 40),
+      avantCents,
+      saisie: String(t.montant ?? "").slice(0, 40),
+    });
+  };
+  ajouter(champs);
+  let autres: unknown = [];
+  try {
+    autres = JSON.parse(String(champs.autres ?? "[]"));
+  } catch {
+    autres = [];
+  }
+  if (Array.isArray(autres))
+    for (const a of autres)
+      if (a && typeof a === "object") {
+        const { id, numero, avant, montant } = a as Record<string, unknown>;
+        ajouter({ id, numero, avant, montant });
+      }
+  return totaux;
+}
+
+/**
+ * Les messages de la liste après un envoi de totaux : le vert dit ce qui a
+ * changé (« SAL-0036 : 69,00 € → 59,00 € », ou « 2 totaux corrigés : … »),
+ * le rouge ce qui a été refusé, vente par vente. Chaque résultat se lit en
+ * outre sous son champ.
+ */
+export function messagesDesTotaux(resultats: readonly { numero: string; texte: string; erreur: boolean }[]): {
+  flash: string | null;
+  erreur: string | null;
+} {
+  const bons = resultats.filter((r) => !r.erreur);
+  const refus = resultats.filter((r) => r.erreur);
+  return {
+    flash: !bons.length
+      ? null
+      : bons.length === 1
+        ? bons[0]!.texte
+        : `${bons.length} totaux corrigés : ${bons.map((r) => r.texte).join(" ; ")}`,
+    erreur: refus.length ? refus.map((r) => `${r.numero} : ${r.texte}`).join(" ; ") : null,
+  };
+}
+
 /** Le message vert, après la correction. */
 export function messageDeCorrection(r: {
   numero: string;

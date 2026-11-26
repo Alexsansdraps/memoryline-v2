@@ -27,7 +27,6 @@ import {
   phraseDuJournal,
   refusDeCorrection,
   refusDuMontant,
-  refusDuMotif,
   type EcritureDuGrandLivre,
   type VenteACorriger,
 } from "../src/montant-vente-stand.js";
@@ -89,12 +88,14 @@ test("le montant : des centimes entiers, plus grands que zéro, sous le plafond"
   assert.equal(refusDuMontant(1), null);
 });
 
-test("le motif est demandé, sur une ligne, et borné", () => {
-  assert.match(refusDuMotif("")!, /cadre ajouté/);
-  assert.equal(refusDuMotif(lireMotif("  cadre\n ajouté ")), null);
+// Facultatif depuis le 26/11 (Margaux : « faudrait juste le total
+// indépendamment du reste ») : un motif absent se lit vide, rien ne le refuse.
+test("le motif est facultatif, sur une ligne, et borné", () => {
   assert.equal(lireMotif("  cadre\n   ajouté "), "cadre ajouté");
   assert.equal(lireMotif("x".repeat(500)).length, MOTIF_MAX);
   assert.equal(lireMotif(undefined), "");
+  assert.equal(lireMotif(""), "");
+  assert.equal(lireMotif("   "), "");
 });
 
 test("l'écriture de correction : un encaissement de plus pour une hausse, de l'argent rendu pour une baisse, toujours positive", () => {
@@ -181,6 +182,13 @@ test("le journal dit avant → après, l'écart et le motif", () => {
     phraseDuJournal(3900, 2950, "erreur de saisie"),
     "Montant de la vente corrigé : 39,00 € → 29,50 € (−9,50 €). Motif : « erreur de saisie ».",
   );
+  // Sans motif (26/11, le total corrigé dans la ligne de Ventes stand) : le
+  // journal dit qu'il n'y en a pas eu.
+  assert.equal(
+    phraseDuJournal(6900, 5900, ""),
+    "Montant de la vente corrigé : 69,00 € → 59,00 € (−10,00 €). Aucun motif saisi.",
+  );
+  assert.match(phraseDuJournal(6900, 5900, "   "), /Aucun motif saisi\.$/);
   assert.equal(euros(5), "0,05 €");
 });
 

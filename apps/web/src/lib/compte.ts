@@ -137,6 +137,8 @@ export interface Montants {
 export interface Commande {
   id: number;
   number: string;
+  /** « salon » : un achat au stand, remis sur place (26/11). */
+  channel?: string;
   createdAt: string;
   shippingName: string | null;
   shippingLine1: string | null;

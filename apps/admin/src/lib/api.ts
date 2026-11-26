@@ -1090,6 +1090,11 @@ export interface OrderRow {
   }[];
   /** Une vente facturée garde son montant (26/11, lib/montant-vente.ts). */
   invoiceNumber?: string | null;
+  /**
+   * Ventes du stand seulement (26/11) : null, son total se corrige dans la
+   * ligne ; sinon, pourquoi pas (l'info-bulle du total). Absent ailleurs.
+   */
+  refusMontant?: string | null;
   /** Quantités déjà parties. */
   expedies?: number;
   rembourseCents?: number;
@@ -1810,6 +1815,20 @@ export interface StatsIA {
   plafondAtteint: boolean;
   /** Ce que coûte une image avec le modèle et la taille réglés. */
   coutParImageCents: number;
+  /**
+   * Ce que coûtera une affiche avec les réglages du moment, taille et qualité
+   * comptées (26/11) ; null hors gpt-image-2 et ses suites, absent d'une API
+   * plus ancienne. `coutAttenduEstime` : sur les tarifs de gpt-image-2, faute
+   * de ceux du modèle réglé (relecture du 26/11).
+   */
+  coutAttenduCents?: number | null;
+  coutAttenduEstime?: boolean;
+  /**
+   * Avec la taille maximale réglée (relecture du 26/11) : les affiches prêtes
+   * depuis son dernier enregistrement, et combien sont parties à la taille
+   * sûre parce qu'OpenAI a refusé la grande. null sinon.
+   */
+  repliDeTaille?: { depuis: string; affiches: number; repliees: number; tailleSure: string } | null;
   /** Délai au-delà duquel une photo non achetée peut être effacée. */
   purgeJours: number;
   total: { essais: number; coutCents: number };
@@ -2597,7 +2616,11 @@ export function adminApi(request?: Request) {
         | "archiver"
         | "restaurer"
         // Ventes du stand mises en test (20/11) : `ecartees` dit ce qui ne l'a pas été.
-        | "test",
+        | "test"
+        // « Marquer terminées », « Remettre à imprimer » (Ventes stand, 26/11) :
+        // `ignorees` dit, vente par vente, ce qui n'a pas changé d'étape.
+        | "terminer-stand"
+        | "remettre-a-imprimer",
       tags?: string[],
       auteur?: string,
     ) =>
@@ -2610,6 +2633,7 @@ export function adminApi(request?: Request) {
         numeros?: string[];
         prevenues?: number;
         ecartees?: { id: number; raison: string }[];
+        ignorees?: { id: number; numero: string; raison: string }[];
       }>("POST", "/admin/orders/bulk", { ids, action, tags, auteur }, cookie),
     /**
      * Fait passer une commande à une étape de traitement (17/11) : la frise

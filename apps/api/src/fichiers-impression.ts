@@ -52,7 +52,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "n
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, ne, or } from "drizzle-orm";
 import sharp from "sharp";
 import {
   afficheComposee,
@@ -87,6 +87,12 @@ const DOSSIER_IMPRESSIONS = resolve(DOSSIER_CACHE, "impressions");
  * disque du serveur se remplirait d'une dizaine de Mo par affiche vendue.
  */
 const JOURS_DE_GARDE = 60;
+
+/**
+ * Les ventes du stand « À imprimer » préparées d'avance au démarrage : celles
+ * de la veille et du jour (26/11, voir demarrerPreparationDesImpressions).
+ */
+const JOURS_DU_STAND = 2;
 
 /**
  * L'empreinte du CODE qui dessine les affiches.
@@ -882,6 +888,15 @@ export async function etatDuFichierDImpression(
  * ni archivées, des soixante derniers jours : les autres ne s'impriment plus,
  * et se recalculeront le jour d'une réimpression.
  *
+ * Les ventes du STAND, des deux derniers jours seulement (26/11). Une vente
+ * du stand reste « À imprimer » tant que Margaux ne l'a pas marquée
+ * terminée, et toutes celles d'avant y sont revenues ce jour-là (migration
+ * 0114) alors que leurs affiches sont remises depuis longtemps : prises
+ * toutes, elles remplissaient la file pour des heures, un rendu après
+ * l'autre, et les vignettes de la liste attendaient derrière. Leur fichier
+ * se prépare de toute façon à la validation (salon.ts) ; ici, seulement
+ * celles qui ont pu attendre une mise en ligne avant d'être imprimées.
+ *
  * Une minute après le démarrage, pour laisser l'API répondre d'abord ; un
  * fichier à la fois, après tout ce que la boutique demande.
  */
@@ -893,6 +908,7 @@ export function demarrerPreparationDesImpressions(): void {
 async function preparerLesCommandesAExpedier(): Promise<void> {
   try {
     const depuis = new Date(Date.now() - JOURS_DE_GARDE * 24 * 3600 * 1000);
+    const depuisAuStand = new Date(Date.now() - JOURS_DU_STAND * 24 * 3600 * 1000);
     const lignes = await db
       .select({ id: schema.orderItems.id, config: schema.orderItems.config })
       .from(schema.orderItems)
@@ -903,6 +919,7 @@ async function preparerLesCommandesAExpedier(): Promise<void> {
           isNull(schema.orders.fulfilledAt),
           isNull(schema.orders.archivedAt),
           gte(schema.orders.createdAt, depuis),
+          or(ne(schema.orders.channel, "salon"), gte(schema.orders.createdAt, depuisAuStand)),
         ),
       )
       .orderBy(desc(schema.orders.createdAt), asc(schema.orderItems.id))

@@ -52,6 +52,9 @@ import { cheminApercu } from "./apercus.js";
 // Le montant d'une vente du stand corrigé au BO (26/11) : la page « Mon
 // compte » d'une habituée doit expliquer l'écart, comme sa facture.
 import { correctionNette, PASSERELLE_DU_STAND } from "./montant-vente-stand.js";
+// Un achat au stand se dit « Remise sur le stand », quelle que soit son
+// étape au back-office (26/11 : il naît « À imprimer »).
+import { traitementVuParLaCliente } from "./etape-vente-stand.js";
 import {
   cheminSite,
   langueDuDestinataire,
@@ -1295,7 +1298,7 @@ export function mountCompteRoutes(app: Hono): void {
           totalCents: o.totalCents,
           articles: s.articles,
           statutFinancier: statutFinancier(o, s.rembourseCents),
-          statutExpedition: statutExpedition(s.articles, s.expedies),
+          statutExpedition: traitementVuParLaCliente(o, statutExpedition(s.articles, s.expedies)),
           suivi: colis
             .filter((f) => f.orderId === o.id && f.trackingNumber)
             .map((f) => ({
@@ -1469,7 +1472,10 @@ export function mountCompteRoutes(app: Hono): void {
         rembourseCents: resume.rembourseCents,
       },
       statutFinancier: statutFinancier(order, resume.rembourseCents),
-      statutExpedition: statutExpedition(resume.articles, resume.expedies),
+      statutExpedition: traitementVuParLaCliente(
+        order,
+        statutExpedition(resume.articles, resume.expedies),
+      ),
     });
   });
 

@@ -11,9 +11,15 @@
  *     l'annonce. Un prix affiché à l'écran la contredirait devant le client.
  *   - AUCUN PAIEMENT en ligne. L'argent se règle sur place. Depuis le 19/11
  *     (Alexandra : « on considère que c'est payé et terminé dès que la
- *     personne a fini son affiche »), la vente naît PAYÉE et TERMINÉE : son
- *     PDF se télécharge aussitôt. Si le client ne paie pas, Margaux l'annule
- *     (fiche ou liste des ventes du stand), ou la supprime.
+ *     personne a fini son affiche »), la vente naît PAYÉE : son PDF se
+ *     télécharge aussitôt (le back-office le propose dès qu'une vente est
+ *     payée). Depuis le 26/11, elle n'est plus TERMINÉE d'office mais « À
+ *     imprimer » (Alexandra : « il faut que quand la personne créé une
+ *     affiche, qu'elle ne soit pas directement terminée mais qu'on doive le
+ *     faire soit dans la commande soit sur la liste avec case à cocher ») :
+ *     Margaux la marque terminée elle-même (etape-vente-stand.ts). Si le
+ *     client ne paie pas, elle l'annule (fiche ou liste des ventes du
+ *     stand), ou la supprime.
  *   - LE NOM ET L'ADRESSE E-MAIL suffisent à valider. On ne demande pas
  *     d'adresse postale : le client repart avec son affiche, ou vient la
  *     chercher. L'adresse e-mail, elle, sert à le prévenir quand c'est prêt —
@@ -27,7 +33,9 @@ import type { Context } from "hono";
 import { and, asc, count, desc, eq, inArray, isNull, like, ne, notInArray, sql as raw } from "drizzle-orm";
 import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { randomInt } from "node:crypto";
-import { db, schema } from "./db/client.js";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { db, schema, sql as pg } from "./db/client.js";
 import { fr } from "./courriels/fr.js";
 import { enregistrerFichiersDImpression } from "./configurator-routes.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
@@ -35,6 +43,7 @@ import { HORS_VENTES } from "./statuts-vente.js";
 import { estCorrectionDuMontant } from "./montant-vente-stand.js";
 import { prochainNumeroDeCommande } from "./numeros-commande.js";
 import { estProprietaire, standsDuVendeur } from "./vendeurs.js";
+import { unPassageALaFois } from "./verrou-commande.js";
 import { supprimerPourToujours } from "./suppression.js";
 import { appliquerCalendrier } from "./stands-calendrier.js";
 import {
@@ -85,6 +94,52 @@ export function codeFourni(c: Context): string {
   return String(
     c.req.query("code") ?? c.req.header("x-salon-code") ?? "",
   ).trim();
+}
+
+/**
+ * La migration 0114, rejouée une fois à chaque démarrage de l'API
+ * (relecture du 26/11).
+ *
+ * 0114 rend « À imprimer » les ventes du stand validées sous l'ANCIENNE
+ * règle (nées « Terminée »). Mais la mise en ligne lance les migrations
+ * pendant que l'ancienne API sert encore la tablette (scripts/mettre-en-ligne.sh :
+ * « 4/5 · Migrations », puis seulement « 5/5 · Redémarrage » ; la page de
+ * maintenance ne couvre pas /api/*). Une vente validée dans cet intervalle
+ * naissait « Terminée » APRÈS le passage de 0114, que Drizzle ne rejoue
+ * jamais : pendant le marché de Noël, une affiche pouvait sortir de « À
+ * imprimer » sans avoir été imprimée.
+ *
+ * Le fichier de la migration lui-même, tel quel : mêmes cibles, même ligne
+ * au journal, et « rejouable sans effet » (son en-tête) — une vente déjà
+ * rendue porte sa ligne, une vente validée sous la nouvelle règle porte la
+ * sienne, et aucune des deux n'est plus une cible. Au premier démarrage du
+ * nouveau code, il rattrape les ventes de l'intervalle ; ensuite, il ne
+ * trouve plus rien. Il ne lève jamais : un échec se lit au journal, l'API
+ * démarre quand même. Rend le nombre de ventes rattrapées.
+ *
+ * `executer` : la base elle-même ; un essai passe sa transaction, qu'il
+ * annule ensuite (tests/ventes-stand-relecture-base.test.ts).
+ */
+export async function rattraperLesVentesDeLAncienneRegle(
+  executer: (requete: string) => Promise<{ count: number }> = (requete) => pg.unsafe(requete),
+): Promise<number> {
+  try {
+    const requete = await readFile(
+      fileURLToPath(new URL("../drizzle/0114_ventes_stand_a_imprimer.sql", import.meta.url)),
+      "utf8",
+    );
+    const r = await executer(requete);
+    const n = Number(r.count ?? 0);
+    if (n > 0)
+      console.log(
+        `[stand] ${n} vente${n > 1 ? "s" : ""} du stand validée${n > 1 ? "s" : ""} sous l'ancienne règle ` +
+          `remise${n > 1 ? "s" : ""} « À imprimer » (migration 0114 rejouée au démarrage).`,
+      );
+    return n;
+  } catch (e) {
+    console.error("[stand] migration 0114 non rejouée au démarrage :", e);
+    return 0;
+  }
 }
 
 export function mountSalonRoutes(app: Hono): void {
@@ -146,10 +201,10 @@ export function mountSalonRoutes(app: Hono): void {
    * ni doublon —, et le journal de la commande raconte ce qui s'est passé.
    *
    * Garde-fous : seule la tablette qui l'a validée (même panier), au même
-   * stand, dans les deux heures, et tant qu'elle n'a pas été remboursée.
-   * Au-delà, c'est une correction de back-office, pas de stand. Depuis le
-   * 19/11, la vente naît remise (« Terminée ») : cette remise s'annule avec
-   * elle, et la revalidation en écrit une nouvelle.
+   * stand, dans le quart d'heure, et tant qu'elle n'a pas été remboursée.
+   * Au-delà, c'est une correction de back-office, pas de stand. Une vente
+   * déjà marquée terminée au BO (26/11 : elle naît « À imprimer ») perd sa
+   * remise avec elle ; la revalidation la rend « À imprimer ».
    */
   app.post("/salon/commandes/rouvrir", async (c) => {
     const stand = await standDuCode(codeFourni(c));
@@ -163,7 +218,24 @@ export function mountSalonRoutes(app: Hono): void {
     const numero = String(body.numero ?? "");
     if (!cartId || !numero) return c.json({ error: "Commande introuvable." }, 404);
 
-    const resultat = await db.transaction(async (tx) => {
+    // Sous le verrou de passage de la commande, celui de « Marquer
+    // terminées » et de la frise de la fiche (verrou-commande.ts, relecture
+    // du 26/11) : sans lui, une remise écrite par le BO au même instant
+    // survivait à la réouverture. Le verrou de ligne, plus bas, reste celui
+    // du panier et de la correction du montant.
+    const [visee] = await db
+      .select({ id: schema.orders.id })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.clientOrderId, cartId),
+          eq(schema.orders.number, numero),
+          eq(schema.orders.standId, stand.id),
+        ),
+      );
+    if (!visee) return c.json({ error: "Commande introuvable." }, 404);
+
+    const resultat = await unPassageALaFois(visee.id, () => db.transaction(async (tx) => {
       const [commande] = await tx
         .select()
         .from(schema.orders)
@@ -229,9 +301,9 @@ export function mountSalonRoutes(app: Hono): void {
           .limit(1);
         valideeLe = prise?.le ?? null;
       }
-      // Un quart d'heure (19/11) : la vente naît payée et remise, son affiche
-      // part vite à l'impression. Au-delà, un autre client tient sans doute
-      // la tablette : la correction se fait au back-office.
+      // Un quart d'heure (19/11) : la vente naît payée, son affiche part vite
+      // à l'impression. Au-delà, un autre client tient sans doute la
+      // tablette : la correction se fait au back-office.
       if (valideeLe && Date.now() - valideeLe.getTime() > 15 * 60_000)
         return { erreur: "Validée il y a plus d'un quart d'heure : corrigez-la au back-office.", statut: 409 as const };
 
@@ -246,7 +318,9 @@ export function mountSalonRoutes(app: Hono): void {
             eq(schema.orderTransactions.status, "success"),
           ),
         );
-      // La remise faite à la validation (19/11) tombe avec elle.
+      // Une remise tombe avec elle : celle que Margaux a pu marquer au BO
+      // entre-temps (26/11), ou celle que la validation écrivait du 19 au
+      // 26/11.
       await tx
         .update(schema.fulfillments)
         .set({ status: "cancelled", cancelledAt: new Date() })
@@ -282,7 +356,7 @@ export function mountSalonRoutes(app: Hono): void {
           : "Commande rouverte au stand pour être corrigée.",
       });
       return { ok: true as const };
-    });
+    }));
     if ("erreur" in resultat) return c.json({ error: resultat.erreur }, resultat.statut);
     return c.json({ ok: true });
   });
@@ -394,9 +468,15 @@ export function mountSalonRoutes(app: Hono): void {
           // annule sa vente au BO (commandes.ts, annulation d'une vente du
           // stand) : elle sort des chiffres et du grand livre.
           status: "paid",
-          // TERMINÉE aussi : l'affiche est imprimée et remise sur place, il
-          // n'y a pas d'étape « À imprimer » à cocher (traitement.ts).
-          fulfilledAt: new Date(),
+          // Mais plus TERMINÉE (26/11, Alexandra : « il faut que quand la
+          // personne créé une affiche, qu'elle ne soit pas directement
+          // terminée mais qu'on doive le faire soit dans la commande soit
+          // sur la liste avec case à cocher ») : ni remise, ni date de fin.
+          // La vente est « À imprimer » (traitement.ts) jusqu'à ce que
+          // Margaux la marque terminée (etape-vente-stand.ts). Son PDF, lui,
+          // se télécharge dès maintenant : le BO le propose à toute vente
+          // payée, et le fichier se prépare plus bas.
+          fulfilledAt: null,
           customerId: client.id,
           totalCents: total,
           shippingCents: 0,
@@ -424,28 +504,38 @@ export function mountSalonRoutes(app: Hono): void {
         gateway: "stand",
         externalRef: null,
       });
-      // Et la remise : une expédition pour chaque affiche, sans transporteur
-      // — la fiche la lit « Remise au client ». C'est elle qui fait l'étape
-      // « Terminée » (traitement.ts) et ouvre le téléchargement du PDF.
-      const aRemettre = lignes.filter((l) => !l.giftCard && l.quantity > 0);
-      if (aRemettre.length) {
-        const [remise] = await tx
-          .insert(schema.fulfillments)
-          .values({ orderId: panier.id, status: "success" })
-          .returning();
-        await tx.insert(schema.fulfillmentItems).values(
-          aRemettre.map((l) => ({
-            fulfillmentId: remise!.id,
-            orderItemId: l.id,
-            quantity: l.quantity,
-          })),
+      // Une vente validée naît SANS remise (relecture du 26/11) : une remise
+      // réussie restée sur le panier — « Marquer terminées » arrivé au même
+      // instant que « Revenir à ma commande », avant que les deux passent
+      // sous le même verrou (verrou-commande.ts) — ferait naître la vente
+      // revalidée « Terminée », peut-être avec d'autres affiches, sans que
+      // Margaux l'ait marquée. Elle s'annule ici, comme à la réouverture.
+      await tx
+        .update(schema.fulfillments)
+        .set({ status: "cancelled", cancelledAt: new Date() })
+        .where(
+          and(
+            eq(schema.fulfillments.orderId, panier.id),
+            eq(schema.fulfillments.status, "success"),
+          ),
         );
-      }
+      // Plus de remise écrite ici (26/11) : du 19 au 26/11, une expédition
+      // sans transporteur faisait de chaque vente une vente « Terminée » dès
+      // sa validation, et Margaux ne pouvait plus rien y reprendre (« sinon
+      // elle peut pas modifier »). La même remise s'écrit désormais quand
+      // elle la marque terminée : « Marquer terminées » dans Ventes stand,
+      // ou « Marquer terminée » sur la fiche (changerEtape, commandes.ts).
+      // Le journal le dit dès la validation. Il commence toujours par
+      // « Commande prise au stand » : c'est ce que relit la réouverture,
+      // plus haut, pour dater la validation. Et sa fin (« … : à imprimer,
+      // puis à marquer terminée au back-office. ») est ce à quoi la
+      // migration 0114 reconnaît une vente validée sous la nouvelle règle,
+      // qu'elle ne touche pas.
       await tx.insert(schema.orderEvents).values({
         orderId: panier.id,
         kind: "event",
         message:
-          `Commande prise au stand${evenement ? ` (${evenement})` : ""}, réglée sur place et remise : terminée.`,
+          `Commande prise au stand${evenement ? ` (${evenement})` : ""}, réglée sur place : à imprimer, puis à marquer terminée au back-office.`,
       });
       return { lignes, commande: commande! };
     });

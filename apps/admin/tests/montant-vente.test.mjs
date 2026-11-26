@@ -16,10 +16,19 @@ import {
   centimesSaisis,
   choixDeLAffiche,
   correctionsDuMontant,
+  envoiDuTotal,
   estCorrectionDuMontant,
+  etatDuTotal,
   euros,
+  eurosAuCentime,
   messageDeCorrection,
+  messagesDesTotaux,
   questionDeCorrection,
+  resultatDuTotal,
+  SAISIE_ILLISIBLE,
+  saisieDuTotal,
+  TOTAL_EN_ATTENTE,
+  totauxDeLEnvoi,
 } from "../src/lib/montant-vente.ts";
 
 /** Intl sépare l'euro par une espace insécable fine : les essais lisent des espaces simples. */
@@ -103,4 +112,99 @@ test("les corrections au grand livre : moyen « stand » ET parent ; une annulé
   // total ne bouge pas, la correction qu'il porte se lit encore.
   assert.equal(correctionsDuMontant([{ ...mouvements[1], status: "annule" }]).netteCents, 1000);
   assert.deepEqual(correctionsDuMontant([]), { netteCents: 0, motifs: [] });
+});
+
+/*
+ * Le total DANS LA LIGNE de Ventes stand (26/11, Margaux : « commande stand
+ * pouvoir modifier directement le total dans la ligne. Car si elle applique
+ * des réductions par ex, faudrait juste le total indépendamment du reste ») :
+ * le champ accepte « 59 », « 59,5 », « 59.50 », « 59 € » ; une valeur
+ * inchangée n'envoie rien ; le résultat se lit « SAL-0036 : 69,00 € → 59,00 € ».
+ */
+test("le champ de la ligne : sa valeur, et les quatre façons de taper un total", () => {
+  assert.equal(saisieDuTotal(6900), "69,00");
+  assert.equal(saisieDuTotal(5950), "59,50");
+  assert.equal(saisieDuTotal(5), "0,05");
+  for (const [tape, cents] of [
+    ["59", 5900],
+    ["59,5", 5950],
+    ["59.50", 5950],
+    ["59 €", 5900],
+    [" 59,00 € ", 5900],
+  ])
+    assert.deepEqual(envoiDuTotal(tape, 6900), { envoyer: true, cents }, tape);
+});
+
+test("valeur inchangée ou illisible : rien n'est envoyé", () => {
+  assert.deepEqual(envoiDuTotal("69,00", 6900), { envoyer: false, raison: "inchange" });
+  assert.deepEqual(envoiDuTotal("69", 6900), { envoyer: false, raison: "inchange" });
+  assert.deepEqual(envoiDuTotal("69 €", 6900), { envoyer: false, raison: "inchange" });
+  assert.deepEqual(envoiDuTotal("", 6900), { envoyer: false, raison: "illisible" });
+  assert.deepEqual(envoiDuTotal("soixante", 6900), { envoyer: false, raison: "illisible" });
+  assert.deepEqual(envoiDuTotal("59,505", 6900), { envoyer: false, raison: "illisible" });
+  assert.match(SAISIE_ILLISIBLE, /59, 59,50 ou 59 €/);
+  // Zéro part : c'est le serveur qui le refuse, avec sa phrase.
+  assert.deepEqual(envoiDuTotal("0", 6900), { envoyer: true, cents: 0 });
+});
+
+test("le résultat, au centime près : « SAL-0036 : 69,00 € → 59,00 € »", () => {
+  assert.equal(
+    lu(resultatDuTotal({ numero: "SAL-0036", avantCents: 6900, apresCents: 5900, inchange: false })),
+    "SAL-0036 : 69,00 € → 59,00 €",
+  );
+  assert.equal(
+    lu(resultatDuTotal({ numero: "SAL-0036", avantCents: 5900, apresCents: 5900, inchange: true })),
+    "SAL-0036 : 59,00 €, inchangé",
+  );
+  assert.equal(lu(eurosAuCentime(123456)), "1 234,56 €");
+});
+
+/* Relecture du 26/11 : un total tapé sur une ligne, sans Entrée, puis Entrée
+   sur une autre, était perdu sans rien dire. Il part désormais avec elle. */
+
+test("l'état d'un champ : rien tapé, tapé (à envoyer), ou illisible", () => {
+  assert.equal(etatDuTotal("69,00", 6900), "inchange");
+  assert.equal(etatDuTotal("69 €", 6900), "inchange");
+  assert.equal(etatDuTotal("59", 6900), "modifie");
+  assert.equal(etatDuTotal("5O", 6900), "illisible");
+  assert.equal(etatDuTotal("", 6900), "illisible");
+  assert.match(TOTAL_EN_ATTENTE, /Pas encore enregistré/);
+});
+
+test("les totaux d'un envoi : la ligne d'Entrée d'abord, puis les autres tapés, chacun une fois", () => {
+  const autres = JSON.stringify([
+    { id: 16, numero: "SAL-0016", avant: 3700, montant: "30" },
+    { id: 17, numero: "SAL-0017", avant: 3700, montant: "31" },
+    // La ligne d'Entrée répétée, un identifiant illisible, un intrus : écartés.
+    { id: 18, numero: "SAL-0018", avant: 3700, montant: "99" },
+    { id: "abc", numero: "SAL-X", avant: 100, montant: "1" },
+    null,
+    "SAL-0019",
+  ]);
+  assert.deepEqual(
+    totauxDeLEnvoi({ id: "18", numero: "SAL-0018", avant: "3700", montant: "41", autres }),
+    [
+      { id: 18, numero: "SAL-0018", avantCents: 3700, saisie: "41" },
+      { id: 16, numero: "SAL-0016", avantCents: 3700, saisie: "30" },
+      { id: 17, numero: "SAL-0017", avantCents: 3700, saisie: "31" },
+    ],
+  );
+  // Sans script (ou rien d'autre de tapé) : la seule ligne d'Entrée.
+  assert.deepEqual(totauxDeLEnvoi({ id: "18", numero: "SAL-0018", avant: "3700", montant: "41" }), [
+    { id: 18, numero: "SAL-0018", avantCents: 3700, saisie: "41" },
+  ]);
+  // Un champ « autres » abîmé ne fait rien perdre de la ligne d'Entrée.
+  assert.equal(totauxDeLEnvoi({ id: "18", numero: "SAL-0018", avant: "3700", montant: "41", autres: "[{" }).length, 1);
+});
+
+test("les messages : un résultat tel quel, plusieurs comptés, les refus vente par vente", () => {
+  const a = { numero: "SAL-0016", texte: "SAL-0016 : 37,00 € → 30,00 €", erreur: false };
+  const b = { numero: "SAL-0017", texte: "SAL-0017 : 37,00 € → 31,00 €", erreur: false };
+  const refus = { numero: "SAL-0018", texte: "Cette vente a une facture : une facture émise ne se modifie pas.", erreur: true };
+  assert.deepEqual(messagesDesTotaux([a]), { flash: a.texte, erreur: null });
+  assert.deepEqual(messagesDesTotaux([a, b, refus]), {
+    flash: `2 totaux corrigés : ${a.texte} ; ${b.texte}`,
+    erreur: `SAL-0018 : ${refus.texte}`,
+  });
+  assert.deepEqual(messagesDesTotaux([]), { flash: null, erreur: null });
 });

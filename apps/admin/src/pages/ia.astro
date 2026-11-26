@@ -64,11 +64,28 @@ const TAILLES_STANDARD = ["1024x1024", "1024x1536", "1536x1024", "auto"];
  * pouce en A3, contre 88 en 1024 × 1536). Elle manquait au menu : enregistrer
  * ces réglages, ne serait-ce que pour corriger le style commun, écrivait
  * 1024 × 1536 sans que personne l'ait choisi (Margaux, 26/11 : « qualité
- * affiches IA pas top »). Le paysage, lui, part toujours en 2240 × 1584.
+ * affiches IA pas top »). Le paysage, lui, part en 2240 × 1584.
+ *
+ * 2416 × 3424 ensuite (26/11, Alexandra : « faut que les affiches IA aient la
+ * même taille que les autres affiches tu vois ») : la plus grande image au
+ * format A que gpt-image-2 accepte (TAILLE_MAX, ia.ts) ; le paysage la suit
+ * alors en 3424 × 2416. Refusée par OpenAI, l'affiche repart d'elle-même en
+ * 1584 × 2240. Les coûts sont ceux de gpt-image-2 en haute qualité
+ * (coutAttenduCents, ia.ts).
  */
 const TAILLES = [
-  { valeur: "1584x2240", label: "1584 × 2240 — A3, net à l'impression (gpt-image-2…)" },
-  { valeur: "1024x1536", label: "1024 × 1536 — moins cher, moins net" },
+  {
+    valeur: "1584x2240",
+    label: "1584 × 2240 — recommandé : la plus grande taille garantie par OpenAI, nette à l'impression (environ 26 c l'image)",
+  },
+  {
+    valeur: "2416x3424",
+    // Le risque du délai dans le libellé même (relecture du 26/11) : une
+    // image plus longue que 4 min 40 est abandonnée, et payée.
+    label:
+      "2416 × 3424 — taille maximale, la plus proche des autres affiches (292 ppp en A4, 207 en A3) — expérimentale chez OpenAI pour gpt-image-2.5, environ 47 c l'image, la plus lente : au-delà de 4 min 40, la création échoue et reste payée",
+  },
+  { valeur: "1024x1536", label: "1024 × 1536 — moins cher (environ 17 c), moins net" },
   { valeur: "1024x1024", label: "1024 × 1024 — carré" },
   { valeur: "1536x1024", label: "1536 × 1024 — paysage" },
   { valeur: "auto", label: "auto — le modèle décide" },
@@ -96,10 +113,24 @@ const PURGE_DEFAUT = 30;
 /** Générations montrées d'un coup dans la galerie. */
 const PAR_PAGE = 60;
 
-/** Euros saisis (« 49,90 ») -> centimes entiers, jamais négatifs. */
-function centimes(v: FormDataEntryValue | null): number {
-  const n = Number(String(v ?? "").replace(",", ".").trim());
-  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0;
+/**
+ * Le plafond saisi (« 49,90 ») en centimes, ou « vide ».
+ *
+ * Relecture du 26/11 : un champ vidé s'enregistrait à 0 — et l'API, qui lit
+ * 0 comme « plus rien », refusait alors TOUTE création, au stand comme sur
+ * le site, pendant que cet écran affirmait « Aucun plafond n'est réglé ».
+ * Désormais, comme le plafond des fonds (fonds.astro) : vide, le réglage
+ * retombe sur son défaut de 50 € (l'indication du champ) ; « 0 », dit
+ * exprès, arrête la création, et l'écran le dit ; un montant illisible
+ * n'enregistre rien.
+ */
+function plafondSaisi(v: FormDataEntryValue | null): number | "vide" {
+  const texte = String(v ?? "").replace(/[\s€]/g, "").replace(",", ".");
+  if (!texte) return "vide";
+  const n = Number(texte);
+  if (!Number.isFinite(n) || n < 0)
+    throw new Error(`Plafond de dépense : « ${String(v)} » n'est pas un montant. Écrivez par exemple 50 ou 49,90.`);
+  return Math.round(n * 100);
 }
 
 /**
@@ -159,6 +190,8 @@ if (Astro.request.method === "POST") {
     } else {
       // Montants et durées partent en NOMBRES : l'API compare et additionne
       // ces réglages, une chaîne s'y additionnerait bout à bout.
+      // Le plafond d'abord : illisible, il n'enregistre rien du tout.
+      const plafond = plafondSaisi(f.get("plafondEuros"));
       const modeleChoisi = String(f.get("modele") ?? MODELE_DEFAUT);
       let tailleChoisie = String(f.get("taille") ?? TAILLE_DEFAUT);
       // Un modèle qui ne fait que les tailles standard (gpt-image-1.5,
@@ -172,12 +205,15 @@ if (Astro.request.method === "POST") {
       await api.setSetting("ia.stylePrompt", String(f.get("stylePrompt") ?? ""));
       await api.setSetting("ia.modele", modeleChoisi);
       await api.setSetting("ia.taille", tailleChoisie);
-      await api.setSetting(
-        "ia.plafondMensuelCents",
-        centimes(f.get("plafondEuros")),
-      );
+      await api.setSetting("ia.plafondMensuelCents", plafond === "vide" ? "" : plafond);
       await api.setSetting("ia.purgeJours", entier(f.get("purgeJours"), PURGE_DEFAUT));
-      flash = `Réglages enregistrés.${ajuste}`;
+      flash =
+        `Réglages enregistrés.${ajuste}` +
+        (plafond === "vide"
+          ? " Plafond laissé vide : il revient à 50 € par mois."
+          : plafond === 0
+            ? " Plafond à 0 € : plus aucune affiche n'est créée, ni au stand ni sur le site, jusqu'à ce que vous en régliez un."
+            : "");
     }
   } catch (e) {
     flash = String(e);
@@ -238,12 +274,56 @@ const modele = stats?.modele ?? texte("ia.modele") ?? MODELE_DEFAUT;
 const taille = stats?.taille ?? texte("ia.taille") ?? TAILLE_DEFAUT;
 const plafondCents = stats?.plafondCents ?? 0;
 const purgeJours = stats?.purgeJours ?? PURGE_DEFAUT;
+/**
+ * Ce que montre le champ du plafond (relecture du 26/11) : le plafond
+ * appliqué par l'API, 0 compris (« 0.00 ») ; sans ses chiffres, le réglage
+ * enregistré tel quel ; vide seulement s'il n'y en a pas — enregistrer
+ * l'écran ne doit jamais poser 0 sans qu'on l'ait tapé.
+ */
+const brutDuPlafond = reglages["ia.plafondMensuelCents"];
+const plafondEnregistre =
+  brutDuPlafond === undefined || brutDuPlafond === null || brutDuPlafond === ""
+    ? Number.NaN
+    : Number(brutDuPlafond);
+const valeurDuPlafond = stats
+  ? (stats.plafondCents / 100).toFixed(2)
+  : Number.isFinite(plafondEnregistre)
+    ? (plafondEnregistre / 100).toFixed(2)
+    : "";
 
 const depenseCents = stats?.mois?.depenseCents ?? 0;
 const partDuPlafond = plafondCents > 0 ? depenseCents / plafondCents : 0;
-const coutParImage = stats?.coutParImageCents ?? 0;
+/**
+ * Le coût d'un aperçu (26/11) : celui des réglages du moment, taille et
+ * qualité comptées, quand l'API sait le calculer (gpt-image-2) ; sinon
+ * l'estimation fixe du réglage — 8 c, quand une affiche en haute qualité en
+ * coûte de 17 à 47 : « soit 1 250 aperçus avant le plafond » en promettait
+ * trois à six fois trop.
+ */
+const coutAttendu = stats?.coutAttenduCents ?? null;
+const coutParImage = coutAttendu ?? stats?.coutParImageCents ?? 0;
 const apercusRestants =
   coutParImage > 0 ? Math.floor((stats?.resteCents ?? 0) / coutParImage) : null;
+
+/**
+ * Le filet de la taille (relecture du 26/11) : avec la taille maximale
+ * réglée, les affiches prêtes depuis le dernier enregistrement de la taille
+ * ou du modèle, et combien sont parties à la taille sûre parce qu'OpenAI a
+ * refusé la grande. null quand rien n'est à dire.
+ */
+const repli = stats?.repliDeTaille ?? null;
+const phraseDuRepli =
+  repli && repli.repliees > 0
+    ? `depuis ${quand(repli.depuis)}, ${
+        repli.repliees === repli.affiches
+          ? repli.affiches > 1
+            ? `les ${repli.affiches} affiches créées sont parties`
+            : "l'affiche créée est partie"
+          : `${repli.repliees} affiche${repli.repliees > 1 ? "s" : ""} sur ${repli.affiches} ${
+              repli.repliees > 1 ? "sont parties" : "est partie"
+            }`
+      } à la taille sûre (${repli.tailleSure.replace("x", " × ")}, ou couchée en paysage) au lieu de ${taille.replace("x", " × ")} : OpenAI a refusé la taille maximale, et le repli automatique a pris le relais, au prix de la taille sûre.`
+    : null;
 
 /**
  * Taux d'échec recalculé sur les deux compteurs : une part (0,12) et un
@@ -364,8 +444,10 @@ const derniere = premiere + lignes.length;
           </div>
         )}
         <p class="mt-2 text-xs text-bo-muted">
-          {plafondCents === 0
-            ? "Aucun plafond n'est réglé : réglez-en un plus bas, sans quoi la dépense n'est bornée par rien."
+          {/* À 0, l'API refuse TOUTE création (relecture du 26/11) : l'écran
+              disait l'inverse, « la dépense n'est bornée par rien ». */}
+          {stats && plafondCents === 0
+            ? "Plafond à 0 € : plus aucune affiche n'est créée, ni au stand ni sur le site. Pour relancer la création, réglez un plafond dans les réglages, plus bas sur cette page."
             : stats?.plafondAtteint
               ? "Plafond atteint : plus aucune affiche n'est générée jusqu'au mois prochain."
               : partDuPlafond >= 0.8
@@ -398,24 +480,45 @@ const derniere = premiere + lignes.length;
           {echecs > 0 && <span class="text-xs text-bo-muted">{echecs} raté(s)</span>}
         </div>
         <div class="text-xs text-bo-muted">
+          {/* Une création coupée au délai est payée, et compte au plafond
+              (relecture du 26/11, coutDUnEchec dans ia.ts) : « Un échec
+              n'est pas facturé » n'était plus vrai pour elle. */}
           {tauxEchec !== null && tauxEchec >= 20
             ? "Anormalement haut : voyez les échecs plus bas."
-            : "Un échec n'est pas facturé."}
+            : "Un refus d'OpenAI n'est pas facturé ; une création abandonnée après 4 min 40, si."}
         </div>
       </div>
 
       <div class="bg-bo-surface px-4 py-3">
-        <div class="text-xs text-bo-muted">Coût d'un aperçu</div>
+        <div class="text-xs text-bo-muted">
+          {coutAttendu === null
+            ? "Coût d'un aperçu (estimation fixe)"
+            : stats?.coutAttenduEstime
+              ? "Coût d'un aperçu, environ (tarifs de gpt-image-2)"
+              : "Coût d'un aperçu, environ"}
+        </div>
         <div class="mt-1 text-2xl">
           {coutParImage > 0 ? formatPrice(coutParImage) : "—"}
         </div>
         <div class="text-xs text-bo-muted">
           {apercusRestants === null
             ? `modèle ${modele}`
-            : `soit ${apercusRestants} aperçu(s) avant le plafond`}
+            : `${coutAttendu === null ? "" : `en ${taille.replace("x", " × ")} : `}soit environ ${apercusRestants} aperçu${apercusRestants > 1 ? "s" : ""} avant le plafond`}
         </div>
       </div>
     </div>
+    {/* Le filet de la taille vu d'ici (relecture du 26/11) : quand OpenAI
+        refuse la taille maximale, chaque affiche repart d'elle-même en
+        1584 × 2240 — sans ce cadre, les réglages continuaient d'annoncer
+        2416 × 3424 à 47 c, et seule la légende de chaque vignette le
+        trahissait. */}
+    {phraseDuRepli && (
+      <p class="mt-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <strong class="font-medium">Taille maximale refusée :</strong> {phraseDuRepli}
+        Revenez à 1584 × 2240 pour que les réglages disent ce qui sort, ou
+        réessayez plus tard.
+      </p>
+    )}
   </section>
 
   {/* =============================================================== */}
@@ -476,7 +579,7 @@ const derniere = premiere + lignes.length;
           <span class="text-bo-muted">Taille de l'image</span>
           <select
             name="taille"
-            class="mt-1 block w-72 rounded border border-bo-border px-3 py-2"
+            class="mt-1 block w-full max-w-xl rounded border border-bo-border px-3 py-2"
           >
             {avecLeReglageActuel(TAILLES, taille).map((t) => (
               <option value={t.valeur} selected={t.valeur === taille}>
@@ -487,30 +590,52 @@ const derniere = premiere + lignes.length;
         </label>
       </div>
       {/* Le coût n'est réel que pour les modèles dont l'API connaît les
-          tarifs (26/11) : ailleurs, la galerie montre 8 c quelle que soit la
-          taille, et l'aide ne doit pas laisser croire le contraire. */}
+          tarifs (26/11) : ailleurs, la galerie montre une estimation, et
+          l'aide ne doit pas laisser croire le contraire. Le délai (relecture
+          du 26/11) : OPENAI_TIMEOUT_MS, 280 s dans ia.ts ; une image coupée
+          compte au plafond (coutDUnEchec). */}
       <p class="-mt-2 max-w-3xl text-xs text-bo-muted">
-        Taille des affiches en portrait (le paysage part toujours en
-        2240 × 1584). En A3, 1584 × 2240 s'imprime à 136 points par pouce,
-        1024 × 1536 à 88 seulement, et perd le haut et le bas de l'image,
-        coupés au format. 1584 × 2240 n'existe qu'avec gpt-image-2 et ses
-        suites (2.5) : avec gpt-image-1.5 ou 1-mini, la taille enregistrée
-        redevient 1024 × 1536, et les affiches en paysage échouent. Plus
-        grande, l'image coûte plus cher. Avec
-        gpt-image-2, la galerie montre le coût réel de chaque image ; avec les
-        autres modèles, seulement une estimation fixe, la même quelle que soit
-        la taille (marquée « estimé »).
+        Taille des affiches en portrait ; en paysage, elles partent en
+        2240 × 1584, ou en 3424 × 2416 avec la taille maximale. Toutes les
+        affiches s'impriment sur 2480 × 3508 pixels en A4 et 3508 × 4960 en A3
+        (300 points par pouce) : l'image d'une affiche IA y est agrandie, puis
+        légèrement accentuée. 2416 × 3424 s'imprime ainsi à 292 points par
+        pouce en A4 et 207 en A3, presque comme les autres affiches ;
+        1584 × 2240 à 192 et 136 ; 1024 × 1536 à 124 et 88 seulement, et perd
+        le haut et le bas de l'image, coupés au format. Si OpenAI refuse la
+        taille maximale, l'affiche repart d'elle-même en 1584 × 2240 (le
+        cadre « Taille maximale refusée » vous le dit plus haut). Plus
+        grande, l'image coûte plus cher et se fait attendre plus longtemps : avec
+        gpt-image-2 en haute qualité, environ 17 c, 26 c ou 47 c l'image — avec
+        100 € par mois, environ 600, 380 ou 210 affiches.
+        <strong class="font-medium text-bo-ink">
+          Une création qui dépasse 4 min 40 est abandonnée : la cliente voit un
+          échec, et l'image, payée chez OpenAI, compte au plafond.
+        </strong>
+        En 2416 × 3424, la plus longue à dessiner, ce délai peut être atteint :
+        essayez-la sur quelques affiches avant de la garder, et revenez à
+        1584 × 2240 si les échecs montent. Les tailles libres n'existent
+        qu'avec gpt-image-2 et ses suites (2.5) : avec gpt-image-1.5 ou 1-mini,
+        la taille enregistrée redevient 1024 × 1536, et les affiches en paysage
+        partent en 1536 × 1024. Avec gpt-image-2, la galerie montre le coût
+        réel de chaque image ; avec ses suites, une estimation sur les tarifs
+        de gpt-image-2, selon la taille ; avec gpt-image-1.5 ou 1-mini, une
+        estimation fixe, la même quelle que soit la taille. Une estimation est
+        marquée « estimé ».
       </p>
 
       <div class="flex flex-wrap items-end gap-4">
         <label class="block">
           <span class="text-bo-muted">Plafond de dépense par mois (€)</span>
+          {/* 0 se montre « 0.00 », et non vide (relecture du 26/11) : vide
+              veut dire « le défaut, 50 € », et 0 « plus aucune création ».
+              Sans les chiffres de l'API, la valeur enregistrée. */}
           <input
             name="plafondEuros"
             type="number"
             min="0"
             step="0.01"
-            value={plafondCents ? (plafondCents / 100).toFixed(2) : ""}
+            value={valeurDuPlafond}
             placeholder="50.00"
             class="mt-1 block w-40 rounded border border-bo-border px-3 py-2"
           />
@@ -519,6 +644,7 @@ const derniere = premiere + lignes.length;
             garde-fou contre un robot qui demanderait mille aperçus la nuit.
             Il ne compte que les affiches des clients : les fonds de Créer un
             fond ont leur propre plafond (par défaut, la moitié de celui-ci).
+            À 0, plus aucune affiche n'est créée ; vide, il revient à 50 €.
           </span>
         </label>
 

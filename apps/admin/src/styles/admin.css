@@ -21,6 +21,17 @@ body {
   margin: 0;
 }
 
+/* Sous 768 px, l'en-tête du back-office reste collé en haut (56 px,
+   layouts/Admin.astro) : une page qui revient sur une ancre (#vente-… et
+   #ventes de Ventes stand, après un total corrigé ou « Marquer
+   terminées ») la posait dessous, cachée. Relecture du 26/11. Au-delà,
+   l'en-tête ne colle plus. */
+@media (max-width: 767px) {
+  html {
+    scroll-padding-top: 4rem;
+  }
+}
+
 /* Menu déroulant bâti sur <details> : l'ouverture et la fermeture au clavier
    viennent du navigateur, il ne reste qu'à masquer le triangle. */
 .bo-menu > summary {

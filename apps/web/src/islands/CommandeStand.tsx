@@ -476,8 +476,9 @@ export function ConfirmationStand(props: {
     // revient à la commande au lieu de quitter la page sur un panier vide.
     history.pushState({ mlVenteStand: true }, "");
     // La flèche retour ne rouvre plus d'office (19/11) : la vente est payée
-    // et remise dès la validation, et un autre client tient peut-être déjà la
-    // tablette. On demande ; sinon, l'entrée d'historique est remise.
+    // dès la validation (et, depuis le 26/11, « À imprimer » au BO), et un
+    // autre client tient peut-être déjà la tablette. On demande ; sinon,
+    // l'entrée d'historique est remise.
     const surRetour = () => {
       if (!window.confirm(`${tr("stand.revenir")} ?`)) {
         history.pushState({ mlVenteStand: true }, "");
