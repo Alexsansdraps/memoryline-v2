@@ -4,6 +4,13 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 0. État au 21/11, 6 h : tout `main` est en ligne
 
+### 0.0000 EN LIGNE DEPUIS LE 26/11 À 11 H 45 (`cd9fcf6`, lot 1 des demandes de Margaux du 26/11)
+- Mise en ligne pendant le marché, à la demande d'Alexandra (« non on met maintenant »). Vérifié après : site 200, API (base comprise) 200, BO 302 vers la connexion, le code servi porte les textes du 25/11, tous les conteneurs relancés, charge normale.
+- **Chiffres en « Manuscrite »** (`3a73fc3`) : seuls sur leur ligne (« 2025 » en ligne 3), ils s'impriment en Caveat ; le PDF et la vignette du BO y mettaient les tampons ronds de la police d'essai. Empreinte d'impression changée : les fichiers d'impression se refont (ceux à expédier d'avance, les autres à la demande). Reste : lancer `lignes-touchees.mts` (scratchpad du 26/11) en prod pour retrouver les affiches déjà vendues avec des tampons.
+- **Ventes stand** (`0e2e09d`) : montant d'une vente corrigeable par la propriétaire (écart au grand livre, journal, facture, compte client) ; colonne « Format et cadre » à la place de « Livraison ».
+- **Réglages IA** (`cd9fcf6`) : le BO montre le modèle et la taille vraiment en service ; consigne d'un style jusqu'à 20 000 caractères (avant : coupée sans prévenir à 8 000 — **le style « Famille » de prod est coupé en pleine phrase : Margaux doit recoller sa consigne entière**) ; enregistrer un style garde ses titres traduits (à vérifier au BO : des enregistrements passés ont pu les effacer).
+- **Lot 2 en construction** (affiches IA en qualité haute et 1584 × 2240, accentuation à l'impression ; ventes du stand nées « À imprimer », « Terminée » à la main, total modifiable dans la ligne, migration 0114 qui remet les anciennes ventes à imprimer ; 0115 passe ia.taille à 1584x2240) : pas en ligne.
+
 ### 0.000 EN LIGNE DEPUIS LE 25/11 À 20 H 15 (`00b2d69`) : les affiches IA
 - Plus le message clair « plus de crédit » (site : la cliente ; stand : « Prévenez Margaux »), 7 langues. Alerte par mail seulement (SMS écarté par Alexandra). Vérifié après : pages, API, code servi, aucune erreur.
 - **Le bon prompt** : un style qui a sa consigne part avec elle seule ; la consigne générale (« Prompt universel ») ne sert plus que pour une affiche sans style. ⚠ Une règle qui n'était que dans la consigne générale (pas de texte, format…) doit être recopiée dans la consigne de chaque style, au BO.
