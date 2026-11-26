@@ -2,9 +2,10 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 26/11, 16 h 40 : `ef7ca1c` est en ligne ; `cb7b282` et `5e3a223` sont sur GitHub, PAS en ligne
+## 0. État au 26/11, 20 h 50 : tout `main` est en ligne (`54155a6`)
 
-### 0.000000 SUR GITHUB, PAS EN LIGNE : `cb7b282` (la liste suit la période) et `5e3a223` (relecture finale du lot 2)
+### 0.000000 EN LIGNE DEPUIS LE 26/11 À 20 H 46 : `cb7b282` (la liste suit la période) et `5e3a223` (relecture finale du lot 2)
+- Mis en ligne sur « pull et met en prod » d'Alexandra, marché fermé. Avant : tsc de l'API, 589 tests de l'API (0 échec), 82 tests du BO (0 échec). Sauvegarde faite, migrations appliquées. Après : site, stand, caisse 200 ; API (base comprise) 200 ; BO 302 vers la connexion ; aucune ligne « 0114 » au démarrage de l'API ; aucune erreur dans les journaux. Reste, avec l'accord d'Alexandra : les deux lectures ci-dessous (verifier-ventes-stand-26-11.sql, lignes-touchees.ts).
 - **À mettre en ligne sans tarder** (sur un « mets en prod » d'Alexandra) : la prod rejoue encore 0114 à CHAQUE démarrage de l'API (mise en ligne, plantage, redémarrage du serveur). Elle remettrait « À imprimer », sans le dire et avec une ligne de journal datée du 26/11, une vente que Margaux a marquée terminée depuis et qui n'a ni la ligne de 0114 ni celle de la nouvelle validation : une vente « à encaisser » du 17-19/11 encaissée depuis, ou une vente remise « À imprimer » dans l'ancien BO avant 14 h 31. Vérifié à 16 h 36 (`docker inspect`, sans lire la base ni les journaux) : l'API de prod n'a pas redémarré depuis 14 h 31, le rejeu n'a donc tourné qu'une fois, juste après la migration. La mise en ligne de ce lot démarre le nouveau code, qui ne rejoue plus rien.
 - **Relecture indépendante de `cb7b282` et `5e3a223` lancée à 16 h 40** (3 angles, chaque constat contre-vérifié, corrections en local sans commit).
 - **À lire en prod, avec l'accord d'Alexandra** (lecture seule) : `apps/api/scripts/verifier-ventes-stand-26-11.sql`. Requête 1 : les ventes revalidées par l'ancienne API pendant la mise en ligne de 14 h 31, restées « Terminée » (à remettre « À imprimer » si pas imprimées). Requête 2 : les ventes qu'un redémarrage toucherait encore.
