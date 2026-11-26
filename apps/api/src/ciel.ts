@@ -146,8 +146,11 @@ export function svgDuCiel(lat: number, lon: number, instant: Date): string {
   const W = LARGEUR_CIEL;
   const H = HAUTEUR_CIEL;
   const cx = W / 2;
-  const cy = H * 0.47;
-  const R = W * 0.4;
+  // Le cercle laisse le haut libre (26/11, « descends un peu le cercle on
+  // doit pouvoir avoir la place pour le texte ») : les lignes de texte de
+  // l'affiche s'empilent en haut, sur le premier petit tiers.
+  const cy = H * 0.55;
+  const R = W * 0.34;
   const px = (p: { x: number; y: number }) => `${(cx + p.x * R).toFixed(1)},${(cy + p.y * R).toFixed(1)}`;
 
   // Tracés des constellations : un segment n'est gardé que si ses deux
@@ -178,8 +181,8 @@ export function svgDuCiel(lat: number, lon: number, instant: Date): string {
 
   // Collines : deux plans, le plus proche le plus sombre. Courbes fixes —
   // la même scène pour tout le monde, seul le ciel change.
-  const collineLoin = `M0 ${H * 0.86} C ${W * 0.18} ${H * 0.82}, ${W * 0.36} ${H * 0.845}, ${W * 0.55} ${H * 0.835} S ${W * 0.85} ${H * 0.81}, ${W} ${H * 0.83} L ${W} ${H} L 0 ${H} Z`;
-  const collinePres = `M0 ${H * 0.895} C ${W * 0.22} ${H * 0.865}, ${W * 0.45} ${H * 0.885}, ${W * 0.62} ${H * 0.88} S ${W * 0.88} ${H * 0.86}, ${W} ${H * 0.875} L ${W} ${H} L 0 ${H} Z`;
+  const collineLoin = `M0 ${H * 0.895} C ${W * 0.18} ${H * 0.865}, ${W * 0.36} ${H * 0.885}, ${W * 0.55} ${H * 0.878} S ${W * 0.85} ${H * 0.86}, ${W} ${H * 0.875} L ${W} ${H} L 0 ${H} Z`;
+  const collinePres = `M0 ${H * 0.925} C ${W * 0.22} ${H * 0.9}, ${W * 0.45} ${H * 0.917}, ${W * 0.62} ${H * 0.912} S ${W * 0.88} ${H * 0.895}, ${W} ${H * 0.908} L ${W} ${H} L 0 ${H} Z`;
 
   const etiquette = (txt: string, x: number, y: number) =>
     `<text x="${x.toFixed(0)}" y="${y.toFixed(0)}" text-anchor="middle" dominant-baseline="middle">${txt}</text>`;
@@ -216,7 +219,7 @@ export function svgDuCiel(lat: number, lon: number, instant: Date): string {
     ${etiquette("E", cx - R - 70, cy)}
     ${etiquette("O", cx + R + 70, cy)}
   </g>
-  <text x="${cx}" y="${cy + R + 170}" text-anchor="middle" font-family="League Spartan, DejaVu Sans, sans-serif" font-size="44" fill="#d9c38f" fill-opacity="0.85" letter-spacing="3">${coordonnees(lat, lon)}</text>
+  <text x="${cx}" y="${cy + R + 180}" text-anchor="middle" font-family="League Spartan, DejaVu Sans, sans-serif" font-size="44" fill="#d9c38f" fill-opacity="0.85" letter-spacing="3">${coordonnees(lat, lon)}</text>
   <path d="${collineLoin}" fill="#101a2c"/>
   <path d="${collinePres}" fill="#0a111e"/>
 </svg>`;
