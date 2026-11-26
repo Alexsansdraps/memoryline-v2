@@ -24,6 +24,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Context, Hono } from "hono";
@@ -232,8 +233,11 @@ export async function rendreCiel(lat: number, lon: number, instant: Date): Promi
 
 /**
  * Les villes du monde (26/11, Alexandra : « j'aimerais qu'on puisse taper la
- * ville qu'on veut ») : GeoNames cities5000, CC BY 4.0 — toutes les villes de
- * plus de 5 000 habitants, avec leur fuseau horaire. Lu au premier appel,
+ * ville qu'on veut », puis « faut toutes les villes de google maps ») :
+ * GeoNames, CC BY 4.0 — toutes les localités de France, de Suisse, de
+ * Belgique et du Luxembourg (villages et lieux-dits compris), l'Allemagne,
+ * l'Italie et l'Espagne dès 1 000 habitants, le reste du monde dès 5 000 ;
+ * 197 000 lieux avec leur fuseau horaire. Lu au premier appel,
  * gardé en mémoire ensuite. Aucune recherche ne part chez un tiers : ce que
  * la cliente tape reste chez nous.
  */
@@ -262,7 +266,7 @@ export function normaliserNom(t: string): string {
 let villes: Ville[] | null = null;
 function lesVilles(): Ville[] {
   if (villes) return villes;
-  const brut = readFileSync(new URL("./ciel-villes.tsv", import.meta.url), "utf8");
+  const brut = gunzipSync(readFileSync(new URL("./ciel-villes.tsv.gz", import.meta.url))).toString("utf8");
   villes = [];
   for (const ligne of brut.split("\n")) {
     if (!ligne || ligne.startsWith("#")) continue;

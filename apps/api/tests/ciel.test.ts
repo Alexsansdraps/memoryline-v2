@@ -57,3 +57,13 @@ test("villes : on tape le nom, avec ou sans accents, en français ou non", async
   assert.equal(chercherVilles("thann")[0]?.pays, "FR");
   assert.deepEqual(chercherVilles("m"), []);
 });
+
+test("villes : les villages aussi, avec leur département, et vite", async () => {
+  const { chercherVilles } = await import("../src/ciel.ts");
+  const r = chercherVilles("rimbach pres mase");
+  assert.equal(r[0]?.nom, "Rimbach-près-Masevaux");
+  assert.equal(r[0]?.region, "Haut-Rhin");
+  const t0 = performance.now();
+  for (const q of ["sa", "saint louis", "ungers", "lyon"]) chercherVilles(q);
+  assert.ok(performance.now() - t0 < 1000);
+});
