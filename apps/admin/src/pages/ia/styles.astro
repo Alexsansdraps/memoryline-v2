@@ -7,10 +7,11 @@
  *
  * Derrière, trois choses :
  *   - le TITRE, seul élément visible sur le site ;
- *   - la CONSIGNE, envoyée au modèle avec celle de la boutique, et qui ne
+ *   - la CONSIGNE, envoyée au modèle — SEULE depuis le 25/11 (ia.ts : la
+ *     consigne générale ne sert plus qu'aux affiches sans style) —, et qui ne
  *     sort jamais d'ici — c'est la recette ;
- *   - jusqu'à CINQ IMAGES, qui servent deux fois : montrées à la cliente comme
- *     exemples, et envoyées au modèle comme références de style.
+ *   - jusqu'à CINQ IMAGES, montrées à la cliente comme exemples. Elles ne
+ *     partent plus au modèle depuis le 25/11 (ENVOYER_LES_EXEMPLES_DE_STYLE).
  *
  * Rien n'est écrit dans le code : ajouter un style, c'est remplir ce
  * formulaire. La boutique n'avait auparavant qu'une consigne unique, dans les
@@ -69,6 +70,14 @@ const elementsTitres = (liste: StyleIa[]): ElementTraduit[] =>
 /** Propositions à relire, saisie à réafficher, et bloc ouvert. */
 let tradTitres: EtatTraductions | null = null;
 
+/**
+ * Le style tel qu'il vient d'être saisi, quand l'enregistrement est refusé
+ * (26/11) : l'API refuse désormais une consigne trop longue au lieu de la
+ * couper sans prévenir. Réaffiché tel quel, pour qu'une longue consigne
+ * collée ne se perde pas avec le refus.
+ */
+let saisieRefusee: (Omit<StyleIa, "id" | "translations"> & { id: number | null }) | null = null;
+
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const action = String(f.get("_action") ?? "");
@@ -115,12 +124,14 @@ if (Astro.request.method === "POST") {
         position: Number(f.get("position") ?? 0),
         active: f.get("active") === "on",
       };
+      const id = f.get("id") ? Number(f.get("id")) : 0;
+      saisieRefusee = { ...corps, id: id || null };
       if (!corps.title) throw new Error("Donnez un titre à ce style.");
 
-      const id = f.get("id") ? Number(f.get("id")) : 0;
       const ligne = id
         ? await api.majStyleIa(id, corps)
         : await api.creerStyleIa(corps);
+      saisieRefusee = null;
       flash = `Style « ${ligne.title} » enregistré.`;
     }
   } catch (e) {
@@ -154,7 +165,11 @@ function messageArchivage(s: StyleIa): string {
 const idOuvert = Number(Astro.url.searchParams.get("style") ?? 0);
 // Cherché parmi TOUS : on doit pouvoir rouvrir un style archivé pour le relire
 // avant de décider s'il mérite de revenir.
-const ouvert = tous.find((s) => s.id === idOuvert) ?? null;
+const enBase = tous.find((s) => s.id === (saisieRefusee?.id ?? idOuvert)) ?? null;
+// Une saisie refusée se réaffiche par-dessus le style enregistré (26/11).
+const ouvert: StyleIa | null = saisieRefusee
+  ? { translations: null, ...enBase, ...saisieRefusee, id: saisieRefusee.id ?? 0 }
+  : enBase;
 const creation = Astro.url.searchParams.get("nouveau") === "1";
 const formulaire = ouvert ?? (creation ? null : null);
 
@@ -353,7 +368,7 @@ const boutonDiscret =
       id="form-style"
       class="space-y-5 rounded-lg border border-bo-border bg-bo-surface p-5"
     >
-      <input type="hidden" name="id" value={ouvert?.id ?? ""} />
+      <input type="hidden" name="id" value={ouvert?.id || ""} />
 
       {/* Un style archivé se relit et se corrige, mais il reste archivé tant
           qu'on ne l'a pas restauré : le dire évite d'enregistrer en croyant
@@ -406,10 +421,27 @@ const boutonDiscret =
 
       <div>
         <span class="text-sm font-medium">Consigne envoyée au modèle</span>
+        {/* L'aide disait « elle s'ajoute à la consigne générale » : vrai
+            jusqu'au 25/11. Depuis d69c2f8 (« il faut que ça prenne le bon
+            prompt »), elle part SEULE, et une consigne écrite comme un
+            complément part sans rien qui décrive le rendu (26/11, Margaux :
+            « qualité affiches IA pas top »). */}
         <p class="mt-1 mb-1 text-xs text-bo-muted">
-          Elle s'ajoute à la consigne générale de la boutique, et passe après
-          elle. Décrivez ce que ce style change : le cadrage, l'ambiance, ce
-          qu'il faut garder de la photo. Le client ne la lit jamais.
+          Depuis le 25/11, elle part <strong>seule</strong> au modèle avec la
+          photo : la consigne générale (Affiches IA › Réglages) ne sert plus
+          qu'aux affiches sans style. Elle doit donc tout dire : le rendu voulu
+          (illustration, aplats, couleurs, finition), le format A3, aucun texte
+          dans l'image, et ce qu'il faut garder de la photo. Le client ne la lit
+          jamais.
+        </p>
+        {/* La limite dite (26/11) : jusque-là, l'API coupait sans prévenir à
+            8 000 caractères, et la consigne générale recopiée ici (12 835)
+            perdait sa fin — « aucun texte dans l'image », les bordures. */}
+        <p class="mb-1 text-xs text-bo-muted">
+          20 000 caractères au plus, mise en forme comprise : c'est le nombre
+          que la liste des styles affiche. Au-delà, rien n'est enregistré et
+          un message le dit. Pour repartir de la consigne générale, n'en
+          recopiez que les parties qui décrivent le rendu.
         </p>
         <EditeurTexte
           nom="prompt"
@@ -424,10 +456,9 @@ const boutonDiscret =
           Images du style ({IMAGES_MAX} au maximum)
         </span>
         <p class="mt-1 mb-3 text-xs text-bo-muted">
-          Elles servent deux fois : montrées au client comme exemples, et
-          envoyées au modèle comme références. C'est pour cela qu'il n'y en a
-          qu'un jeu — deux séries séparées finiraient par ne plus se
-          ressembler, et l'exemple montré deviendrait faux.
+          Montrées au client comme exemples. Depuis le 25/11, elles ne partent
+          plus au modèle (il en recopiait les scènes) : le rendu ne s'obtient
+          plus que par la consigne ci-dessus.
         </p>
 
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">

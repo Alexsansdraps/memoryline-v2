@@ -248,6 +248,22 @@ const TAILLES = new Set([
 ]);
 
 /**
+ * La taille d'une affiche EN PORTRAIT que ce modèle sait faire (26/11). Les
+ * tailles libres (1584 × 2240) ne valent que pour gpt-image-2 et ses suites
+ * (2.5…) ; OpenAI ne donne aux autres (gpt-image-1.5, gpt-image-1-mini) que
+ * 1024 × 1024, 1024 × 1536, 1536 × 1024 et auto, et refuse le reste (400).
+ * Depuis que le BO propose 1584 × 2240 (« qualité affiches IA pas top »),
+ * choisir un modèle moins cher sans changer la taille aurait fait échouer
+ * chaque affiche : elle part alors à la taille standard du même sens.
+ */
+const TAILLES_STANDARD = new Set(["1024x1024", "1024x1536", "1536x1024"]);
+function tailleDuModele(modele: string, taille: string): string {
+  const [l = 0, h = 0] = taille.split("x").map(Number);
+  if (modele.startsWith("gpt-image-2") || !l || !h || TAILLES_STANDARD.has(taille)) return taille;
+  return l > h ? "1536x1024" : l < h ? "1024x1536" : "1024x1024";
+}
+
+/**
  * Le dossier des affiches de référence, qui montrent le rendu au modèle.
  *
  * Elles ne sont PAS dans les visuels de la boutique : ce sont des références
@@ -617,6 +633,9 @@ export async function fabriquerApercu(pleine: Buffer, nom: string): Promise<stri
  *
  * L'original généré n'est jamais remplacé : un agrandissement se refait, une
  * génération non.
+ *
+ * Plus appelée depuis le 26/11 : le PDF d'impression part de la pleine
+ * définition, et ce fichier n'était relu nulle part (voir /ia/generer).
  */
 const IMPRESSION_A3 = { largeur: 3508, hauteur: 4961, dpi: 300 } as const;
 
@@ -736,6 +755,22 @@ export function coutReelCents(modele: string, usage: UsageOpenAI | null | undefi
   return Math.max(1, Math.round(dollars * EUROS_PAR_DOLLAR * 100));
 }
 
+/** Le vrai coût est en ligne depuis le 25/11 à 20 h 15 (00b2d69) ; avant, 8 c fixes. */
+const VRAI_COUT_DEPUIS = Date.parse("2026-11-25T19:15:00Z");
+
+/**
+ * Le coût rangé pour cette image est-il une ESTIMATION (le réglage, 8 c) ?
+ * Oui pour un modèle sans tarif ci-dessus (gpt-image-2.5-sunburst…) et pour
+ * les images d'avant le vrai coût. La galerie du BO le dit (26/11) : sans ça,
+ * 8 c en 1024 × 1536 comme en 1584 × 2240 laissaient croire que la taille ne
+ * coûtait rien de plus (relecture de « qualité affiches IA pas top »).
+ */
+export function coutEstime(modele: string | null, creeLe: Date | string | null): boolean {
+  if (!modele || !PRIX_PAR_MILLION[modele.replace(/-\d{4}-\d{2}-\d{2}$/, "")]) return true;
+  const le = creeLe ? new Date(creeLe).getTime() : Number.NaN;
+  return !(le >= VRAI_COUT_DEPUIS);
+}
+
 /**
  * L'appel au modèle d'images, pour une ou plusieurs images d'entrée, dans
  * l'ordre où la consigne les nomme (IMAGE 1, IMAGE 2…).
@@ -786,9 +821,18 @@ export async function editerImages(
     const detail = await res.text();
     // Les options fines (qualité, fidélité d'entrée) n'existent pas sur tous
     // les modèles : plutôt que de perdre la génération, on réessaie nu.
-    if (res.status === 400 && /quality|input_fidelity|unknown|unsupported/i.test(detail))
+    if (res.status === 400 && /quality|input_fidelity|unknown|unsupported/i.test(detail)) {
+      // Ce repli était MUET (26/11, Margaux : « qualité affiches IA pas
+      // top ») : nu, la qualité réglée (« high ») ne part plus, et OpenAI
+      // choisit seul. Or gpt-image-2 refuse « input_fidelity » (OpenAI :
+      // « omit this parameter »), envoyé à chaque fois : chaque affiche
+      // passerait par ici. Le journal le dit désormais, avec la raison.
+      console.warn(
+        `[ia] ${modele} refuse une option (qualité « ${qualite} », fidélité « ${fidelite} ») : ` +
+          `nouvel essai SANS qualité ni fidélité — ${detail.replace(/\s+/g, " ").slice(0, 300)}`,
+      );
       res = await envoyer(false);
-    else throw new Error(`OpenAI HTTP ${res.status} ${detail.slice(0, 500)}`);
+    } else throw new Error(`OpenAI HTTP ${res.status} ${detail.slice(0, 500)}`);
   }
   if (!res.ok)
     throw new Error(`OpenAI HTTP ${res.status} ${(await res.text()).slice(0, 500)}`);
@@ -952,7 +996,7 @@ export async function rattacherGenerationsAuPanier(
  * […] on va pas tout stocker »).
  *
  * Elle n'a servi qu'à fabriquer l'affiche : l'impression part de la pleine
- * définition (fabriquerFichierImpression), et rien d'autre ne la relit — son
+ * définition (configAImprimer), et rien d'autre ne la relit — son
  * chemin ne vit que dans la page ouverte (AfficheIA.tsx), que la vente
  * referme. Elle quitte donc toutes les générations qui la partagent (les
  * autres styles essayés avec elle) ; leurs aperçus, pleines définitions et
@@ -1648,9 +1692,10 @@ export function mountIaRoutes(app: Hono): void {
     // multiples de 16, comme le modèle l'exige.
     const tailleChoisie = paysage
       ? TAILLE_PAYSAGE
-      : TAILLES.has(reg["ia.taille"])
-        ? reg["ia.taille"]
-        : DEFAUTS["ia.taille"];
+      : tailleDuModele(
+          reg["ia.modele"],
+          TAILLES.has(reg["ia.taille"]) ? reg["ia.taille"] : DEFAUTS["ia.taille"],
+        );
 
     // LE BON PROMPT (25/11, Alexandra : « il faut que ça prenne le bon
     // prompt ») : un style qui a sa consigne part avec ELLE SEULE. La consigne
@@ -1732,10 +1777,12 @@ export function mountIaRoutes(app: Hono): void {
       );
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
-      // Le fichier d'impression, tout de suite : le jour où la commande part
-      // en fabrication, personne n'a envie de dépendre d'un agrandissement qui
-      // reste à faire. L'original généré reste à côté, intact.
-      await fabriquerFichierImpression(pleine, `${publicId}-impression.png`, paysage);
+      // Plus de « -impression.png » ici (26/11, relecture de « qualité
+      // affiches IA pas top ») : rien ne le relisait — le PDF part de la
+      // pleine définition (configAImprimer, fichiers-impression.ts) — et il
+      // faisait attendre la cliente 2 à 4 s de plus à chaque création (plus
+      // de 4 s de processeur), pour 25 Mo de disque. La purge efface
+      // toujours ceux déjà faits.
       const apercu = await fabriquerApercu(pleine, `${publicId}-apercu.jpg`);
 
       await db
@@ -1951,6 +1998,7 @@ export function mountIaRoutes(app: Hono): void {
         ...l,
         apercu: l.aApercu ? `/ia/apercu/${l.publicId}` : null,
         pleine: l.aPleine ? `/admin/ia/full/${l.publicId}` : null,
+        coutEstime: coutEstime(l.model, l.createdAt),
       })),
       total: Number(total?.n ?? 0),
       coutCents: Number(total?.coutCents ?? 0),
@@ -2217,22 +2265,48 @@ export function mountIaRoutes(app: Hono): void {
       .slice(0, STYLE_IMAGES_MAX);
     return {
       title: String(b.title ?? "").trim().slice(0, 80),
-      prompt: String(b.prompt ?? "").trim().slice(0, 8000),
+      // Plus coupée ici (26/11) : trop longue, elle est REFUSÉE (consigneTropLongue).
+      prompt: String(b.prompt ?? "").trim(),
       images,
       position: Number.isFinite(Number(b.position)) ? Number(b.position) : 0,
       active: b.active !== false,
-      translations:
-        b.translations && typeof b.translations === "object"
-          ? (b.translations as Record<string, { title?: string }>)
-          : null,
+      // Seulement si le corps les porte (26/11) : le formulaire du BO ne les
+      // envoie jamais (elles ont leur route, …/translations), et chaque
+      // enregistrement d'un style remettait ses titres traduits à rien —
+      // or la relecture du 26/11 demande de reprendre la consigne de chaque
+      // style.
+      ...(b.translations && typeof b.translations === "object"
+        ? { translations: b.translations as Record<string, { title?: string }> }
+        : {}),
     };
   }
+
+  /**
+   * La consigne d'un style, 20 000 caractères au plus, balises de l'éditeur
+   * comprises (un saut de ligne y vaut « <br> »). Jusqu'au 26/11 : 8 000,
+   * coupés SANS PRÉVENIR. Or depuis le 25/11 la consigne d'un style part
+   * seule et doit tout dire : la consigne générale (12 835 caractères)
+   * recopiée dans un style y perdait sa fin — « aucun texte dans l'image »,
+   * les bordures… (relecture de « qualité affiches IA pas top »). OpenAI en
+   * prend 32 000 en tout : il reste la place de la consigne de l'affiche, du
+   * paysage et de la demande du client. Au-delà, refus en clair, rien
+   * d'enregistré.
+   */
+  const CONSIGNE_STYLE_MAX = 20_000;
+  const consigneTropLongue = (n: number): string | null =>
+    n > CONSIGNE_STYLE_MAX
+      ? `La consigne fait ${n.toLocaleString("fr-FR")} caractères, mise en forme comprise : ` +
+        `${CONSIGNE_STYLE_MAX.toLocaleString("fr-FR")} au plus. Raccourcissez-la (gardez ce qui ` +
+        "décrit le rendu, et ce qui compte pour ce genre de photo) : rien n'a été enregistré."
+      : null;
 
   app.post("/admin/ia/prompts", async (c) => {
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const valeurs = styleDepuisLeCorps(b);
     if (!valeurs.title)
       return c.json({ error: "Donnez un titre à ce style." }, 400);
+    const tropLongue = consigneTropLongue(valeurs.prompt.length);
+    if (tropLongue) return c.json({ error: tropLongue }, 400);
     const [ligne] = await db.insert(schema.aiPrompts).values(valeurs).returning();
     return c.json(ligne, 201);
   });
@@ -2244,6 +2318,8 @@ export function mountIaRoutes(app: Hono): void {
     const valeurs = styleDepuisLeCorps(b);
     if (!valeurs.title)
       return c.json({ error: "Donnez un titre à ce style." }, 400);
+    const tropLongue = consigneTropLongue(valeurs.prompt.length);
+    if (tropLongue) return c.json({ error: tropLongue }, 400);
     const [ligne] = await db
       .update(schema.aiPrompts)
       .set({ ...valeurs, updatedAt: new Date() })

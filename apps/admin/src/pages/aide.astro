@@ -561,14 +561,31 @@ Réponds UNIQUEMENT avec le contenu du fichier CSV, dans un bloc de code.`;
           titre, puis envoie sa photo : c'est la seule chose qu'il voit, avec
           les images, qui lui servent d'exemples.
         </p>
+        {/* Mis à jour le 26/11 : jusqu'au 25/11, la consigne du style
+            s'ajoutait à la consigne générale et les images partaient au
+            modèle. Une consigne écrite selon l'ancienne aide (un simple
+            complément) part désormais sans rien qui décrive le rendu. */}
         <p>
-          La consigne du style s'ajoute <strong>à la fin</strong> de la consigne
-          générale de la boutique : elle dit au modèle sur quoi porter
-          l'attention pour ce genre de photo (garder chaque visage, compter les
-          fenêtres, ne rien ajouter au paysage…). Elle s'écrit en anglais, que
-          le modèle suit plus fidèlement, et ne sort jamais du back-office.
-          Les images du style remplacent les images de référence générales ;
-          sans image, ce sont les générales qui servent.
+          Depuis le 25/11, la consigne du style part <strong>seule</strong> au
+          modèle, avec la photo : la consigne générale de la boutique
+          (Affiches IA › Réglages) ne sert plus qu'aux affiches sans style.
+          Chaque consigne doit donc décrire tout le rendu (illustration,
+          aplats, couleurs, finition, format A3, aucun texte dans l'image),
+          puis ce qui compte pour ce genre de photo (garder chaque visage,
+          compter les fenêtres, ne rien ajouter au paysage…). Elle s'écrit en
+          anglais, que le modèle suit plus fidèlement, et ne sort jamais du
+          back-office. Les images du style ne servent plus que d'exemples au
+          client : elles ne partent plus au modèle.
+        </p>
+        {/* 26/11 : la limite, que l'API appliquait jusque-là en coupant sans
+            prévenir à 8 000 caractères. */}
+        <p>
+          Une consigne fait au plus 20 000 caractères, mise en forme comprise
+          (le nombre affiché dans la liste des styles) : au-delà, elle n'est
+          pas enregistrée, et un message le dit. Pour partir de la consigne
+          générale, recopiez-en les parties qui décrivent le rendu
+          (illustration, aplats, couleurs, contours, texture, aucun texte,
+          aucune bordure), pas toute la consigne.
         </p>
         <p>
           Les titres se traduisent sous la liste (« Traductions des titres »,

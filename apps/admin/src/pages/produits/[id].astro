@@ -1919,12 +1919,17 @@ try {
               class="mt-1 w-full rounded border border-bo-border px-3 py-2 text-sm"
               placeholder="Affiche de mariage : couple en tenue de cérémonie, bouquet de pivoines, arche florale, fond crème."
             >{reglagesIa.aiStylePrompt}</textarea>
+            {/* Réécrit le 26/11 : depuis le 25/11, quand le client a choisi
+                un style (le cas courant), le style commun ne part plus ; la
+                technique et les couleurs viennent de la consigne du style. */}
             <span class="mt-1 block text-xs text-bo-muted">
-              Elles s'ajoutent au style commun de la boutique, qui donne déjà la
-              technique et les couleurs. N'écrivez ici que ce qui distingue
-              cette affiche des autres — par exemple, pour une affiche
-              d'anniversaire : « chapeaux de fête, guirlandes, gâteau à bougies,
-              confettis en suspension ». Laissez vide et seul le style commun
+              Elles s'ajoutent à la consigne du style que le client a choisi
+              (Affiches IA › Styles proposés), qui donne la technique et les
+              couleurs ; pour une affiche créée sans style (ou dont le style n'a
+              pas de consigne), au style commun de la boutique. N'écrivez ici que ce qui distingue cette affiche des
+              autres — par exemple, pour une affiche d'anniversaire : « chapeaux
+              de fête, guirlandes, gâteau à bougies, confettis en suspension ».
+              Laissez vide et seule la consigne du style (ou le style commun)
               s'applique.
             </span>
           </label>
