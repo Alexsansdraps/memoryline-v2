@@ -2,7 +2,23 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 26/11, 14 h 31 : tout `main` est en ligne (`ef7ca1c`)
+## 0. État au 26/11, 15 h 30 : `ef7ca1c` est en ligne ; `cb7b282` et `5e3a223` sont sur GitHub, PAS en ligne
+
+### 0.000000 SUR GITHUB, PAS EN LIGNE : `cb7b282` (la liste suit la période) et `5e3a223` (relecture finale du lot 2)
+- **À mettre en ligne sans tarder** (sur un « mets en prod » d'Alexandra) : la prod rejoue encore 0114 à CHAQUE démarrage de l'API (mise en ligne, plantage, redémarrage du serveur). Elle remettrait « À imprimer », sans le dire et avec une ligne de journal datée du 26/11, une vente que Margaux a marquée terminée depuis et qui n'a ni la ligne de 0114 ni celle de la nouvelle validation : une vente « à encaisser » du 17-19/11 encaissée depuis, ou une vente remise « À imprimer » dans l'ancien BO avant 14 h 31.
+- **À lire en prod, avec l'accord d'Alexandra** (lecture seule) : `apps/api/scripts/verifier-ventes-stand-26-11.sql`. Requête 1 : les ventes revalidées par l'ancienne API pendant la mise en ligne de 14 h 31, restées « Terminée » (à remettre « À imprimer » si pas imprimées). Requête 2 : les ventes qu'un redémarrage toucherait encore.
+- **`cb7b282`** : la liste des commandes suit la période choisie dans les chiffres (Aujourd'hui, 7, 30, 90 jours). « Du » et « Au » restent vides, une ligne dit les jours montrés, avec « Voir toutes les dates ». « Filtrer » garde le stand et la période. Sans période choisie, la liste garde toutes les dates.
+- **`5e3a223`**, relecture finale du lot 2 (4 relecteurs, chaque constat contre-vérifié ; 11 confirmés, tous corrigés) :
+  - plus de 0114 rejouée au démarrage ;
+  - Ventes stand : « Factures » refuse tant qu'une vente cochée a un total tapé pas enregistré (la facture garderait l'ancien total pour toujours). La barre (« Marquer terminées »…) demande elle-même avant de perdre un total tapé, et ne reste plus bloquée après « Rester ». Sous la ligne de l'Entrée, un cadre redit les totaux partis depuis les autres lignes, refusés d'abord. Le compte rendu compte les ventes déjà terminées au lieu de les nommer une à une ;
+  - fiche d'une vente annulée : plus de « 1 à imprimer » dans l'en-tête ;
+  - IA : la taille « auto » compte comme 1024 × 1536 au plafond (17 c au lieu de 8). Une réponse 200 coupée en route compte comme payée. Une affiche coupée par un redémarrage passe en échec au coût attendu, seulement celles des 2 h d'avant le démarrage : l'historique et la dépense du mois ne bougent pas d'eux-mêmes. Le cadre « Taille maximale refusée » ne disparaît plus quand on enregistre le plafond ;
+  - vignettes : une ligne en « Manuscrite » avec ¢ £ ¤ ¥ ƒ ₤ au milieu du texte change d'adresse et se refait (elle gardait son tampon). Empreinte d'impression inchangée : aucun PDF ne se refait.
+- **Après la mise en ligne, vérifier** : site, API, BO ; au démarrage de l'API, aucune ligne « [stand] … 0114 » dans son journal. Puis, avec l'accord d'Alexandra, `apps/api/scripts/lignes-touchees.ts` dans le conteneur de l'API : les affiches déjà vendues avec un tampon (chiffres et symboles).
+- **Hors de ce lot** :
+  - « Exporter en CSV » n'applique que le canal, le stand, les dates et les tests : ni l'étape, ni les statuts, ni la recherche. Défaut d'avant (20/11), à faire passer par le filtrage de la liste ;
+  - les fiches produit créées depuis une image IA ne sont pas accentuées à l'impression. C'est voulu, à trancher par Alexandra ;
+  - les affiches restées « en cours » avant ce lot restent « En fabrication… » dans la galerie. Une migration ciblée si Alexandra le demande.
 
 ### 0.00000 EN LIGNE DEPUIS LE 26/11 À 14 H 31 (`ef7ca1c` : lot 2 des demandes de Margaux du 26/11, `6e5fe48`, et `333df30`)
 - Mis en ligne pendant le marché, à la demande d'Alexandra (« go met en prod stp »), pendant qu'une dernière relecture indépendante du lot tournait encore en local. Si elle trouve quelque chose, ce sera une petite mise en ligne à part.
@@ -19,7 +35,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - **Ventes stand** :
   - une vente validée à la tablette naît payée et « À imprimer », avec son PDF prêt aussitôt. Margaux la marque terminée elle-même : cases et « Marquer terminées » dans Ventes stand, ou « Marquer terminée » sur la fiche. « Remettre à imprimer » défait ;
   - le total se modifie dans la ligne (champ, Entrée enregistre, plusieurs totaux d'un coup, cadre ambre tant que ce n'est pas enregistré, le navigateur retient la page). Le motif est facultatif ;
-  - migration 0114 : toutes les ventes du stand déjà faites repassent « À imprimer ». Restent dans leur case : tests, annulées, SHOP-, site, colis suivis. L'API la rejoue à chaque démarrage, pour rattraper une vente validée pendant la mise en ligne par l'ancienne API. **À retirer une fois le lot en ligne et vérifié** : l'appel dans index.ts et `rattraperLesVentesDeLAncienneRegle` dans salon.ts ;
+  - migration 0114 : toutes les ventes du stand déjà faites repassent « À imprimer ». Restent dans leur case : tests, annulées, SHOP-, site, colis suivis. L'API la rejoue à chaque démarrage, pour rattraper une vente validée pendant la mise en ligne par l'ancienne API. **Rejeu retiré du code** (`5e3a223`), pas encore en ligne : voir 0.000000 ;
   - « À préparer » de l'accueil ne compte plus les ventes du stand ; les filtres « Statuts » de la liste trouvent aussi les ventes au-delà des 100 dernières.
 - **`333df30`** : les boutons de période des chiffres (Aujourd'hui, 7, 30, 90 jours) vident « Du » et « Au ».
 - **Empreinte d'impression changée** (pdf.ts, fonts.ts, fichiers-impression.ts) : les fichiers d'impression se refont. Côté stand, seuls ceux des 2 derniers jours se préparent d'avance.
