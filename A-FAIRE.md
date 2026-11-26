@@ -2,7 +2,15 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 26/11, 22 h 45 : tout `main` est en ligne (`98b009d`)
+## 0. État au 26/11, 22 h 40 : tout `main` est en ligne (`29afa2e`)
+
+### 0.00000000 Ciel étoilé, suite (en ligne le 26/11 à 22 h 37)
+- **Fiche cachée** : `/affiches/affiche-a-partir-de-votre-photo?ciel=1` (ou `/ciel-etoile`, qui y redirige). Date, heure, ville à la place de la photo, puis les textes, personnages, format et panier de la fiche photo. Sans `?ciel=1`, la fiche est inchangée.
+- **Ville libre** : 197 000 lieux GeoNames (toute la France jusqu'aux lieux-dits, CH/BE/LU complets, DE/IT/ES dès 1 000 hab., monde dès 5 000), avec le département, recherche sur notre serveur (`/ia/ciel/villes`, `ciel-villes.tsv.gz`). L'API pèse ~460 Mo en mémoire après chargement (sur 3,7 Go).
+- **Cercle plus bas** : le tiers haut est libre pour le texte.
+- **Menus du haut au survol** de la souris (Base.astro), pas encore vu dans un navigateur.
+- Proto pour Margaux : `Documents/memory-line/protos/proto-naissance-mathis.png` (hors dépôt).
+- Non testé de bout en bout en prod (aucun ciel créé, pas d'écriture en prod) : premier essai réel = celui d'Alexandra / Margaux.
 
 ### 0.0000000 EN LIGNE LE 26/11 AU SOIR : « Voir sur un mur » (`e3ef88c`, `5ecac2a`) et le ciel étoilé caché (`98b009d`)
 - **« Voir sur un mur »** : bouton sous l'aperçu du module de personnalisation (site et stand, pas sur l'affiche photo). L'affiche telle que composée, À L'ÉCHELLE (cadre compris), dans un salon (enfilade 120 cm), une chambre d'enfant (lit 90 cm), une entrée (console 90 cm), ou sur la photo du mur du client (reste sur son appareil, on la place au doigt, curseur de taille). A4/A3 se change d'ici. 7 langues. Testé au harnais (bureau et téléphone). **Se coupe au BO › Cadres**, case « Proposer Voir sur un mur » (réglage `configurateur.mur`, absent = proposé) — si ça ne plaît pas à Margaux.
