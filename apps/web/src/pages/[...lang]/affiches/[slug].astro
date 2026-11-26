@@ -742,6 +742,7 @@ const pageDesVoisines = retourAuStand ?? (voisinesDuRayon ? pageDuRayon! : pageD
               name: cleanName,
               basePriceCents: minPrice,
             }}
+            ciel={product.skyEnabled === true}
             formats={product.variants.map((v) => ({
               format: v.format,
               priceCents: v.priceCents,

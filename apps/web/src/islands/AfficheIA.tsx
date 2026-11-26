@@ -128,6 +128,11 @@ function refusDuPanier(e: unknown): RefusPanier | null {
  * comprise.
  */
 export interface AfficheIAProps {
+  /**
+   * Affiche « ciel étoilé » (26/11, case du BO) : la photo cède la place à
+   * une date, une heure et un lieu.
+   */
+  ciel?: boolean;
   langue?: Langue;
   product: { id: number; name: string; basePriceCents: number };
   /** Formats vendus et leur prix, dans l'ordre du catalogue. */
@@ -698,21 +703,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   }
   /**
    * Le ciel étoilé (26/11, Alexandra : « fais moi en fiche produit
-   * personnalisable avec texte comme pour les affiches, pas accessibles par
-   * les autres gens ») : avec `?ciel=1` dans l'adresse, la photo cède la
-   * place à une date, une heure et une ville ; le ciel dessiné (API
-   * /ia/ciel) devient l'affiche montrée, et la suite — textes, personnages,
-   * format, panier — est celle de cette fiche. Sans le paramètre, rien ne
-   * change : aucun lien du site n'y mène.
+   * personnalisable avec texte comme pour les affiches » ; « c'est 2 produits
+   * différents ») : sur l'affiche « Ciel étoilé » (case du BO, `ciel`), la
+   * photo cède la place à une date, une heure et une ville ; le ciel dessiné
+   * (API /ia/ciel) devient l'affiche montrée, et la suite — textes,
+   * personnages, format, panier — est celle de cette fiche.
    */
-  const [modeCiel, setModeCiel] = createSignal(false);
-  onMount(() => {
-    try {
-      setModeCiel(new URL(location.href).searchParams.get("ciel") === "1");
-    } catch {
-      /* adresse illisible : la fiche photo, comme d'habitude */
-    }
-  });
+  const modeCiel = () => props.ciel === true;
   function cielCree(c: { publicId: string; apercuChemin: string; apercu: string }) {
     setEchec(null);
     setChemin(null);

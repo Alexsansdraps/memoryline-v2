@@ -42,7 +42,7 @@ import { libererAdresse, poserRedirection } from "./redirections.js";
 import { FORMAT_PAR_DEFAUT, HORS_VENTES } from "./statuts-vente.js";
 
 /** Les seuls états qu'un produit peut prendre. */
-const STATUTS = ["active", "draft", "archived"] as const;
+const STATUTS = ["active", "masque", "draft", "archived"] as const;
 type StatutProduit = (typeof STATUTS)[number];
 
 /** Ce qu'on fait d'une variante en rupture : arrêter la vente, ou la laisser. */

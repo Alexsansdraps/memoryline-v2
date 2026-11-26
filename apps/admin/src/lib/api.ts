@@ -1742,6 +1742,8 @@ export interface ProduitIA {
   name?: string;
   aiEnabled: boolean;
   aiStylePrompt: string | null;
+  /** Affiche « ciel étoilé » (26/11). */
+  skyEnabled?: boolean;
 }
 
 /**
@@ -4222,7 +4224,7 @@ export function adminApi(request?: Request) {
     /** Ouvre (ou ferme) la génération par IA sur une affiche. */
     setProductIa: (
       id: number | string,
-      data: { aiEnabled: boolean; aiStylePrompt: string | null },
+      data: { aiEnabled: boolean; aiStylePrompt: string | null; skyEnabled?: boolean },
     ) => req<ProduitIA>("POST", `/admin/products/${id}/ia`, data, cookie),
     /**
      * Lance la purge des photos de visiteurs sans attendre son passage

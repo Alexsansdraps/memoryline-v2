@@ -362,7 +362,7 @@ export function mountCielRoutes(app: Hono): void {
       ? await db.select().from(schema.products).where(eq(schema.products.id, productId))
       : [];
     if (!produit) return c.json({ error: "Affiche introuvable" }, 404);
-    if (!produit.aiEnabled) return c.json({ error: "Cette affiche n'accepte pas de ciel" }, 400);
+    if (!produit.skyEnabled) return c.json({ error: "Cette affiche n'accepte pas de ciel" }, 400);
 
     const publicId = randomUUID();
     const lieu = String(b.lieu ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 80);

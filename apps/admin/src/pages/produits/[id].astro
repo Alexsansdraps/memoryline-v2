@@ -93,6 +93,13 @@ const STATUTS = [
     pastille: "bg-green-100 text-green-800",
   },
   {
+    valeur: "masque",
+    nom: "Caché",
+    explication:
+      "En vente par son adresse seulement : absente du catalogue, de la recherche, du plan du site et de Google.",
+    pastille: "bg-sky-100 text-sky-900",
+  },
+  {
     valeur: "draft",
     nom: "Désactivé",
     explication: "L'affiche n'apparaît plus en boutique et ne peut pas être achetée.",
@@ -241,7 +248,7 @@ function enEuros(cents: number | null | undefined): string {
  * Réglages IA de cette affiche. La réponse de l'écriture fait foi juste après
  * un enregistrement ; sinon l'état est lu sur la fiche, plus bas.
  */
-let ia: { aiEnabled: boolean; aiStylePrompt: string } | null = null;
+let ia: { aiEnabled: boolean; aiStylePrompt: string; skyEnabled: boolean } | null = null;
 
 let flash: string | null = null;
 let flashErreur = false;
@@ -297,11 +304,14 @@ if (Astro.request.method === "POST") {
       const p = await api.setProductIa(id!, {
         aiEnabled: form.get("aiEnabled") === "on",
         aiStylePrompt: String(form.get("aiStylePrompt") ?? "").trim() || null,
+        skyEnabled: form.get("skyEnabled") === "on",
       });
-      ia = { aiEnabled: p.aiEnabled, aiStylePrompt: p.aiStylePrompt ?? "" };
-      flash = p.aiEnabled
-        ? "Génération par IA activée pour cette affiche."
-        : "Génération par IA désactivée pour cette affiche.";
+      ia = { aiEnabled: p.aiEnabled, aiStylePrompt: p.aiStylePrompt ?? "", skyEnabled: p.skyEnabled === true };
+      flash = p.skyEnabled
+        ? "Affiche ciel étoilé : la fiche demande une date, une heure et un lieu."
+        : p.aiEnabled
+          ? "Génération par IA activée pour cette affiche."
+          : "Génération par IA désactivée pour cette affiche.";
     } else if (action === "expedition") {
       const poidsVariantes = form.getAll("variantePoids");
       await api.setProductLogistique(id!, {
@@ -705,6 +715,7 @@ const iaSure = ia !== null || config?.aiEnabled !== undefined;
 const reglagesIa = ia ?? {
   aiEnabled: config?.aiEnabled === true,
   aiStylePrompt: config?.aiStylePrompt ?? "",
+  skyEnabled: (config as { skyEnabled?: boolean } | null)?.skyEnabled === true,
 };
 
 /** Ce dont hérite une variante quand son champ reste vide. */
@@ -1907,6 +1918,19 @@ try {
           <label class="flex items-center gap-2 text-sm">
             <input type="checkbox" name="aiEnabled" checked={reglagesIa.aiEnabled} />
             <span>Cette affiche est générée par IA à partir d'une photo</span>
+          </label>
+
+          <label class="flex items-start gap-2 text-sm">
+            <input type="checkbox" name="skyEnabled" checked={reglagesIa.skyEnabled} class="mt-1" />
+            <span>
+              Affiche « ciel étoilé »
+              <span class="block text-xs text-bo-muted">
+                À cocher AVEC la case du dessus. Sur la fiche, la photo est
+                remplacée par une date, une heure et un lieu : le fond est le
+                vrai ciel de ce soir-là, calculé (rien ne part chez OpenAI).
+                Textes, personnages, format et panier comme une affiche IA.
+              </span>
+            </span>
           </label>
 
           <label class="block">

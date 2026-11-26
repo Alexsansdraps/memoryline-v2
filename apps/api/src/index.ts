@@ -1071,7 +1071,9 @@ app.get("/products/:slug", async (c) => {
   // le site transmet tel quel pour que Google la retire vite de son index —,
   // alors qu'un brouillon ou une adresse inconnue n'ont jamais été en vente
   // (404). Le corps ne dit rien de plus : ni nom, ni contenu.
-  if (!brut || brut.status !== "active")
+  // « masque » (« Caché » au BO, 26/11) : en vente par son adresse seulement.
+  // Les listes, elles, ne retiennent que « active ».
+  if (!brut || (brut.status !== "active" && brut.status !== "masque"))
     return brut?.status === "archived" ? c.json({ error: "archivee" }, 410) : c.notFound();
   const langue = langueDemandee(c);
   const product = traduire(brut, langue);
@@ -1158,6 +1160,10 @@ app.get("/products/:slug", async (c) => {
      * `kind` plutôt qu'une valeur de plus dedans.
      */
     aiEnabled: product.aiEnabled,
+    /** Affiche « ciel étoilé » (26/11) : date, heure et lieu au lieu d'une photo. */
+    skyEnabled: product.skyEnabled,
+    /** Cachée (26/11) : la fiche se garde hors de Google. */
+    masque: product.status === "masque",
     basePriceCents: product.basePriceCents,
     images: images.map((i) => i.url),
     /**

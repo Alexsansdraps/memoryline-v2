@@ -257,6 +257,10 @@ export interface ProductDetail {
    * un parcours différent (envoi de photo) au lieu du configurateur.
    */
   aiEnabled?: boolean;
+  /** Affiche « ciel étoilé » (26/11) : date, heure, lieu au lieu d'une photo. */
+  skyEnabled?: boolean;
+  /** Cachée (« Caché » au BO) : en vente par son adresse, hors de Google. */
+  masque?: boolean;
   /**
    * Les langues où la fiche est vraiment écrite — le français toujours, une
    * autre quand son nom et sa description y sont traduits. Ailleurs, la fiche

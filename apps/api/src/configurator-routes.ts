@@ -6176,6 +6176,11 @@ export function mountConfiguratorRoutes(app: Hono) {
       defaultLine3: product.defaultLine3,
       defaultView: product.defaultView,
       foregroundUrl: product.foregroundUrl,
+      // Les réglages IA de la fiche (BO › produit, bloc IA) : relus ici pour
+      // que la case « ciel étoilé » (26/11) s'affiche cochée quand elle l'est.
+      aiEnabled: product.aiEnabled,
+      aiStylePrompt: product.aiStylePrompt,
+      skyEnabled: product.skyEnabled,
       backgrounds,
     });
   });

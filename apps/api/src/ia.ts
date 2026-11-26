@@ -2665,6 +2665,8 @@ export function mountIaRoutes(app: Hono): void {
         aiEnabled:
           b.aiEnabled === undefined ? produit.aiEnabled : Boolean(b.aiEnabled),
         aiStylePrompt: stylePrompt,
+        skyEnabled:
+          b.skyEnabled === undefined ? produit.skyEnabled : Boolean(b.skyEnabled),
         updatedAt: new Date(),
       })
       .where(eq(schema.products.id, id))
@@ -2672,6 +2674,7 @@ export function mountIaRoutes(app: Hono): void {
         id: schema.products.id,
         aiEnabled: schema.products.aiEnabled,
         aiStylePrompt: schema.products.aiStylePrompt,
+        skyEnabled: schema.products.skyEnabled,
       });
     return c.json(maj);
   });

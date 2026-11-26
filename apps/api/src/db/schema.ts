@@ -182,6 +182,13 @@ export const products = pgTable(
      */
     aiEnabled: boolean("ai_enabled").notNull().default(false),
     /**
+     * Affiche « ciel étoilé » (26/11) : sur sa fiche, la photo cède la place
+     * à une date, une heure et un lieu, et le fond est le ciel calculé
+     * (apps/api/src/ciel.ts). Va avec `aiEnabled` : la suite — textes,
+     * personnages, format, panier, impression — est celle des affiches IA.
+     */
+    skyEnabled: boolean("sky_enabled").notNull().default(false),
+    /**
      * Consignes de style propres à CETTE affiche, ajoutées au style commun de
      * la boutique. C'est ici qu'on écrit « vue de la plage, ciel de coucher de
      * soleil, personnages de dos » — ce que la photo du client ne dit pas.

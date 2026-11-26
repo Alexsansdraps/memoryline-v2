@@ -1040,7 +1040,7 @@ async function composerLignes(
     // produit effacé de celui qui n'a jamais été renseigné. On la laisse
     // passer plutôt que d'annuler un envoi sur un doute.
     const produitPerdu = it.productId != null && !produit;
-    const produitRetire = produit != null && produit.status !== "active";
+    const produitRetire = produit != null && produit.status !== "active" && produit.status !== "masque";
     const stockEpuise =
       variante != null &&
       variante.stockQty != null &&
