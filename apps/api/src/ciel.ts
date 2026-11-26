@@ -35,6 +35,9 @@ import { CONSTELLATIONS, ETOILES } from "./ciel-donnees.js";
 import { IA_DIR, fabriquerApercu, ipDeLaRequete } from "./ia.js";
 import { clientDeLaRequete } from "./comptes.js";
 
+/** Hauteur du centre de la carte, en fraction de l'image (le filigrane s'y cale). */
+export const CENTRE_Y_CIEL = 0.55;
+
 /** Taille du fond : un A4 à 300 points par pouce, le rapport des A (√2). */
 export const LARGEUR_CIEL = 2480;
 export const HAUTEUR_CIEL = 3508;
@@ -150,7 +153,7 @@ export function svgDuCiel(lat: number, lon: number, instant: Date): string {
   // Le cercle laisse le haut libre (26/11, « descends un peu le cercle on
   // doit pouvoir avoir la place pour le texte ») : les lignes de texte de
   // l'affiche s'empilent en haut, sur le premier petit tiers.
-  const cy = H * 0.55;
+  const cy = H * CENTRE_Y_CIEL;
   const R = W * 0.34;
   const px = (p: { x: number; y: number }) => `${(cx + p.x * R).toFixed(1)},${(cy + p.y * R).toFixed(1)}`;
 
@@ -371,7 +374,7 @@ export function mountCielRoutes(app: Hono): void {
       const pleine = await rendreCiel(lat, lon, instant);
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
-      const apercu = await fabriquerApercu(pleine, `${publicId}-apercu.jpg`);
+      const apercu = await fabriquerApercu(pleine, `${publicId}-apercu.jpg`, { x: 0.5, y: CENTRE_Y_CIEL });
       await db.insert(schema.aiGenerations).values({
         publicId,
         productId: produit.id,

@@ -623,9 +623,11 @@ async function logoAttenue(largeur: number, opacite: number, sombre: boolean): P
 async function calquesFiligrane(
   largeur: number,
   hauteur: number,
+  /** Centre du filigrane en fractions de l'image ; absent = le milieu. */
+  centre?: { x: number; y: number },
 ): Promise<{ input: Buffer; left: number; top: number }[]> {
-  const cx = largeur / 2;
-  const cy = hauteur / 2;
+  const cx = largeur * (centre?.x ?? 0.5);
+  const cy = hauteur * (centre?.y ?? 0.5);
   const petitCote = Math.min(largeur, hauteur);
   const rayon = Math.round(petitCote * FILIGRANE.rayonCercle);
   // Le trait suit la taille de l'image : `traitCercle` est l'épaisseur VUE
@@ -655,13 +657,22 @@ async function calquesFiligrane(
 }
 
 /** Aperçu filigrané : 1024 px au plus grand côté, JPEG (léger à servir). */
-export async function fabriquerApercu(pleine: Buffer, nom: string): Promise<string> {
+export async function fabriquerApercu(
+  pleine: Buffer,
+  nom: string,
+  /**
+   * Où centrer le filigrane (fractions). Le ciel étoilé (26/11) le pose sur
+   * sa carte, plus basse que le milieu : centré sur l'image, son cercle
+   * tombait à côté de celui du ciel et se voyait comme une erreur.
+   */
+  centre?: { x: number; y: number },
+): Promise<string> {
   const reduite = await sharp(pleine)
     .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
     .toBuffer();
   const meta = await sharp(reduite).metadata();
   const marquee = await sharp(reduite)
-    .composite(await calquesFiligrane(meta.width ?? 1024, meta.height ?? 1024))
+    .composite(await calquesFiligrane(meta.width ?? 1024, meta.height ?? 1024, centre))
     .jpeg({ quality: 82 })
     .toBuffer();
   await writeFile(resolve(IA_DIR, nom), marquee);
