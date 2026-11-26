@@ -1633,7 +1633,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               sur une vignette la remet dans le grand aperçu ; la case la
               garde pour le panier. Vignettes assez grandes pour le doigt,
               sur la tablette du stand. */}
-          <Show when={creations().length > 1}>
+          {/* Pas sur le ciel étoilé (26/11, Alexandra : « supprime ça pour ce
+              produit ») : on redessine son ciel, on ne collectionne pas les
+              versions ; seule l'affiche montrée part au panier. */}
+          <Show when={!modeCiel() && creations().length > 1}>
             <div class="mt-4">
               <p class="text-sm font-medium">
                 {tr("ia.creations_titre").replace("{n}", String(creations().length))}
