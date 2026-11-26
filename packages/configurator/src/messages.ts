@@ -130,6 +130,21 @@ export interface MessagesConfigurateur {
   partieVetements: string;
   partieCheveux: string;
   partieAccessoires: string;
+  /** L'affiche au mur (26/11) : le bouton sous l'aperçu, puis la fenêtre. */
+  murVoir: string;
+  murTitre: string;
+  murFermer: string;
+  murSalon: string;
+  murChambre: string;
+  murEntree: string;
+  murPhoto: string;
+  murPhotoChoisir: string;
+  murPhotoAutre: string;
+  murPhotoAide: string;
+  murPhotoPrivee: string;
+  murTaille: string;
+  /** Sous la pièce ; `{affiche}` = « A3 · 29,7 × 42 cm », `{meuble}` = sa largeur. */
+  murEchelle: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -198,6 +213,19 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   partieVetements: "vêtements",
   partieCheveux: "cheveux",
   partieAccessoires: "accessoires",
+  murVoir: "Voir sur un mur",
+  murTitre: "Votre affiche au mur",
+  murFermer: "Fermer",
+  murSalon: "Salon",
+  murChambre: "Chambre d'enfant",
+  murEntree: "Entrée",
+  murPhoto: "Mon mur",
+  murPhotoChoisir: "Prendre ou choisir une photo de votre mur",
+  murPhotoAutre: "Autre photo",
+  murPhotoAide: "Faites glisser l'affiche pour la placer, et réglez sa taille.",
+  murPhotoPrivee: "Votre photo reste sur votre appareil.",
+  murTaille: "Taille",
+  murEchelle: "À l'échelle : affiche {affiche}, meuble de {meuble} cm de large.",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

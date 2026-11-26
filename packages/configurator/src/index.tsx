@@ -45,6 +45,7 @@ import {
   type NuanciersPersonnages,
 } from "./store";
 import { PosterPreview } from "./components/PosterPreview";
+import { ApercuAuMur } from "./components/ApercuAuMur";
 import { StepBackgroundText } from "./components/StepBackgroundText";
 import { StepCharacters } from "./components/StepCharacters";
 import { StepFormat } from "./components/StepFormat";
@@ -742,6 +743,8 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     });
   }
 
+  /** La fenêtre « Voir sur un mur » (26/11). */
+  const [auMur, setAuMur] = createSignal(false);
   /** Cadre actuellement choisi, s'il y en a un. */
   const cadreChoisi = (): CadreDTO | undefined =>
     state.frameId == null || state.frameId === ""
@@ -834,6 +837,65 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           filigrane={props.filigrane}
           sansTexte={props.sansTexte}
         />
+        {/* L'affiche au mur, à l'échelle (26/11). Pas sur l'affiche tirée
+            d'une photo, qui n'ouvre ici que ses personnages (sansTexte) :
+            son écran a son propre aperçu. */}
+        <Show when={!props.sansTexte}>
+          <button
+            type="button"
+            class="ml-cfg-mur"
+            onClick={() => setAuMur(true)}
+            style={{
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "center",
+              gap: "8px",
+              width: "100%",
+              "margin-top": "10px",
+              padding: "9px 12px",
+              border: "1px solid #d1d5db",
+              "border-radius": "8px",
+              background: "#fff",
+              "font-size": "14px",
+              "font-weight": "600",
+              color: "#1f2937",
+              cursor: "pointer",
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 21h18M5 21v-4h14v4M8 3h8v10H8z" />
+            </svg>
+            {msg().murVoir}
+          </button>
+        </Show>
+        <Show when={auMur()}>
+          <ApercuAuMur
+            format={state.format}
+            encadree={cadreChoisi() != null}
+            onFormat={setFormat}
+            onClose={() => setAuMur(false)}
+            messages={msg()}
+            affiche={() => (
+              <PosterPreview
+                state={state}
+                characterById={characterById}
+                slots={props.slots}
+                cache={cache}
+                foregroundUrl={
+                  props.foregroundUrl
+                    ? props.foregroundUrl.startsWith("http")
+                      ? props.foregroundUrl
+                      : props.assetBaseUrl.replace(/\/$/, "") + props.foregroundUrl
+                    : undefined
+                }
+                assetBaseUrl={props.assetBaseUrl}
+                cadre={cadreChoisi() ?? null}
+                messages={msg()}
+                filigrane={props.filigrane}
+              />
+            )}
+          />
+        </Show>
       </div>
       </Show>
 

@@ -101,5 +101,18 @@ export function messagesDuConfigurateur(
     partieVetements: tr("cfg.partie.vetements"),
     partieCheveux: tr("cfg.partie.cheveux"),
     partieAccessoires: tr("cfg.partie.accessoires"),
+    murVoir: tr("cfg.mur.voir"),
+    murTitre: tr("cfg.mur.titre"),
+    murFermer: tr("cfg.mur.fermer"),
+    murSalon: tr("cfg.mur.salon"),
+    murChambre: tr("cfg.mur.chambre"),
+    murEntree: tr("cfg.mur.entree"),
+    murPhoto: tr("cfg.mur.photo"),
+    murPhotoChoisir: tr("cfg.mur.photo_choisir"),
+    murPhotoAutre: tr("cfg.mur.photo_autre"),
+    murPhotoAide: tr("cfg.mur.photo_aide"),
+    murPhotoPrivee: tr("cfg.mur.photo_privee"),
+    murTaille: tr("cfg.mur.taille"),
+    murEchelle: tr("cfg.mur.echelle"),
   };
 }
