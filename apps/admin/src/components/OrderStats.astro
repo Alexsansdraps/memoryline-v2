@@ -109,10 +109,19 @@ function courbe(serie: number[]): string {
 }
 const points = stats ? courbe(stats.serie) : "";
 
-/** Conserve les autres paramètres de l'URL en changeant de période. */
+/**
+ * Conserve les autres paramètres de l'URL en changeant de période, SAUF les
+ * dates « Du » et « Au » du filtre de la liste (from, to) : choisir une
+ * période les vide (26/11, Alexandra : « ces boutons doivent si ils sont
+ * cliqués, vider "du" et "au" »). Gardées, elles laissaient la liste sur
+ * d'autres jours que les chiffres juste au-dessus. La recherche, l'étiquette
+ * et l'onglet restent.
+ */
 function lienPeriode(jours: number): string {
   const u = new URL(Astro.url);
   u.searchParams.set("jours", String(jours));
+  u.searchParams.delete("from");
+  u.searchParams.delete("to");
   return u.pathname + u.search;
 }
 ---
