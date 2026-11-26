@@ -2,14 +2,34 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 21/11, 6 h : tout `main` est en ligne
+## 0. État au 26/11 : `main` en ligne jusqu'à `cd9fcf6` ; le lot 2 et `333df30` sont prêts, PAS en ligne
+
+### 0.00000 PRÊT, PAS EN LIGNE : lot 2 des demandes de Margaux du 26/11 (`6e5fe48`), et `333df30`
+- **Ne part que sur un « mets en prod » d'Alexandra pour CE lot.** Coupure d'une à deux minutes, comme d'habitude.
+- **Affiches IA en haute qualité** (« il faut que les affiches soient haute qualité ! au moins à l'impression ») :
+  - la qualité « high » part vraiment. gpt-image-2 refusait `input_fidelity` (« For gpt-image-2, omit this parameter »), et le repli retirait AUSSI la qualité : les affiches partaient en « auto ». Les replis sont refaits un par un (taille, fidélité, qualité) et écrits au journal ;
+  - taille 1584 × 2240, la plus grande garantie par OpenAI au format A (migration 0115, seulement si le réglage vaut encore 1024x1536). Coût d'environ 26 c l'image au lieu d'environ 16 c ;
+  - l'image IA est accentuée à l'impression (pdf.ts), pour les commandes comme pour l'atelier du BO ;
+  - les consignes partent en texte et non plus en HTML (consigne-texte.ts) : le gras ne parvient plus au modèle, l'aide du BO le dit ;
+  - délai d'OpenAI porté à 280 s. Une création coupée au délai compte au plafond, car elle est payée. Une ligne de journal par création avec sa durée : « [ia] affiche … prête en N s ». Le site dit « Comptez une à trois minutes » ;
+  - ¢ £ ¤ ¥ ƒ ₤ en Caveat dans « Manuscrite », comme les chiffres ;
+  - option 2416 × 3424 au BO (la plus proche des autres affiches, ~47 c, « expérimentale ») : **ne pas la choisir avant d'avoir lu les durées réelles** dans le journal. Estimation : environ 340 s en « high », au-delà du délai.
+- **Ventes stand** :
+  - une vente validée à la tablette naît payée et « À imprimer », avec son PDF prêt aussitôt. Margaux la marque terminée elle-même : cases et « Marquer terminées » dans Ventes stand, ou « Marquer terminée » sur la fiche. « Remettre à imprimer » défait ;
+  - le total se modifie dans la ligne (champ, Entrée enregistre, plusieurs totaux d'un coup, cadre ambre tant que ce n'est pas enregistré, le navigateur retient la page). Le motif est facultatif ;
+  - migration 0114 : toutes les ventes du stand déjà faites repassent « À imprimer ». Restent dans leur case : tests, annulées, SHOP-, site, colis suivis. L'API la rejoue à chaque démarrage, pour rattraper une vente validée pendant la mise en ligne par l'ancienne API. **À retirer une fois le lot en ligne et vérifié** : l'appel dans index.ts et `rattraperLesVentesDeLAncienneRegle` dans salon.ts ;
+  - « À préparer » de l'accueil ne compte plus les ventes du stand ; les filtres « Statuts » de la liste trouvent aussi les ventes au-delà des 100 dernières.
+- **`333df30`** : les boutons de période des chiffres (Aujourd'hui, 7, 30, 90 jours) vident « Du » et « Au ».
+- **Empreinte d'impression changée** (pdf.ts, fonts.ts, fichiers-impression.ts) : les fichiers d'impression se refont. Côté stand, seuls ceux des 2 derniers jours se préparent d'avance.
+- **Après la mise en ligne, vérifier** : les ventes SAL sont « À imprimer » (sauf tests et annulées), ia.taille vaut 1584x2240, et la première affiche IA a sa ligne « prête en N s ».
+- **Restent à Margaux** : recharger le crédit OpenAI ; recoller la consigne entière du style « Famille » (coupée à 7 999 caractères) ; recoller « Maison / Bâtiment » depuis sa source (un seul bloc, phrases collées : « MEMORY LINE.OBJECTIF »).
 
 ### 0.0000 EN LIGNE DEPUIS LE 26/11 À 11 H 45 (`cd9fcf6`, lot 1 des demandes de Margaux du 26/11)
 - Mise en ligne pendant le marché, à la demande d'Alexandra (« non on met maintenant »). Vérifié après : site 200, API (base comprise) 200, BO 302 vers la connexion, le code servi porte les textes du 25/11, tous les conteneurs relancés, charge normale.
 - **Chiffres en « Manuscrite »** (`3a73fc3`) : seuls sur leur ligne (« 2025 » en ligne 3), ils s'impriment en Caveat ; le PDF et la vignette du BO y mettaient les tampons ronds de la police d'essai. Empreinte d'impression changée : les fichiers d'impression se refont (ceux à expédier d'avance, les autres à la demande). Reste : lancer `lignes-touchees.mts` (scratchpad du 26/11) en prod pour retrouver les affiches déjà vendues avec des tampons.
 - **Ventes stand** (`0e2e09d`) : montant d'une vente corrigeable par la propriétaire (écart au grand livre, journal, facture, compte client) ; colonne « Format et cadre » à la place de « Livraison ».
 - **Réglages IA** (`cd9fcf6`) : le BO montre le modèle et la taille vraiment en service ; consigne d'un style jusqu'à 20 000 caractères (avant : coupée sans prévenir à 8 000 — **le style « Famille » de prod est coupé en pleine phrase : Margaux doit recoller sa consigne entière**) ; enregistrer un style garde ses titres traduits (à vérifier au BO : des enregistrements passés ont pu les effacer).
-- **Lot 2 en construction** (affiches IA en qualité haute et 1584 × 2240, accentuation à l'impression ; ventes du stand nées « À imprimer », « Terminée » à la main, total modifiable dans la ligne, migration 0114 qui remet les anciennes ventes à imprimer ; 0115 passe ia.taille à 1584x2240) : pas en ligne.
+- **Lot 2** : prêt, pas en ligne (voir 0.00000).
 
 ### 0.000 EN LIGNE DEPUIS LE 25/11 À 20 H 15 (`00b2d69`) : les affiches IA
 - Plus le message clair « plus de crédit » (site : la cliente ; stand : « Prévenez Margaux »), 7 langues. Alerte par mail seulement (SMS écarté par Alexandra). Vérifié après : pages, API, code servi, aucune erreur.
