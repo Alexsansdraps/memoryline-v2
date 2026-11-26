@@ -13,6 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  autresTotauxDeLEnvoi,
   centimesSaisis,
   choixDeLAffiche,
   correctionsDuMontant,
@@ -21,9 +22,12 @@ import {
   etatDuTotal,
   euros,
   eurosAuCentime,
+  listeDesVentes,
   messageDeCorrection,
   messagesDesTotaux,
   questionDeCorrection,
+  questionTotauxEnAttente,
+  refusDesFacturesEnAttente,
   resultatDuTotal,
   SAISIE_ILLISIBLE,
   saisieDuTotal,
@@ -207,4 +211,52 @@ test("les messages : un résultat tel quel, plusieurs comptés, les refus vente 
     erreur: `SAL-0018 : ${refus.texte}`,
   });
   assert.deepEqual(messagesDesTotaux([]), { flash: null, erreur: null });
+});
+
+test("les totaux en attente, vus de la barre : « Factures » refuse, les autres gestes demandent (relecture finale du 26/11)", () => {
+  assert.equal(listeDesVentes([]), "");
+  assert.equal(listeDesVentes(["SAL-0023"]), "SAL-0023");
+  assert.equal(listeDesVentes(["SAL-0023", "SAL-0025"]), "SAL-0023 et SAL-0025");
+  assert.equal(listeDesVentes(["A", "B", "C"]), "A, B et C");
+  assert.equal(listeDesVentes(["A", "B", "C", "D", "E", "F", "G"]), "A, B, C, D et 3 autres");
+
+  const une = refusDesFacturesEnAttente(["SAL-0023"]);
+  assert.match(une, /^Le total tapé pour SAL-0023 n'est pas encore enregistré : faites Entrée \(ou OK\) dans sa ligne, puis « Factures »\./);
+  assert.match(une, /Aucune facture n'a été faite\.$/);
+  assert.match(refusDesFacturesEnAttente(["SAL-0023", "SAL-0025"]), /^Les totaux tapés pour SAL-0023 et SAL-0025 ne sont pas encore enregistrés : faites Entrée \(ou OK\) dans l'une des lignes/);
+
+  assert.match(questionTotauxEnAttente(["SAL-0023"]), /^Le total tapé pour SAL-0023 n'est pas enregistré : il sera perdu\. Continuer quand même \?/);
+  assert.match(questionTotauxEnAttente(["SAL-0023", "SAL-0025"]), /ils seront perdus\. Continuer quand même \?[\s\S]*ils partent ensemble/);
+});
+
+test("les totaux partis depuis d'autres lignes se redisent sous la ligne de l'Entrée, refus d'abord (relecture finale du 26/11)", () => {
+  const entree = { id: 70, numero: "SAL-0070", texte: "SAL-0070 : 37,00 € → 40,00 €", erreur: false };
+  const fauteDeFrappe = { id: 83, numero: "SAL-0083", texte: "SAL-0083 : 37,00 € → 370,00 €", erreur: false };
+  const zero = {
+    id: 82,
+    numero: "SAL-0082",
+    texte: "Le montant d'une vente est plus grand que zéro.",
+    erreur: true,
+    saisie: "0",
+  };
+  // Seule la ligne de l'Entrée : rien de plus à dire, son résultat est sous son champ.
+  assert.equal(autresTotauxDeLEnvoi([entree], 70), null);
+  assert.equal(autresTotauxDeLEnvoi([], 70), null);
+
+  const r = autresTotauxDeLEnvoi([entree, fauteDeFrappe, zero], 70);
+  assert.equal(r.titre, "En même temps, 2 autres totaux sont partis, dont 1 refusé :");
+  assert.equal(r.refus, 1);
+  assert.deepEqual(
+    r.lignes.map((l) => [l.id, l.numero, lu(l.texte), l.erreur]),
+    [
+      [82, "SAL-0082", "refusé (« 0 » tapé, le total n'a pas changé) : Le montant d'une vente est plus grand que zéro.", true],
+      [83, "SAL-0083", "enregistré, 37,00 € → 370,00 €", false],
+    ],
+  );
+  // L'Entrée sur une ligne inchangée : elle n'a pas de résultat, les autres se disent quand même.
+  const seul = autresTotauxDeLEnvoi([fauteDeFrappe], 70);
+  assert.equal(seul.titre, "En même temps, un autre total est parti :");
+  assert.equal(seul.refus, 0);
+  assert.equal(autresTotauxDeLEnvoi([zero], 70).titre, "En même temps, un autre total est parti, refusé :");
+  assert.equal(autresTotauxDeLEnvoi([zero, { ...zero, id: 84, numero: "SAL-0084" }], 70).titre, "En même temps, 2 autres totaux sont partis, tous refusés :");
 });

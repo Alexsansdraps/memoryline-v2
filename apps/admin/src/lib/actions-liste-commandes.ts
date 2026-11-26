@@ -29,6 +29,7 @@ import {
   resultatDuTotal,
   SAISIE_ILLISIBLE,
   totauxDeLEnvoi,
+  type ResultatDUnTotal,
 } from "./montant-vente.ts";
 import { compteRenduMiseEnTest } from "./vente-de-test.ts";
 import { compteRenduEtapeStand, estGesteEtapeStand } from "./etape-vente-stand.ts";
@@ -62,7 +63,13 @@ export interface ResultatActionListe {
    * champ, sans remonter en tête de la liste. Plusieurs depuis la relecture
    * du 26/11 : les totaux tapés sur d'autres lignes partent avec elle.
    */
-  lignes?: { id: number; texte: string; erreur: boolean }[];
+  lignes?: ResultatDUnTotal[];
+  /**
+   * La ligne où l'on a fait Entrée (relecture finale du 26/11) : les
+   * résultats des AUTRES lignes, hors de l'écran au retour, s'y redisent
+   * (autresTotauxDeLEnvoi, montant-vente.ts).
+   */
+  ligneDeLEntree?: number | null;
 }
 
 /**
@@ -133,12 +140,12 @@ export async function faireActionDeLaListe(
         montant: f.get("montant"),
         autres: f.get("autres"),
       });
-      const resultats: { id: number; numero: string; texte: string; erreur: boolean }[] = [];
+      const resultats: ResultatDUnTotal[] = [];
       for (const t of totaux) {
         const envoi = envoiDuTotal(t.saisie, t.avantCents);
         if (!envoi.envoyer) {
           if (envoi.raison === "illisible")
-            resultats.push({ id: t.id, numero: t.numero, texte: SAISIE_ILLISIBLE, erreur: true });
+            resultats.push({ id: t.id, numero: t.numero, texte: SAISIE_ILLISIBLE, erreur: true, saisie: t.saisie });
           // « Inchangé » ne se dit que pour une ligne envoyée seule.
           else if (totaux.length === 1)
             resultats.push({
@@ -160,14 +167,17 @@ export async function faireActionDeLaListe(
           // La vente facturée, annulée… entre l'affichage et l'envoi : la
           // phrase de l'API, telle quelle, sous le champ.
           const texte = refus instanceof Error ? refus.message : String(refus);
-          resultats.push({ id: t.id, numero: t.numero, texte, erreur: true });
+          resultats.push({ id: t.id, numero: t.numero, texte, erreur: true, saisie: t.saisie });
         }
       }
       const messages = messagesDesTotaux(resultats);
       return {
         flash: messages.flash,
         erreurAction: messages.erreur,
-        lignes: resultats.map(({ id, texte, erreur }) => ({ id, texte, erreur })),
+        lignes: resultats,
+        // Celle de l'Entrée, même quand son propre total n'a pas changé et
+        // n'a donc pas de résultat : la page revient sur elle (#vente-…).
+        ligneDeLEntree: Number(f.get("id")) || null,
       };
     } else if (action === "etape") {
       // L'étape suivante, d'un clic dans la liste (17/11) : la même règle que

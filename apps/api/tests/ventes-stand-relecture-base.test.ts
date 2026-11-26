@@ -10,9 +10,10 @@
  *     (verrou-commande.ts, et la validation qui annule une remise restée).
  *  2. Le filtre « Statuts » de la liste passe AVANT sa limite : une vente « À
  *     imprimer » plus ancienne que les dernières se retrouve encore.
- *  3. La migration 0114 rejouée au démarrage rattrape une vente validée par
- *     l'ancienne API pendant la mise en ligne — et rien d'autre (dans une
- *     transaction annulée).
+ *
+ * (La migration 0114 n'est plus rejouée au démarrage de l'API, relecture
+ * finale du 26/11 : voir index.ts. Le fichier SQL lui-même reste essayé par
+ * tests/migration-0114-base.test.ts.)
  *
  * Touche la BASE LOCALE, et elle seule (`@db:5432`, hors production) : il
  * crée son stand du jour, sa cliente et ses ventes fictives
@@ -26,7 +27,7 @@ import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { jourAParis } from "@memoryline/types";
 import { mountOrderRoutes } from "../src/commandes.js";
-import { mountSalonRoutes, nouveauCode, rattraperLesVentesDeLAncienneRegle } from "../src/salon.js";
+import { mountSalonRoutes, nouveauCode } from "../src/salon.js";
 
 const baseLocale =
   /@db:5432\//.test(process.env.DATABASE_URL ?? "") && process.env.NODE_ENV !== "production";
@@ -199,66 +200,6 @@ test(
       await db.delete(schema.pickupPoints).where(eq(schema.pickupPoints.standId, stand!.id));
       await db.delete(schema.stands).where(eq(schema.stands.id, stand!.id));
       await db.delete(schema.customers).where(and(like(schema.customers.email, "test-relecture-%"), eq(schema.customers.email, email)));
-    }
-  },
-);
-
-/** Ce qui annule la transaction une fois les vérifications faites. */
-class Annuler extends Error {}
-
-test(
-  "0114 rejouée au démarrage : la vente validée par l'ancienne API pendant la mise en ligne repasse « À imprimer », rien d'autre",
-  { skip: !baseLocale && "hors de la base locale du conteneur" },
-  async () => {
-    const { sql } = await import("../src/db/client.js");
-    const s = `${Date.now()}`.slice(-6);
-    try {
-      await sql.begin(async (tx) => {
-        /** Une vente fictive, validée par l'ancienne ou la nouvelle règle. */
-        const vente = async (numero: string, message: string, termine: boolean) => {
-          const [o] = await tx`
-            insert into "order" (channel, number, status, total_cents, tags, fulfilled_at)
-            values ('salon'::order_channel, ${numero}, 'paid', 2900, '[]'::jsonb, ${termine ? new Date().toISOString() : null})
-            returning id`;
-          const [l] = await tx`
-            insert into order_item (order_id, title, unit_price_cents, quantity)
-            values (${o!.id}, 'VIEUX MOULIN', 2900, 1) returning id`;
-          if (termine) {
-            const [f] = await tx`insert into fulfillment (order_id, status) values (${o!.id}, 'success') returning id`;
-            await tx`insert into fulfillment_item (fulfillment_id, order_item_id, quantity) values (${f!.id}, ${l!.id}, 1)`;
-          }
-          await tx`insert into order_event (order_id, kind, message) values (${o!.id}, 'event', ${message})`;
-          return o!.id as number;
-        };
-        // Les numéros SAL- fictifs sont dans la série : la transaction
-        // annulée les rend, et aucun n'est vu d'ailleurs entre-temps.
-        const ancienne = await vente(
-          `SAL-8${s}1`,
-          "Commande prise au stand (Essai), réglée sur place et remise : terminée.",
-          true,
-        );
-        const nouvelleMarquee = await vente(
-          `SAL-8${s}2`,
-          "Commande prise au stand (Essai), réglée sur place : à imprimer, puis à marquer terminée au back-office.",
-          true,
-        );
-        const executer = (requete: string) => tx.unsafe(requete) as unknown as Promise<{ count: number }>;
-        const premier = await rattraperLesVentesDeLAncienneRegle(executer);
-        const etat = async (id: number) => {
-          const [o] = await tx`select fulfilled_at from "order" where id = ${id}`;
-          const [r] = await tx`select count(*) filter (where status = 'success')::int as ok from fulfillment where order_id = ${id}`;
-          const [j] = await tx`select count(*)::int as n from order_event where order_id = ${id} and message like 'Vente remise « À imprimer » le 26/11,%'`;
-          return { termine: o!.fulfilled_at !== null, remises: r!.ok as number, ligne: j!.n as number };
-        };
-        assert.deepEqual(await etat(ancienne), { termine: false, remises: 0, ligne: 1 }, "rattrapée");
-        assert.deepEqual(await etat(nouvelleMarquee), { termine: true, remises: 1, ligne: 0 }, "marquée par Margaux : intacte");
-        assert.ok(premier >= 1, "au moins la vente de l'ancienne API");
-        // Rejouée (le démarrage suivant) : plus rien à faire.
-        assert.equal(await rattraperLesVentesDeLAncienneRegle(executer), 0);
-        throw new Annuler();
-      });
-    } catch (e) {
-      if (!(e instanceof Annuler)) throw e;
     }
   },
 );

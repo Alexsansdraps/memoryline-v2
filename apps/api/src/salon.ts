@@ -33,9 +33,7 @@ import type { Context } from "hono";
 import { and, asc, count, desc, eq, inArray, isNull, like, ne, notInArray, sql as raw } from "drizzle-orm";
 import { FUSEAU_BOUTIQUE } from "@memoryline/types";
 import { randomInt } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { db, schema, sql as pg } from "./db/client.js";
+import { db, schema } from "./db/client.js";
 import { fr } from "./courriels/fr.js";
 import { enregistrerFichiersDImpression } from "./configurator-routes.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
@@ -94,52 +92,6 @@ export function codeFourni(c: Context): string {
   return String(
     c.req.query("code") ?? c.req.header("x-salon-code") ?? "",
   ).trim();
-}
-
-/**
- * La migration 0114, rejouée une fois à chaque démarrage de l'API
- * (relecture du 26/11).
- *
- * 0114 rend « À imprimer » les ventes du stand validées sous l'ANCIENNE
- * règle (nées « Terminée »). Mais la mise en ligne lance les migrations
- * pendant que l'ancienne API sert encore la tablette (scripts/mettre-en-ligne.sh :
- * « 4/5 · Migrations », puis seulement « 5/5 · Redémarrage » ; la page de
- * maintenance ne couvre pas /api/*). Une vente validée dans cet intervalle
- * naissait « Terminée » APRÈS le passage de 0114, que Drizzle ne rejoue
- * jamais : pendant le marché de Noël, une affiche pouvait sortir de « À
- * imprimer » sans avoir été imprimée.
- *
- * Le fichier de la migration lui-même, tel quel : mêmes cibles, même ligne
- * au journal, et « rejouable sans effet » (son en-tête) — une vente déjà
- * rendue porte sa ligne, une vente validée sous la nouvelle règle porte la
- * sienne, et aucune des deux n'est plus une cible. Au premier démarrage du
- * nouveau code, il rattrape les ventes de l'intervalle ; ensuite, il ne
- * trouve plus rien. Il ne lève jamais : un échec se lit au journal, l'API
- * démarre quand même. Rend le nombre de ventes rattrapées.
- *
- * `executer` : la base elle-même ; un essai passe sa transaction, qu'il
- * annule ensuite (tests/ventes-stand-relecture-base.test.ts).
- */
-export async function rattraperLesVentesDeLAncienneRegle(
-  executer: (requete: string) => Promise<{ count: number }> = (requete) => pg.unsafe(requete),
-): Promise<number> {
-  try {
-    const requete = await readFile(
-      fileURLToPath(new URL("../drizzle/0114_ventes_stand_a_imprimer.sql", import.meta.url)),
-      "utf8",
-    );
-    const r = await executer(requete);
-    const n = Number(r.count ?? 0);
-    if (n > 0)
-      console.log(
-        `[stand] ${n} vente${n > 1 ? "s" : ""} du stand validée${n > 1 ? "s" : ""} sous l'ancienne règle ` +
-          `remise${n > 1 ? "s" : ""} « À imprimer » (migration 0114 rejouée au démarrage).`,
-      );
-    return n;
-  } catch (e) {
-    console.error("[stand] migration 0114 non rejouée au démarrage :", e);
-    return 0;
-  }
 }
 
 export function mountSalonRoutes(app: Hono): void {

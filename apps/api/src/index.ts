@@ -109,7 +109,7 @@ import {
   demarrerRelancePanier,
   mountRelancePanier,
 } from "./relance-panier.js";
-import { mountSalonRoutes, rattraperLesVentesDeLAncienneRegle } from "./salon.js";
+import { mountSalonRoutes } from "./salon.js";
 import { bornesDuVendeur, standsDuVendeur } from "./vendeurs.js";
 import {
   lieuxRetraitPublics,
@@ -128,7 +128,7 @@ import {
   ordreManuelDuGenre,
   ordreManuelDuCatalogue,
 } from "./ordre-affichage.js";
-import { demarrerPurgeIa, mountIaRoutes } from "./ia.js";
+import { demarrerPurgeIa, mountIaRoutes, solderLesAffichesInterrompues } from "./ia.js";
 import { mountIaReutiliser } from "./ia-reutiliser.js";
 import { demarrerMenageRelais, mountRelaisPhotoRoutes } from "./ia-relais.js";
 import { demarrerPreparationDesImpressions } from "./fichiers-impression.js";
@@ -3766,6 +3766,10 @@ serve({ fetch: app.fetch, port }, (info) => {
   // puis toutes les heures. Sans elle, une photo envoyée pour un aperçu
   // restait sur le disque tant que personne ne cliquait au back-office.
   demarrerPurgeIa();
+  // Les affiches que l'arrêt de l'API précédente a coupées en pleine création
+  // passent en échec, au coût attendu (apps/api/src/ia.ts, relecture finale
+  // du 26/11) : sans cela, « en cours » pour toujours, et 0 c au plafond.
+  void solderLesAffichesInterrompues();
   // Les fichiers d'impression des commandes à expédier, refaits d'avance
   // quand une mise en ligne a changé le rendu (apps/api/src/fichiers-impression.ts) :
   // sans cela, chacun se refaisait au premier clic de la boutique.
@@ -3782,10 +3786,13 @@ serve({ fetch: app.fetch, port }, (info) => {
   // automatique les jours de marché, et « Retrait au stand » à la caisse tant
   // qu'il est temps. Au démarrage, puis toutes les minutes.
   demarrerCalendrierDesStands();
-  // Les ventes du stand validées par l'ANCIENNE API pendant la mise en ligne
-  // (entre les migrations et ce redémarrage) repassent « À imprimer » : la
-  // migration 0114, rejouée, sans effet sur tout le reste (salon.ts, 26/11).
-  void rattraperLesVentesDeLAncienneRegle();
+  // Plus de migration 0114 rejouée ici (relecture finale du 26/11) : elle a
+  // rattrapé, au démarrage de la mise en ligne du 26/11 à 14 h 31, les ventes
+  // validées par l'ancienne API pendant celle-ci. Rejouée à chaque
+  // démarrage, elle remettait « À imprimer », sans rien dire, une vente que
+  // Margaux avait marquée terminée depuis et qui n'avait pas sa ligne de
+  // journal (une vente « à encaisser » du 17 au 19/11), avec une ligne
+  // datée du 26/11.
 });
 
 export type AppType = typeof app;

@@ -858,6 +858,12 @@ export interface EnvoiAuModele {
  * comptait 8 c au plafond, quelle que soit sa taille, pour 26 à 47 c
  * attendus. Une qualité inconnue (« auto », pas envoyée) compte comme
  * « high », la plus chère : un plafond doit compter large.
+ *
+ * La taille « auto » (le modèle décide) compte comme la plus grande des
+ * tailles standard, 1024 × 1536, marquée « estimé » (relecture finale du
+ * 26/11) : la règle des jetons ne dit rien d'« auto », et ces affiches
+ * retombaient sur les 8 c du réglage, pour 17 c attendus — au plafond comme
+ * dans la tuile du BO.
  */
 export function coutAttenduDuModele(
   modele: string,
@@ -866,9 +872,11 @@ export function coutAttenduDuModele(
 ): { cents: number; estime: boolean } | null {
   if (!modele.startsWith("gpt-image-2")) return null;
   const q = qualite && ["low", "medium", "high"].includes(qualite) ? qualite : "high";
-  const exact = coutAttenduCents(modele, taille, q);
-  if (exact !== null) return { cents: exact, estime: false };
-  const comme2 = coutAttenduCents("gpt-image-2", taille, q);
+  const auto = taille === "auto";
+  const t = auto ? "1024x1536" : taille;
+  const exact = coutAttenduCents(modele, t, q);
+  if (exact !== null) return { cents: exact, estime: auto };
+  const comme2 = coutAttenduCents("gpt-image-2", t, q);
   return comme2 === null ? null : { cents: comme2, estime: true };
 }
 
@@ -878,6 +886,11 @@ export function coutAttenduDuModele(
  * ici, réponse sans `usage`, image coupée au délai —, l'estimation du
  * réglage, mais jamais moins que le coût attendu pour sa taille et sa
  * qualité (`coutAttenduDuModele`).
+ *
+ * Une suite de gpt-image-2 sans tarif ici (gpt-image-2.5…) dont OpenAI a
+ * dit la consommation compte aussi AU MOINS ce qu'elle coûterait au tarif
+ * de gpt-image-2 (relecture finale du 26/11) : une image plus grande que
+ * prévu (« auto ») se paie comme telle, au lieu des 8 c du réglage.
  */
 export function coutDeLImage(
   modele: string,
@@ -887,7 +900,12 @@ export function coutDeLImage(
 ): number {
   const reel = coutReelCents(modele, usage);
   if (reel !== null) return reel;
-  return Math.max(coutParImageCents, coutAttenduDuModele(modele, envoi.taille, envoi.qualite)?.cents ?? 0);
+  const comme2 = modele.startsWith("gpt-image-2") ? coutReelCents("gpt-image-2", usage) : null;
+  return Math.max(
+    coutParImageCents,
+    coutAttenduDuModele(modele, envoi.taille, envoi.qualite)?.cents ?? 0,
+    comme2 ?? 0,
+  );
 }
 
 /** Le délai dépassé : le nôtre (AbortSignal.timeout), ou celui de Node. */
@@ -903,19 +921,37 @@ export function delaiDepasse(e: unknown): boolean {
 }
 
 /**
+ * Une erreur levée APRÈS la réponse 200 d'OpenAI (relecture finale du
+ * 26/11) : l'image a été dessinée, donc payée, même si sa réponse s'est
+ * perdue en route. L'erreur garde son message ; elle est seulement marquée.
+ */
+function marquerFacturee(e: unknown): Error {
+  const erreur = e instanceof Error ? e : new Error(String(e));
+  return Object.assign(erreur, { facturee: true });
+}
+
+/** Vrai pour une erreur marquée par `marquerFacturee`. */
+export function erreurFacturee(e: unknown): boolean {
+  return (e as { facturee?: unknown } | null)?.facturee === true;
+}
+
+/**
  * Ce que coûte une création ÉCHOUÉE (relecture du 26/11). Un refus d'OpenAI
  * (400, modération, 500, crédit épuisé) n'est pas facturé : 0, comme avant.
  * Mais une image coupée au délai a été dessinée, et payée : sans compte, le
  * plafond ne la voyait pas, et une taille trop lente pour le délai faisait
  * payer chaque nouvel essai de la cliente. Et une image reçue, puis perdue
- * plus loin (disque, aperçu), a son vrai coût.
+ * plus loin (disque, aperçu), a son vrai coût. Une réponse 200 coupée en
+ * route (`erreurFacturee`) compte comme une création coupée au délai.
  */
 export function coutDUnEchec(
   erreur: unknown,
   o: { modele: string; envoi: EnvoiAuModele; usage: UsageOpenAI | null; coutParImageCents: number },
 ): number {
   if (o.usage) return coutDeLImage(o.modele, o.usage, o.envoi, o.coutParImageCents);
-  return delaiDepasse(erreur) ? coutDeLImage(o.modele, null, o.envoi, o.coutParImageCents) : 0;
+  return delaiDepasse(erreur) || erreurFacturee(erreur)
+    ? coutDeLImage(o.modele, null, o.envoi, o.coutParImageCents)
+    : 0;
 }
 
 /** Le vrai coût est en ligne depuis le 25/11 à 20 h 15 (00b2d69) ; avant, 8 c fixes. */
@@ -1100,10 +1136,16 @@ export async function editerImages(
     } else throw new Error(`OpenAI HTTP ${res.status} ${detail.slice(0, 500)}`);
   }
 
-  const json = (await res.json()) as {
-    data?: { b64_json?: string; url?: string }[];
-    usage?: UsageOpenAI;
-  };
+  let json: { data?: { b64_json?: string; url?: string }[]; usage?: UsageOpenAI };
+  try {
+    json = (await res.json()) as typeof json;
+  } catch (e) {
+    // OpenAI a répondu 200 : l'image est dessinée, et payée. Une réponse
+    // coupée en route (« terminated ») ou illisible compte donc au plafond
+    // comme une création coupée au délai (`coutDUnEchec`, relecture finale
+    // du 26/11) — elle comptait 0, comme un refus.
+    throw marquerFacturee(e);
+  }
   surUsage?.(json.usage ?? null);
   const premiere = json.data?.[0];
   if (premiere?.b64_json) return Buffer.from(premiere.b64_json, "base64");
@@ -1732,6 +1774,76 @@ export function demarrerPurgeIa(): void {
   void passageDePurgeIa();
   minuteriePurge = setInterval(() => void passageDePurgeIa(), PERIODE_PURGE_MS);
   minuteriePurge.unref?.();
+}
+
+/** Le démarrage de ce processus : une affiche « en_cours » d'avant lui a perdu le sien. */
+const DEMARRAGE_DU_PROCESSUS = new Date();
+
+/** Jusqu'où, avant le démarrage, une affiche « en_cours » a été coupée par lui. */
+const FENETRE_DES_INTERROMPUES_MS = 2 * 60 * 60 * 1000;
+
+const MESSAGE_AFFICHE_INTERROMPUE =
+  "Interrompue : l'API a redémarré pendant la création (mise en ligne ou redémarrage du serveur). " +
+  "Comptée au plafond, comme une création coupée au délai.";
+
+/**
+ * Les affiches des clientes restées « en_cours » au démarrage de l'API
+ * (relecture finale du 26/11). Une mise en ligne ou un redémarrage coupe la
+ * création en cours (jusqu'à 280 s en « high ») : rien ne soldait jamais sa
+ * ligne — « En fabrication… » pour toujours dans la galerie du BO, 0 c au
+ * plafond alors qu'OpenAI l'a dessinée et facturée, hors des échecs. Elle
+ * passe en échec, au coût attendu pour sa taille (`coutDeLImage`), comme une
+ * création coupée au délai ; les fonds ont leur propre solde
+ * (solderLesInterrompues, fonds-ia.ts).
+ *
+ * Seules les lignes créées AVANT ce processus : une affiche lancée depuis
+ * son démarrage est la sienne, en cours. Et seulement celles des deux
+ * heures d'avant (`FENETRE_DES_INTERROMPUES_MS`) : celles que CE redémarrage
+ * a coupées — une création dure quelques minutes, une mise en ligne coupe
+ * l'API quelques secondes. Les plus anciennes, d'avant ce solde, ne sont
+ * pas réécrites après coup : la dépense des mois passés, et celle du mois
+ * en cours, ne bougent pas d'elles-mêmes à la mise en ligne. Ne lève
+ * jamais : l'API démarre quand même. Rend le nombre d'affiches soldées.
+ */
+export async function solderLesAffichesInterrompues(avant: Date = DEMARRAGE_DU_PROCESSUS): Promise<number> {
+  try {
+    const g = schema.aiGenerations;
+    const depuis = new Date(avant.getTime() - FENETRE_DES_INTERROMPUES_MS);
+    const lignes = await db
+      .select({ id: g.id, model: g.model, size: g.size })
+      .from(g)
+      .where(
+        and(isNull(g.fondId), eq(g.status, "en_cours"), gte(g.createdAt, depuis), lt(g.createdAt, avant)),
+      );
+    if (!lignes.length) return 0;
+    const reg = await reglages();
+    let soldees = 0;
+    for (const l of lignes) {
+      const costCents = coutDeLImage(
+        l.model || reg["ia.modele"],
+        null,
+        // La taille demandée (un repli l'aurait faite plus petite : on
+        // compte large) ; la qualité du réglage, que la ligne ne garde pas.
+        { taille: l.size || reg["ia.taille"], qualite: reg["ia.qualite"] || null },
+        reg["ia.coutParImageCents"],
+      );
+      const faites = await db
+        .update(g)
+        .set({ status: "echec", erreur: MESSAGE_AFFICHE_INTERROMPUE, costCents })
+        .where(and(eq(g.id, l.id), eq(g.status, "en_cours")))
+        .returning({ id: g.id });
+      soldees += faites.length;
+    }
+    if (soldees)
+      console.warn(
+        `[ia] ${soldees} affiche${soldees > 1 ? "s" : ""} interrompue${soldees > 1 ? "s" : ""} par l'arrêt de l'API ` +
+          `passée${soldees > 1 ? "s" : ""} en échec, au coût attendu (plafond).`,
+      );
+    return soldees;
+  } catch (e) {
+    console.error("[ia] affiches interrompues non soldées au démarrage :", e);
+    return 0;
+  }
 }
 
 /* -------------------------------------------------------------------------- */

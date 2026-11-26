@@ -173,6 +173,15 @@ export function versionApercu(config: unknown): string {
   // les tampons de la version d'essai (voir ligneEnPoliceDeSecours) : elles
   // changent d'adresse, donc se refont. Les autres gardent la leur.
   if (lignesEnPoliceDeSecours(config).length) h.update("chiffres-en-caveat");
+  // Celles d'une ligne où ¢ £ ¤ ¥ ƒ ₤ s'écrivent en Caveat AU MILIEU d'autres
+  // lettres (« Voyage à Londres £ » en Manuscrite) portaient, rangées avant
+  // le 26/11 à 14 h 31, un tampon à la place du symbole : la police d'essai
+  // ne l'écrivait pas, et il n'est passé en Caveat qu'à cette mise en ligne
+  // (fonts.ts). Le sel ci-dessus ne voit que les lignes TOUT ENTIÈRES en
+  // Caveat : la vignette gardait son adresse et son tampon pendant que le
+  // PDF, refait, montrait le symbole (relecture finale du 26/11). Elles
+  // changent d'adresse, donc se refont ; les autres gardent la leur.
+  if (lignesAvecSymbolesEnSecours(config).length) h.update("symboles-en-caveat");
   return h.digest("base64url").slice(0, 10);
 }
 
@@ -197,15 +206,46 @@ export function versionApercu(config: unknown): string {
  * Exportée aussi pour retrouver les affiches déjà vendues avec les tampons.
  */
 export function lignesEnPoliceDeSecours(config: unknown): { rang: number; texte: string }[] {
+  return lignesDontUnBout(
+    config,
+    (morceaux, police) => morceaux.length === 1 && morceaux[0]!.police.famille !== police.famille,
+  );
+}
+
+/** Les six symboles que la police d'essai n'écrit qu'en tampon, passés en Caveat le 26/11 (fonts.ts). */
+const SYMBOLES_PASSES_EN_CAVEAT = /[¢£¤¥ƒ₤]/;
+
+/**
+ * Les lignes de l'affiche où l'un de ces six symboles s'imprime dans une
+ * autre police que la sienne, seul ou au milieu d'autres lettres
+ * (« Voyage à Londres £ » en Manuscrite) : jusqu'au 26/11 à 14 h 31, le
+ * moteur les écrivait dans la police de la ligne, et la version d'essai
+ * d'another shabby y posait son tampon. Même lecture que
+ * `lignesEnPoliceDeSecours` (relecture finale du 26/11). Exportée aussi pour
+ * retrouver les affiches déjà vendues avec ce tampon.
+ */
+export function lignesAvecSymbolesEnSecours(config: unknown): { rang: number; texte: string }[] {
+  return lignesDontUnBout(config, (morceaux, police) =>
+    morceaux.some((m) => m.police.famille !== police.famille && SYMBOLES_PASSES_EN_CAVEAT.test(m.texte)),
+  );
+}
+
+/**
+ * Les lignes remplies dont un bout, tel que le pose le moteur, répond à
+ * `critere` : ses morceaux (morceauxDeTexte) et la police de la ligne — la
+ * même par défaut que le moteur. Vide pour une configuration abîmée, qui
+ * garde ainsi sa version d'avant.
+ */
+function lignesDontUnBout(
+  config: unknown,
+  critere: (morceaux: ReturnType<typeof morceauxDeTexte>, police: ReturnType<typeof policeParId>) => boolean,
+): { rang: number; texte: string }[] {
   try {
     const textes = (config as Partial<PosterConfig> | null)?.texts as TextesAffiche | undefined;
     return lignesRemplies(textes).flatMap((ligne, rang) => {
       const police = policeParId(ligne.font, rang === 0 ? POLICE_TITRE_DEFAUT : POLICE_SOUSTITRE_DEFAUT);
       const touchee = sousLignes(ligne.value).some((sousLigne) =>
-        boutsDeTexteImprimes(sousLigne).some((bout) => {
-          const morceaux = morceauxDeTexte(bout, police);
-          return morceaux.length === 1 && morceaux[0]!.police.famille !== police.famille;
-        }),
+        boutsDeTexteImprimes(sousLigne).some((bout) => critere(morceauxDeTexte(bout, police), police)),
       );
       return touchee ? [{ rang, texte: ligne.value }] : [];
     });

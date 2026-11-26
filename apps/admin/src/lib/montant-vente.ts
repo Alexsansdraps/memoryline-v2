@@ -253,6 +253,107 @@ export function messagesDesTotaux(resultats: readonly { numero: string; texte: s
   };
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Les totaux tapés, vus du reste de la liste (relecture finale du 26/11)     */
+/* -------------------------------------------------------------------------- */
+
+/** « SAL-0023 », « SAL-0023 et SAL-0025 », « SAL-0023, SAL-0025 et 3 autres ». */
+export function listeDesVentes(numeros: readonly string[]): string {
+  const tous = numeros.filter(Boolean);
+  if (tous.length <= 1) return tous[0] ?? "";
+  if (tous.length > 5) return `${tous.slice(0, 4).join(", ")} et ${tous.length - 4} autres`;
+  return `${tous.slice(0, -1).join(", ")} et ${tous[tous.length - 1]}`;
+}
+
+/**
+ * Le refus de « Factures » quand une vente cochée a un total tapé et pas
+ * encore enregistré. « Factures » télécharge sans quitter la page : le
+ * navigateur ne retenait rien, et la facture prenait son numéro définitif
+ * avec l'ANCIEN total — après quoi le nouveau était refusé (« déjà
+ * facturée… son montant ne peut donc plus changer »).
+ */
+export function refusDesFacturesEnAttente(numeros: readonly string[]): string {
+  const plusieurs = numeros.length > 1;
+  return (
+    `${plusieurs ? "Les totaux tapés pour" : "Le total tapé pour"} ${listeDesVentes(numeros)} ` +
+    `${plusieurs ? "ne sont" : "n'est"} pas encore enregistré${plusieurs ? "s" : ""} : faites Entrée (ou OK) ` +
+    `dans ${plusieurs ? "l'une des lignes" : "sa ligne"}, puis « Factures ». Une facture garde pour toujours ` +
+    "le montant qu'elle a le jour où elle est faite. Aucune facture n'a été faite."
+  );
+}
+
+/**
+ * La question posée avant un geste de la barre de la sélection (« Marquer
+ * terminées », « Ces commandes sont des tests »…) qui recharge la page alors
+ * qu'un total tapé n'est pas enregistré. Sans elle, le navigateur demandait
+ * à sa façon s'il fallait quitter la page ; « Rester » laissait la barre
+ * bloquée sans rien dire, jusqu'au rechargement.
+ */
+export function questionTotauxEnAttente(numeros: readonly string[]): string {
+  const plusieurs = numeros.length > 1;
+  return (
+    `${plusieurs ? "Les totaux tapés pour" : "Le total tapé pour"} ${listeDesVentes(numeros)} ` +
+    `${plusieurs ? "ne sont" : "n'est"} pas enregistré${plusieurs ? "s" : ""} : ` +
+    `${plusieurs ? "ils seront perdus" : "il sera perdu"}. Continuer quand même ?\n\n` +
+    `Pour ${plusieurs ? "les" : "le"} garder : Annuler, puis Entrée dans ${plusieurs ? "l'une des lignes (ils partent ensemble)" : "sa ligne"}.`
+  );
+}
+
+/** Le résultat d'un total envoyé, tel que la liste le reçoit (actions-liste-commandes.ts). */
+export interface ResultatDUnTotal {
+  id: number;
+  numero: string;
+  texte: string;
+  erreur: boolean;
+  /** Ce qui avait été tapé, pour un total refusé : le champ, lui, revient au total enregistré. */
+  saisie?: string;
+}
+
+/**
+ * Ce que dit la ligne de l'Entrée des totaux partis avec elle depuis
+ * d'AUTRES lignes, enregistrés comme refusés. La page revient sur la ligne
+ * de l'Entrée (#vente-…) : le résultat de chacun des autres restait sous son
+ * propre champ, hors de l'écran, et le bandeau en tête de la liste aussi —
+ * un total refusé (0 €) ou une faute de frappe enregistrée (370 € pour 37)
+ * passaient inaperçus. null quand aucun autre total n'est parti.
+ *
+ * Les refus d'abord ; le texte de chacun sans son numéro, que la page met
+ * en lien vers sa ligne.
+ */
+export function autresTotauxDeLEnvoi(
+  resultats: readonly ResultatDUnTotal[],
+  idEntree: number | null | undefined,
+): { titre: string; refus: number; lignes: { id: number; numero: string; texte: string; erreur: boolean }[] } | null {
+  const autres = resultats.filter((r) => r.id !== idEntree);
+  if (!autres.length) return null;
+  const n = autres.length;
+  const refus = autres.filter((r) => r.erreur).length;
+  const titre =
+    `En même temps, ${n > 1 ? `${n} autres totaux` : "un autre total"} ${n > 1 ? "sont partis" : "est parti"}` +
+    (refus === 0
+      ? ""
+      : refus === n
+        ? `, ${n > 1 ? "tous refusés" : "refusé"}`
+        : `, dont ${refus} refusé${refus > 1 ? "s" : ""}`) +
+    " :";
+  const sansNumero = (r: ResultatDUnTotal) =>
+    r.texte.startsWith(`${r.numero} : `) ? r.texte.slice(r.numero.length + 3) : r.texte;
+  return {
+    titre,
+    refus,
+    lignes: [...autres]
+      .sort((a, b) => Number(b.erreur) - Number(a.erreur))
+      .map((r) => ({
+        id: r.id,
+        numero: r.numero,
+        erreur: r.erreur,
+        texte: r.erreur
+          ? `refusé${r.saisie?.trim() ? ` (« ${r.saisie.trim()} » tapé, le total n'a pas changé)` : ""} : ${sansNumero(r)}`
+          : `enregistré, ${sansNumero(r)}`,
+      })),
+  };
+}
+
 /** Le message vert, après la correction. */
 export function messageDeCorrection(r: {
   numero: string;

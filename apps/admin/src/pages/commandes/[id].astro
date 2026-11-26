@@ -1242,8 +1242,12 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   {nbArticles} article{nbArticles > 1 ? "s" : ""}
                   {/* Au stand, rien ne s'envoie : la vente naît « À
                       imprimer » depuis le 26/11, et l'en-tête disait « 1 à
-                      envoyer » (relecture du 26/11). */}
-                  {resteAExpedier > 0 && ` · ${resteAExpedier} ${auStand ? "à imprimer" : "à envoyer"}`}
+                      envoyer » (relecture du 26/11). Rien pour une commande
+                      annulée (relecture finale du 26/11) : l'en-tête disait
+                      « 1 à imprimer » juste au-dessus de « Vente annulée :
+                      ses affiches ne sont plus à imprimer », la phrase du bas
+                      de la carte, qui suffit. */}
+                  {resteAExpedier > 0 && !annulee && ` · ${resteAExpedier} ${auStand ? "à imprimer" : "à envoyer"}`}
                 </span>
               </h3>
               {/* Au stand, le choix du client à la place de « Remise sur le

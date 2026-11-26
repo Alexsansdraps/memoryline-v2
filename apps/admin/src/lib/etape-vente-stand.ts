@@ -30,10 +30,27 @@ export interface VenteIgnoree {
 }
 
 /**
- * Le compte rendu du geste : combien de ventes ont changé d'étape, puis
- * combien ont été ignorées, chacune nommée avec sa raison :
- * « 2 ventes marquées terminées. Aucun courriel n'est parti. 1 vente
- * ignorée : SAL-0007 (vente de test). »
+ * Les raisons que l'API donne à une vente DÉJÀ à l'étape demandée
+ * (raisonDejaFaite, apps/api/src/etape-vente-stand.ts), recopiées ici comme
+ * les autres règles partagées avec l'API.
+ */
+const DEJA_A_L_ETAPE: Readonly<Record<GesteEtapeStand, string>> = {
+  "terminer-stand": "déjà terminée",
+  "remettre-a-imprimer": "déjà à imprimer",
+};
+
+/**
+ * Le compte rendu du geste : combien de ventes ont changé d'étape, combien
+ * y étaient déjà, puis les ventes ignorées pour une autre raison, chacune
+ * nommée avec sa raison : « 1 vente marquée terminée. Aucun courriel n'est
+ * parti. 29 ventes étaient déjà terminées. 1 vente ignorée : SAL-0028
+ * (vente annulée). »
+ *
+ * Les ventes déjà à l'étape sont COMPTÉES, plus nommées une à une
+ * (relecture finale du 26/11) : le soir, « Tout cocher » dans « Toutes »
+ * puis « Marquer terminées » faisait un mur de « SAL-0053 (déjà terminée),
+ * … » — 854 caractères pour 31 ventes, plus de la hauteur d'un téléphone —,
+ * où se noyaient la seule vente anormale et ce qui avait vraiment été fait.
  */
 export function compteRenduEtapeStand(
   geste: GesteEtapeStand,
@@ -49,8 +66,22 @@ export function compteRenduEtapeStand(
       : terminer
         ? `${n} vente${n > 1 ? "s" : ""} marquée${n > 1 ? "s" : ""} terminée${n > 1 ? "s" : ""}. Aucun courriel n'est parti.`
         : `${n} vente${n > 1 ? "s" : ""} remise${n > 1 ? "s" : ""} « À imprimer ». Aucun courriel n'est parti.`;
-  const ignorees = r.ignorees ?? [];
-  if (!ignorees.length) return faites;
-  const liste = ignorees.map((v) => `${v.numero} (${v.raison.trim().replace(/[\s.]+$/, "")})`).join(", ");
-  return `${faites} ${ignorees.length} vente${ignorees.length > 1 ? "s" : ""} ignorée${ignorees.length > 1 ? "s" : ""} : ${liste}.`;
+  const raisonCourte = (v: VenteIgnoree) => v.raison.trim().replace(/[\s.]+$/, "");
+  const toutes = r.ignorees ?? [];
+  const deja = toutes.filter((v) => raisonCourte(v) === DEJA_A_L_ETAPE[geste]).length;
+  const ignorees = toutes.filter((v) => raisonCourte(v) !== DEJA_A_L_ETAPE[geste]);
+  const phrases = [faites];
+  if (deja)
+    phrases.push(
+      terminer
+        ? `${deja} vente${deja > 1 ? "s étaient" : " était"} déjà terminée${deja > 1 ? "s" : ""}.`
+        : `${deja} vente${deja > 1 ? "s étaient" : " était"} déjà « À imprimer ».`,
+    );
+  if (ignorees.length)
+    phrases.push(
+      `${ignorees.length} vente${ignorees.length > 1 ? "s" : ""} ignorée${ignorees.length > 1 ? "s" : ""} : ${ignorees
+        .map((v) => `${v.numero} (${raisonCourte(v)})`)
+        .join(", ")}.`,
+    );
+  return phrases.join(" ");
 }

@@ -31,7 +31,7 @@ import {
   faireActionDeLaListe,
   type ResultatActionListe,
 } from "../lib/actions-liste-commandes.ts";
-import { choixDeLAffiche, saisieDuTotal } from "../lib/montant-vente.ts";
+import { autresTotauxDeLEnvoi, choixDeLAffiche, saisieDuTotal } from "../lib/montant-vente.ts";
 import { periodeDeLaListe } from "../lib/periode-liste.ts";
 
 /**
@@ -77,8 +77,14 @@ let erreurAction: string | null = actionFaite?.erreurAction ?? null;
  * autres (lib/montant-vente-bo.ts), au lieu de les perdre sans rien dire.
  */
 let lignesCorrigees = actionFaite?.lignes ?? [];
+let ligneDeLEntree = actionFaite?.ligneDeLEntree ?? null;
 if (!actionFaite && Astro.request.method === "POST" && estProprietaire) {
-  ({ flash, erreurAction, lignes: lignesCorrigees = [] } = await faireActionDeLaListe(
+  ({
+    flash,
+    erreurAction,
+    lignes: lignesCorrigees = [],
+    ligneDeLEntree = null,
+  } = await faireActionDeLaListe(
     await Astro.request.formData(),
     api,
     Astro.locals.user?.email ?? undefined,
@@ -86,6 +92,13 @@ if (!actionFaite && Astro.request.method === "POST" && estProprietaire) {
 }
 /** Le résultat d'un total corrigé dans cette ligne, s'il y en a un. */
 const resultatDeLaLigne = (id: number) => lignesCorrigees.find((l) => l.id === id) ?? null;
+/**
+ * Les totaux partis avec l'Entrée depuis d'AUTRES lignes, redits sous la
+ * ligne de l'Entrée (relecture finale du 26/11) : la page revient sur
+ * elle, et leurs résultats — un refus, une faute de frappe enregistrée —
+ * restaient hors de l'écran, sous leurs champs et dans le bandeau du haut.
+ */
+const autresTotaux = autresTotauxDeLEnvoi(lignesCorrigees, ligneDeLEntree);
 
 /**
  * Le total d'une vente du stand se corrige DANS LA LIGNE (26/11, Margaux :
@@ -745,6 +758,7 @@ const filtreActif =
               ? BADGE_PAIEMENT[o.statutFinancier]!
               : null;
           return (
+            <>
             <tr
               class="border-t border-bo-border hover:bg-bo-bg/50"
               id={channel === "salon" ? `vente-${o.id}` : undefined}
@@ -1117,6 +1131,39 @@ const filtreActif =
                 )}
               </td>
             </tr>
+            {/* Les totaux partis avec l'Entrée depuis d'autres lignes, sous
+                la ligne de l'Entrée, là où la page revient (relecture
+                finale du 26/11) : enregistrés ou refusés, chacun avec un
+                lien vers sa ligne. Une cellule de moins que les colonnes :
+                le tri des colonnes (lib/tri-tableaux.ts) la reconnaît comme
+                une ligne de détail, qui suit la sienne. Au téléphone, le
+                tableau défile en largeur : le cadre reste collé à gauche et
+                pas plus large que l'écran, pour que ses phrases y passent à
+                la ligne au lieu de filer hors de vue. */}
+            {autresTotaux && o.id === ligneDeLEntree && (
+              <tr data-autres-totaux>
+                <td colspan={estProprietaire ? 9 : 8} class="px-4 pb-3 pt-0">
+                  <div
+                    role="status"
+                    class={`sticky left-4 max-w-[calc(100vw-4rem)] rounded border px-3 py-2 text-xs ${
+                      autresTotaux.refus
+                        ? "border-red-200 bg-red-50 text-red-800"
+                        : "border-green-200 bg-green-50 text-green-900"
+                    }`}
+                  >
+                    <p class="font-medium">{autresTotaux.titre}</p>
+                    <ul class="mt-1 space-y-0.5">
+                      {autresTotaux.lignes.map((r) => (
+                        <li class={r.erreur ? "text-red-800" : undefined}>
+                          <a href={`#vente-${r.id}`} class="font-medium underline">{r.numero}</a> : {r.texte}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </td>
+              </tr>
+            )}
+            </>
           );
         })}
         {orders.length === 0 && !error && (
@@ -1175,6 +1222,11 @@ const filtreActif =
     });
   });
 
+  // Les totaux tapés dans les lignes et pas encore enregistrés (Ventes
+  // stand) : lib/montant-vente-bo.ts les tient, et les prête ici. Lu au
+  // clic : ce script-ci passe avant le module, qui attend la fin de la page.
+  const totaux = () => window.totauxDeLaListe;
+
   // Les actions qui écrivent passent par le formulaire (POST), les autres
   // ouvrent simplement une URL avec les identifiants cochés.
   document.querySelectorAll("[data-bulk]").forEach((b) => {
@@ -1186,6 +1238,11 @@ const filtreActif =
       // pour une vente déjà terminée.
       if (barre.dataset.envoye === "1") return;
       const quoi = b.dataset.bulk;
+      // Un total tapé et pas enregistré serait perdu au rechargement : on le
+      // dit ICI, en le nommant (relecture finale du 26/11). C'était le
+      // navigateur qui demandait, à sa façon ; « Rester » laissait la barre
+      // marquée « envoyée », et plus aucun bouton ne répondait.
+      if (totaux() && !totaux().confirmerLaPerte()) return;
       // Une action qui retire des commandes de la liste s'annonce, et dit ce
       // qu'elle change — et ce qu'elle ne change pas.
       const avertissement = b.dataset.confirme;
@@ -1201,15 +1258,23 @@ const filtreActif =
       }
       document.getElementById("bo-ids").value = ids.join(",");
       document.getElementById("bo-bulk").value = quoi;
+      // La perte est acceptée : le navigateur ne redemande plus.
+      totaux()?.laisserPartir();
       barre.dataset.envoye = "1";
       b.setAttribute("aria-busy", "true");
+      // L'envoi se voit (relecture finale du 26/11) : aria-busy seul ne
+      // changeait rien à l'écran.
+      b.classList.add("opacity-60", "cursor-wait");
       barre.submit();
     });
   });
   // Une page resservie par la flèche retour garde sa barre utilisable.
   window.addEventListener("pageshow", () => {
     delete barre.dataset.envoye;
-    document.querySelectorAll("[data-bulk][aria-busy]").forEach((b) => b.removeAttribute("aria-busy"));
+    document.querySelectorAll("[data-bulk][aria-busy]").forEach((b) => {
+      b.removeAttribute("aria-busy");
+      b.classList.remove("opacity-60", "cursor-wait");
+    });
   });
 
   document.getElementById("bo-export")?.addEventListener("click", () => {
@@ -1271,6 +1336,15 @@ const filtreActif =
   boutonFactures?.addEventListener("click", async () => {
     const ids = selection();
     if (!ids.length || boutonFactures.disabled) return;
+    // Une vente cochée dont le total tapé n'est pas enregistré : rien ne part
+    // (relecture finale du 26/11). « Factures » ne quitte pas la page, le
+    // navigateur ne retenait donc rien, et la facture prenait son numéro
+    // pour toujours avec l'ANCIEN total — le nouveau était refusé ensuite.
+    const refus = totaux()?.avantFactures(ids) ?? null;
+    if (refus) {
+      direFactures(refus, true);
+      return;
+    }
     const avertissement = boutonFactures.dataset.message;
     if (avertissement && !window.confirm(avertissement)) return;
     const libelle = boutonFactures.textContent;

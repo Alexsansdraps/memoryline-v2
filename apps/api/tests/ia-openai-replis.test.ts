@@ -26,6 +26,8 @@ type Recue = Record<string, string> & { images: string };
 const recues: Recue[] = [];
 /** Sa réponse à une requête : null = l'image. */
 let refuser: (r: Recue) => { statut: number; corps: unknown } | null = () => null;
+/** Vrai : le faux OpenAI répond 200, envoie le début de l'image, puis coupe la connexion. */
+let couperLeCorps = false;
 
 const IMAGE = await sharp({ create: { width: 16, height: 16, channels: 3, background: "#c33" } })
   .png()
@@ -49,6 +51,14 @@ const serveur = createServer(async (req, res) => {
   const recue = await lire(req);
   recues.push(recue);
   const refus = refuser(recue);
+  if (couperLeCorps) {
+    // Les en-têtes 200, le début du JSON, puis plus rien : la connexion
+    // tombe pendant que l'image arrive (relecture finale du 26/11).
+    res.writeHead(200, { "content-type": "application/json", "content-length": "100000" });
+    res.write(`{"data":[{"b64_json":"${IMAGE.toString("base64").slice(0, 40)}`);
+    setTimeout(() => res.socket?.destroy(), 50);
+    return;
+  }
   res.writeHead(refus?.statut ?? 200, { "content-type": "application/json" });
   res.end(
     JSON.stringify(
@@ -82,6 +92,7 @@ const {
   coutDeLImage,
   coutDUnEchec,
   delaiDepasse,
+  erreurFacturee,
 } = await import("../src/ia.ts");
 
 /** Les lignes que l'appel écrit au journal. */
@@ -98,6 +109,7 @@ beforeEach(() => {
   recues.length = 0;
   journal.length = 0;
   refuser = () => null;
+  couperLeCorps = false;
 });
 
 const PHOTO = [{ nom: "photo.jpg", donnees: IMAGE, type: "image/jpeg" }];
@@ -380,7 +392,12 @@ test("les suites de gpt-image-2 sans tarif comptent au moins comme gpt-image-2 (
   // Qualité pas envoyée (« auto ») : comptée comme « high », la plus chère.
   assert.deepEqual(coutAttenduDuModele("gpt-image-2", "1584x2240", null), { cents: 26, estime: false });
   assert.equal(coutAttenduDuModele("gpt-image-1.5", "1024x1536", "high"), null);
-  assert.equal(coutAttenduDuModele("gpt-image-2", "auto", "high"), null);
+  // « auto » (le modèle décide) : comptée comme 1024 × 1536, marquée
+  // « estimé » (relecture finale du 26/11 ; avant : null, donc 8 c).
+  assert.deepEqual(coutAttenduDuModele("gpt-image-2", "auto", "high"), { cents: 17, estime: true });
+  assert.deepEqual(coutAttenduDuModele("gpt-image-2.5-sunburst", "auto", "high"), { cents: 17, estime: true });
+  assert.deepEqual(coutAttenduDuModele("gpt-image-2.5-flare", "auto", null), { cents: 17, estime: true });
+  assert.equal(coutAttenduDuModele("gpt-image-1.5", "auto", "high"), null);
 
   const usage = { input_tokens: 2500, output_tokens: 16765, input_tokens_details: { text_tokens: 1000, image_tokens: 1500 } };
   const envoi = { taille: "2416x3424", qualite: "high" };
@@ -393,6 +410,25 @@ test("les suites de gpt-image-2 sans tarif comptent au moins comme gpt-image-2 (
   assert.equal(coutDeLImage("gpt-image-2.5-sunburst", null, envoi, 60), 60);
   // Les modèles sans règle gardent le réglage, comme avant.
   assert.equal(coutDeLImage("gpt-image-1.5", null, { taille: "1024x1536", qualite: "high" }, 8), 8);
+  // Relecture finale du 26/11 : « auto » avec une suite de gpt-image-2.
+  // L'affiche portrait rendue en 1024 × 1536 (5 488 jetons) comptait 8 c ;
+  // gpt-image-2, pour la même image, 16 c.
+  const usageAuto = { input_tokens: 2500, output_tokens: 5488, input_tokens_details: { text_tokens: 1000, image_tokens: 1500 } };
+  const auto = { taille: "auto", qualite: "high" };
+  assert.equal(coutDeLImage("gpt-image-2", usageAuto, auto, 8), 16);
+  assert.equal(coutDeLImage("gpt-image-2.5-sunburst", usageAuto, auto, 8), 17);
+  assert.equal(coutDeLImage("gpt-image-2.5-flare", usageAuto, auto, 8), 17);
+  // Sans consommation (coupée au délai) : le coût attendu d'« auto ».
+  assert.equal(coutDeLImage("gpt-image-2.5-sunburst", null, auto, 8), 17);
+  // Une image plus grande que prévu, d'après sa consommation : le tarif de
+  // gpt-image-2 sert de plancher (9 055 jetons : 26 c, pour 17 attendus).
+  assert.equal(coutDeLImage("gpt-image-2.5-sunburst", usage, auto, 8), 47);
+  const usage1584 = { input_tokens: 2500, output_tokens: 9055, input_tokens_details: { text_tokens: 1000, image_tokens: 1500 } };
+  assert.equal(coutDeLImage("gpt-image-2.5-sunburst", usage1584, { taille: "1024x1536", qualite: "high" }, 8), 26);
+  // gpt-image-1.5 et 1-mini gardent l'estimation fixe du réglage (voulu :
+  // l'aide du BO le dit), consommation connue ou non.
+  assert.equal(coutDeLImage("gpt-image-1.5", usageAuto, auto, 8), 8);
+  assert.equal(coutDeLImage("gpt-image-1-mini", usage1584, { taille: "1024x1536", qualite: "high" }, 8), 8);
 });
 
 test("une création coupée au délai compte au plafond ; un refus d'OpenAI, non (relecture du 26/11)", () => {
@@ -412,4 +448,34 @@ test("une création coupée au délai compte au plafond ; un refus d'OpenAI, non
   // L'image reçue, puis perdue plus loin (disque plein…) : son vrai coût.
   const usage = { input_tokens: 2500, output_tokens: 9055, input_tokens_details: { text_tokens: 1000, image_tokens: 1500 } };
   assert.equal(coutDUnEchec(new Error("ENOSPC"), { ...o, usage }), 26);
+});
+
+test("une réponse 200 coupée en route compte au plafond, comme une création coupée au délai (relecture finale du 26/11)", async () => {
+  // Le faux OpenAI envoie ses en-têtes 200 et le début de l'image, puis la
+  // connexion tombe : l'image est dessinée, donc facturée.
+  couperLeCorps = true;
+  const erreur = await appeler("gpt-image-2", "1584x2240").then(
+    () => null,
+    (e: unknown) => e,
+  );
+  assert.ok(erreur, "l'appel échoue");
+  assert.equal(recues.length, 1, "aucun nouvel essai");
+  assert.equal(erreurFacturee(erreur), true);
+  assert.equal(delaiDepasse(erreur), false);
+  const o = { modele: "gpt-image-2", envoi: { taille: "1584x2240", qualite: "high" }, usage: null, coutParImageCents: 8 };
+  assert.equal(coutDUnEchec(erreur, o), 26);
+  assert.equal(coutDUnEchec(erreur, { ...o, modele: "gpt-image-2.5-sunburst", envoi: { taille: "2416x3424", qualite: "high" } }), 47);
+
+  // Un refus d'OpenAI n'est pas marqué : 0, comme avant.
+  couperLeCorps = false;
+  refuser = () => erreur400("Your request was rejected by the safety system.", null);
+  const refus = await appeler("gpt-image-2", "1584x2240").then(
+    () => null,
+    (e: unknown) => e,
+  );
+  assert.ok(refus);
+  assert.equal(erreurFacturee(refus), false);
+  assert.equal(coutDUnEchec(refus, o), 0);
+  // Une connexion perdue AVANT toute réponse non plus.
+  assert.equal(coutDUnEchec(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }), o), 0);
 });

@@ -186,3 +186,52 @@ test("la vignette d'une ligne toute en Caveat change de version, et elle seule",
   ])
     assert.equal(versionApercu(affiche(ligne3)), sansSel(affiche(ligne3)), JSON.stringify(ligne3));
 });
+
+test("¢ £ ¤ ¥ ƒ ₤ au milieu d'une ligne en Manuscrite : la vignette change de version, et elle seule (relecture finale du 26/11)", () => {
+  /** La version telle qu'apercus.ts la calcule sans aucun sel. */
+  const sansSel = (config: unknown) =>
+    createHash("sha1").update(JSON.stringify(config ?? null)).digest("base64url").slice(0, 10);
+  /** Avec le seul sel des lignes tout entières en Caveat (celui d'avant). */
+  const selDesChiffres = (config: unknown) =>
+    createHash("sha1").update(JSON.stringify(config ?? null)).update("chiffres-en-caveat").digest("base64url").slice(0, 10);
+  const affiche = (ligne3: TextBlock) => ({
+    schemaVersion: 1,
+    format: "A4",
+    view: "front",
+    characters: [],
+    texts: { lines: [...TETE, { ...ligne3, color: ENCRE }] },
+  });
+  // Rangées avec un tampon à la place du symbole : elles se refont une fois.
+  for (const ligne3 of [
+    { value: "Voyage à Londres £", font: "shabby" },
+    { value: "Prix 25 ¥", font: "shabby" },
+    { value: "Souvenir ¢ ¤ ƒ ₤", font: "shabby" },
+    // Sans police, la ligne 3 est en Manuscrite, au moteur comme ici.
+    { value: "Londres £" },
+    { value: "Noël 2025\nLondres £", font: "shabby" },
+  ])
+    assert.notEqual(versionApercu(affiche(ligne3)), sansSel(affiche(ligne3)), JSON.stringify(ligne3));
+  // « £ » seul : les deux sels (il était déjà refait au 26/11 à 14 h 31 ; il
+  // l'est une fois de plus).
+  const seul = affiche({ value: "£", font: "shabby" });
+  assert.notEqual(versionApercu(seul), sansSel(seul));
+  assert.notEqual(versionApercu(seul), selDesChiffres(seul));
+  // Justes avant : même version, donc même adresse dans les courriels.
+  for (const ligne3 of [
+    // La serif a ces symboles : rien n'a changé pour elle.
+    { value: "Londres £", font: "serif" },
+    { value: "Noël 2026", font: "shabby" },
+    { value: "Été au bord de l'eau", font: "shabby" },
+    { value: "Prix 25 €", font: "shabby" },
+  ])
+    assert.equal(versionApercu(affiche(ligne3)), sansSel(affiche(ligne3)), JSON.stringify(ligne3));
+  // Le titre (ligne 1, serif par défaut) avec un symbole : inchangé.
+  const titre = {
+    schemaVersion: 1,
+    format: "A4",
+    view: "front",
+    characters: [],
+    texts: { lines: [{ value: "LONDRES £", color: ENCRE }, { value: "Famille Dupont", font: "shabby", color: ENCRE }] },
+  };
+  assert.equal(versionApercu(titre), sansSel(titre));
+});

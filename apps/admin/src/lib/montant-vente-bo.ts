@@ -30,9 +30,33 @@ import {
   centimesSaisis,
   etatDuTotal,
   questionDeCorrection,
+  questionTotauxEnAttente,
+  refusDesFacturesEnAttente,
   SAISIE_ILLISIBLE,
   TOTAL_EN_ATTENTE,
 } from "./montant-vente.ts";
+
+/**
+ * Ce que la barre de la sélection de Ventes stand (script de
+ * components/OrderTable.astro) demande aux totaux tapés dans les lignes
+ * (relecture finale du 26/11).
+ */
+export interface TotauxDeLaListe {
+  /** Les numéros des ventes dont le total tapé n'est pas enregistré, parmi `ids` (toutes sans `ids`). */
+  enAttente(ids?: readonly string[]): string[];
+  /** Le refus de « Factures » quand une vente cochée a un total en attente ; null sinon. */
+  avantFactures(ids: readonly string[]): string | null;
+  /** Avant un geste qui recharge la page : vrai s'il n'y a rien en attente, ou si la perte est acceptée. */
+  confirmerLaPerte(): boolean;
+  /** La page part, la perte acceptée : le navigateur ne retient plus. */
+  laisserPartir(): void;
+}
+
+declare global {
+  interface Window {
+    totauxDeLaListe?: TotauxDeLaListe;
+  }
+}
 
 for (const form of document.querySelectorAll<HTMLFormElement>("form[data-montant-vente]")) {
   form.addEventListener("submit", (evenement) => {
@@ -80,6 +104,8 @@ const lignes: LigneDuTotal[] = [
 
 /** Un envoi est parti : plus rien ne repart, et la page peut se quitter. */
 let envoiEnCours = false;
+/** Les totaux en attente sont abandonnés en connaissance de cause (barre de la sélection). */
+let pertesAcceptees = false;
 
 const etat = (l: LigneDuTotal) => etatDuTotal(l.champ.value, l.avant);
 
@@ -160,20 +186,49 @@ for (const l of lignes) {
   });
 }
 
-// Quitter la page avec un total tapé et pas envoyé (« Marquer terminées »,
-// un filtre, un onglet, la fiche…) : le navigateur demande d'abord.
+// Quitter la page avec un total tapé et pas envoyé (un filtre, un onglet, la
+// fiche…) : le navigateur demande d'abord. La barre de la sélection, elle,
+// demande avant (`confirmerLaPerte`, plus bas).
 if (lignes.length)
   window.addEventListener("beforeunload", (e) => {
-    if (envoiEnCours || !lignes.some((l) => etat(l) !== "inchange")) return;
+    if (envoiEnCours || pertesAcceptees || !lignes.some((l) => etat(l) !== "inchange")) return;
     e.preventDefault();
     // Les navigateurs plus anciens ne demandent confirmation que si
     // `returnValue` est posé.
     e.returnValue = "";
   });
 
+/** Les lignes dont le total tapé n'est pas enregistré, parmi `ids` (toutes sans `ids`). */
+const enAttente = (ids?: readonly string[]) =>
+  lignes.filter((l) => etat(l) !== "inchange" && (!ids || ids.includes(String(l.id))));
+
+/*
+ * Pour la barre de la sélection (relecture finale du 26/11). « Factures »
+ * télécharge sans quitter la page : le garde ci-dessus ne la voyait pas, et
+ * une vente cochée était facturée — pour toujours — à son ANCIEN total. Les
+ * autres gestes rechargent la page : le navigateur demandait à sa façon, et
+ * « Rester » laissait la barre bloquée. Ils demandent désormais eux-mêmes,
+ * en nommant les ventes.
+ */
+window.totauxDeLaListe = {
+  enAttente: (ids) => enAttente(ids).map((l) => l.numero),
+  avantFactures(ids) {
+    const lesquelles = enAttente(ids);
+    return lesquelles.length ? refusDesFacturesEnAttente(lesquelles.map((l) => l.numero)) : null;
+  },
+  confirmerLaPerte() {
+    const lesquelles = enAttente();
+    return !lesquelles.length || window.confirm(questionTotauxEnAttente(lesquelles.map((l) => l.numero)));
+  },
+  laisserPartir() {
+    pertesAcceptees = true;
+  },
+};
+
 // Une page resservie par la flèche retour ne doit pas garder l'envoi bloqué.
 window.addEventListener("pageshow", () => {
   envoiEnCours = false;
+  pertesAcceptees = false;
   for (const l of lignes) {
     l.bouton?.removeAttribute("aria-busy");
     l.bouton?.classList.remove("opacity-60", "cursor-wait");

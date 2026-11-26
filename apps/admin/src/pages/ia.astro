@@ -203,8 +203,17 @@ if (Astro.request.method === "POST") {
         tailleChoisie = "1024x1536";
       }
       await api.setSetting("ia.stylePrompt", String(f.get("stylePrompt") ?? ""));
-      await api.setSetting("ia.modele", modeleChoisi);
-      await api.setSetting("ia.taille", tailleChoisie);
+      // Le modèle et la taille ne s'écrivent que s'ils changent (relecture
+      // finale du 26/11) : leur date d'enregistrement ouvre la période que
+      // compte le cadre « Taille maximale refusée » (repliDeTaille, ia.ts).
+      // Réécrits à chaque enregistrement du plafond ou du délai de
+      // conservation, ils la remettaient à zéro, et le cadre disparaissait
+      // alors que rien n'avait changé.
+      const enregistres = await api.settings();
+      if (String(enregistres["ia.modele"] ?? "") !== modeleChoisi)
+        await api.setSetting("ia.modele", modeleChoisi);
+      if (String(enregistres["ia.taille"] ?? "") !== tailleChoisie)
+        await api.setSetting("ia.taille", tailleChoisie);
       await api.setSetting("ia.plafondMensuelCents", plafond === "vide" ? "" : plafond);
       await api.setSetting("ia.purgeJours", entier(f.get("purgeJours"), PURGE_DEFAUT));
       flash =
@@ -491,11 +500,15 @@ const derniere = premiere + lignes.length;
 
       <div class="bg-bo-surface px-4 py-3">
         <div class="text-xs text-bo-muted">
+          {/* « auto » : le modèle choisit la taille, l'API la compte comme
+              1024 × 1536 (coutAttenduDuModele, relecture finale du 26/11). */}
           {coutAttendu === null
             ? "Coût d'un aperçu (estimation fixe)"
-            : stats?.coutAttenduEstime
-              ? "Coût d'un aperçu, environ (tarifs de gpt-image-2)"
-              : "Coût d'un aperçu, environ"}
+            : taille === "auto"
+              ? "Coût d'un aperçu, environ (« auto » compté comme 1024 × 1536)"
+              : stats?.coutAttenduEstime
+                ? "Coût d'un aperçu, environ (tarifs de gpt-image-2)"
+                : "Coût d'un aperçu, environ"}
         </div>
         <div class="mt-1 text-2xl">
           {coutParImage > 0 ? formatPrice(coutParImage) : "—"}
@@ -503,7 +516,7 @@ const derniere = premiere + lignes.length;
         <div class="text-xs text-bo-muted">
           {apercusRestants === null
             ? `modèle ${modele}`
-            : `${coutAttendu === null ? "" : `en ${taille.replace("x", " × ")} : `}soit environ ${apercusRestants} aperçu${apercusRestants > 1 ? "s" : ""} avant le plafond`}
+            : `${coutAttendu === null || taille === "auto" ? "" : `en ${taille.replace("x", " × ")} : `}soit environ ${apercusRestants} aperçu${apercusRestants > 1 ? "s" : ""} avant le plafond`}
         </div>
       </div>
     </div>
@@ -619,9 +632,9 @@ const derniere = premiere + lignes.length;
         la taille enregistrée redevient 1024 × 1536, et les affiches en paysage
         partent en 1536 × 1024. Avec gpt-image-2, la galerie montre le coût
         réel de chaque image ; avec ses suites, une estimation sur les tarifs
-        de gpt-image-2, selon la taille ; avec gpt-image-1.5 ou 1-mini, une
-        estimation fixe, la même quelle que soit la taille. Une estimation est
-        marquée « estimé ».
+        de gpt-image-2, selon la taille (« auto » comptée comme 1024 × 1536,
+        au moins) ; avec gpt-image-1.5 ou 1-mini, une estimation fixe, la même
+        quelle que soit la taille. Une estimation est marquée « estimé ».
       </p>
 
       <div class="flex flex-wrap items-end gap-4">
