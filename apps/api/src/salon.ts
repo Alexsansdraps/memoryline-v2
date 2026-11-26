@@ -32,6 +32,7 @@ import { fr } from "./courriels/fr.js";
 import { enregistrerFichiersDImpression } from "./configurator-routes.js";
 import { rattacherGenerationsAuPanier } from "./ia.js";
 import { HORS_VENTES } from "./statuts-vente.js";
+import { estCorrectionDuMontant } from "./montant-vente-stand.js";
 import { prochainNumeroDeCommande } from "./numeros-commande.js";
 import { estProprietaire, standsDuVendeur } from "./vendeurs.js";
 import { supprimerPourToujours } from "./suppression.js";
@@ -197,6 +198,13 @@ export function mountSalonRoutes(app: Hono): void {
             eq(schema.orderTransactions.status, "success"),
           ),
         );
+      // Son montant corrigé au BO (26/11, montant-vente-stand.ts) : rouverte
+      // puis revalidée, la vente recompterait ses lignes et perdrait la
+      // correction sans le dire (« ils veulent un cadre » : le cadre n'est
+      // que dans le montant). Avant le refus des remboursements, qui dirait
+      // à tort « remboursée » pour une correction à la baisse.
+      if (ecritures.some(estCorrectionDuMontant))
+        return { erreur: "Son montant a été corrigé au back-office : corrigez-la au back-office.", statut: 409 as const };
       if (ecritures.some((e) => e.kind === "refund"))
         return { erreur: "Cette commande a été remboursée : corrigez-la au back-office.", statut: 409 as const };
       // Déjà encaissée au BO par Margaux (17/11) : la tablette ne défait pas

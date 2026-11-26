@@ -47,6 +47,7 @@ export const es: Partial<Record<CleCourriel, string>> = {
   "lignes.format": "Formato {format}",
   "lignes.indisponible": "Esta lámina ya no está disponible.",
   "lignes.titreParDefaut": "Lámina personalizada",
+  "lignes.ajustement": "Ajuste de precio",
 
   /* --- Confirmation de commande ------------------------------------------- */
 

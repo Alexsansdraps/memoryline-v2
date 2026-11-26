@@ -49,6 +49,9 @@ import {
   type Courrier,
 } from "./mail.js";
 import { cheminApercu } from "./apercus.js";
+// Le montant d'une vente du stand corrigé au BO (26/11) : la page « Mon
+// compte » d'une habituée doit expliquer l'écart, comme sa facture.
+import { correctionNette, PASSERELLE_DU_STAND } from "./montant-vente-stand.js";
 import {
   cheminSite,
   langueDuDestinataire,
@@ -1406,9 +1409,34 @@ export function mountCompteRoutes(app: Hono): void {
       0,
     );
     const port = order.shippingCents ?? 0;
+    // Une vente du stand dont le montant a été corrigé À LA HAUSSE au BO
+    // (26/11 : « ils changent d'avis ils veulent un cadre par exemple ») :
+    // ses lignes ne disent plus son total. L'écart se lit sur sa propre
+    // ligne, « Ajustement du prix », comme sur la facture (ligneDAjustement,
+    // commandes.ts) ; sans elle, la cliente lisait 29 € d'articles, « Livraison
+    // offerte » et un total de 39 €. Une baisse se lit déjà comme une remise.
+    // Mêmes écritures que la facture : réussies, ou annulées avec la vente.
+    const ajustement =
+      order.channel === "salon"
+        ? Math.max(
+            0,
+            correctionNette(
+              await db
+                .select()
+                .from(schema.orderTransactions)
+                .where(
+                  and(
+                    eq(schema.orderTransactions.orderId, order.id),
+                    eq(schema.orderTransactions.gateway, PASSERELLE_DU_STAND),
+                    isNotNull(schema.orderTransactions.parentId),
+                  ),
+                ),
+            ),
+          )
+        : 0;
     // La remise se DÉDUIT de ce qui a été facturé : c'est le montant payé qui
     // fait foi, pas un recalcul qui pourrait diverger du jour de la commande.
-    const remise = Math.max(0, sousTotal + port - order.totalCents);
+    const remise = Math.max(0, sousTotal + ajustement + port - order.totalCents);
 
     return c.json({
       order,
@@ -1434,6 +1462,8 @@ export function mountCompteRoutes(app: Hono): void {
       montants: {
         sousTotalCents: sousTotal,
         remiseCents: remise,
+        /** Une hausse du montant corrigée au BO (vente du stand, 26/11) ; 0 sinon. */
+        ajustementCents: ajustement,
         portCents: port,
         totalCents: order.totalCents,
         rembourseCents: resume.rembourseCents,

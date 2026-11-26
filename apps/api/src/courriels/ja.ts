@@ -13,6 +13,7 @@ export const ja: Partial<Record<CleCourriel, string>> = {
   "lignes.format": "サイズ {format}",
   "lignes.indisponible": "このポスターはご利用いただけなくなりました。",
   "lignes.titreParDefaut": "パーソナライズポスター",
+  "lignes.ajustement": "価格調整",
   "confirmation.objet": "ご注文{numero}を承りました",
   "confirmation.titre": "{prenom}、ありがとうございます！",
   "confirmation.prenomParDefaut": "お客様",

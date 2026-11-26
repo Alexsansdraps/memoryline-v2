@@ -96,6 +96,19 @@ import {
   STATUTS_ANNULES,
   type FiltreTest,
 } from "./ventes-de-test.js";
+// Le montant d'une vente du stand, corrigé après sa validation (26/11).
+import {
+  ecritureDeCorrection,
+  encaissementDOrigine,
+  lireMontantCents,
+  lireMotif,
+  ligneDAjustement,
+  PASSERELLE_DU_STAND,
+  phraseDuJournal,
+  refusDeCorrection,
+  refusDuMontant,
+  refusDuMotif,
+} from "./montant-vente-stand.js";
 import {
   numeroSuivant,
   numerosDuPrefixe,
@@ -1080,6 +1093,10 @@ export function mountOrderRoutes(app: Hono): void {
         shippingLabel: schema.orders.shippingLabel,
         shippingMethod: schema.orders.shippingMethod,
         tags: schema.orders.tags,
+        // Une vente du stand facturée garde son montant (26/11,
+        // montant-vente-stand.ts) : Ventes stand le dit au lieu de proposer
+        // de le corriger.
+        invoiceNumber: schema.orders.invoiceNumber,
         customerId: schema.orders.customerId,
         customerName: schema.customers.name,
         customerEmail: schema.customers.email,
@@ -1116,19 +1133,45 @@ export function mountOrderRoutes(app: Hono): void {
             config: schema.orderItems.config,
             format: raw<string | null>`(${schema.orderItems.config} ->> 'format')`,
             imprimable: raw<boolean>`(${schema.orderItems.config} is not null)`,
+            // Le choix du client, pour Ventes stand (26/11) : cadre, sens et
+            // quantité de chaque affiche.
+            quantity: schema.orderItems.quantity,
+            cadreId: raw<string | null>`(${schema.orderItems.config} ->> 'frameId')`,
+            orientation: raw<string | null>`(${schema.orderItems.config} ->> 'orientation')`,
           })
           .from(schema.orderItems)
           .where(inArray(schema.orderItems.orderId, rows.map((r) => r.id)))
           .orderBy(asc(schema.orderItems.id))
       : [];
+    // Le nom des cadres, lu comme la fiche le lit (configurator-routes.ts,
+    // GET /admin/orders/:id) : la configuration n'en garde que l'identifiant.
+    // Un cadre s'archive, il ne disparaît pas : son nom se relit toujours.
+    const nomDuCadre = new Map(
+      (lignesApercu.length
+        ? await db.select({ id: schema.frames.id, name: schema.frames.name }).from(schema.frames)
+        : []
+      ).map((f) => [String(f.id), f.name]),
+    );
     const apercusParCommande = new Map<number, string[]>();
     const lignesParCommande = new Map<number, number>();
     // Les affiches à imprimer de chaque commande, dans l'ordre des vignettes :
     // la liste propose leurs PDF sans ouvrir la commande (demande de la
     // boutique), « 1 », « 2 »… comme les vignettes de gauche à droite.
+    //
+    // Avec le choix du client (26/11, Margaux : « pouvoir voir le choix du
+    // client (format/cadre) au lieu de "Remise sur le stand" par exemple qui
+    // ne sert à rien ») : Ventes stand montre, par affiche, le format, le
+    // cadre (null : sans cadre), le sens et la quantité.
     const affichesParCommande = new Map<
       number,
-      { id: number; titre: string | null; format: string | null }[]
+      {
+        id: number;
+        titre: string | null;
+        format: string | null;
+        cadre: string | null;
+        paysage: boolean;
+        quantite: number;
+      }[]
     >();
     for (const l of lignesApercu) {
       const liste = apercusParCommande.get(l.orderId) ?? [];
@@ -1139,7 +1182,14 @@ export function mountOrderRoutes(app: Hono): void {
       if (l.imprimable)
         affichesParCommande.set(l.orderId, [
           ...(affichesParCommande.get(l.orderId) ?? []),
-          { id: l.id, titre: l.title, format: l.format },
+          {
+            id: l.id,
+            titre: l.title,
+            format: l.format,
+            cadre: nomDuCadre.get(String(l.cadreId ?? "")) ?? null,
+            paysage: l.orientation === "paysage",
+            quantite: l.quantity,
+          },
         ]);
     }
     // Les ventes payées avec les clés d'ESSAI alors que la boutique encaisse
@@ -3658,6 +3708,107 @@ export function mountOrderRoutes(app: Hono): void {
     });
   });
 
+  /**
+   * Corrige le MONTANT d'une vente du stand déjà validée (26/11, Margaux :
+   * « pouvoir modifier le montant € de la commande stand une fois qu'elle est
+   * validée (car des fois ils changent d'avis ils veulent un cadre par
+   * exemple) le but est d'avoir les statistiques bon »).
+   *
+   * Corps : { totalCents, motif, author }. Les règles, l'écriture de
+   * correction et la phrase du journal sont dans montant-vente-stand.ts.
+   * Ici, la commande est relue sous son verrou — le même que prennent la
+   * tablette pour rouvrir une vente (salon.ts) et la facture pour se
+   * numéroter (numeroterLaFacture) : une facture éditée au même instant
+   * passe avant ou après, jamais entre la relecture et l'écriture. Puis le
+   * total, l'écriture au grand livre et la ligne du journal partent d'un
+   * bloc. L'encaissement d'origine n'est jamais réécrit.
+   */
+  app.post("/admin/orders/:id/montant", async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0)
+      return c.json({ error: "commande inconnue" }, 400);
+    const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const apresCents = lireMontantCents(b.totalCents);
+    const refusMontant = refusDuMontant(apresCents);
+    if (refusMontant || apresCents === null)
+      return c.json({ error: refusMontant ?? "Montant illisible." }, 400);
+    const motif = lireMotif(b.motif);
+    const refusMotif = refusDuMotif(motif);
+    if (refusMotif) return c.json({ error: refusMotif }, 400);
+    // « Qui » : la session d'abord (la garde de /admin/* l'a posée, une
+    // propriétaire), le nom envoyé par le BO à défaut.
+    const auteur =
+      c.get("utilisateur")?.email?.trim() ||
+      String(b.author ?? "").trim().slice(0, 200) ||
+      null;
+
+    const resultat = await db.transaction(async (tx) => {
+      const [order] = await tx
+        .select()
+        .from(schema.orders)
+        .where(eq(schema.orders.id, id))
+        .for("no key update");
+      if (!order) return { introuvable: true as const };
+      const ecritures = await tx
+        .select()
+        .from(schema.orderTransactions)
+        .where(
+          and(
+            eq(schema.orderTransactions.orderId, id),
+            eq(schema.orderTransactions.status, "success"),
+          ),
+        );
+      const [rendus] = await tx
+        .select({ n: raw<number>`count(*)::int` })
+        .from(schema.refunds)
+        .where(eq(schema.refunds.orderId, id));
+      const origine = encaissementDOrigine(ecritures);
+      const refus = refusDeCorrection({
+        number: order.number,
+        channel: order.channel,
+        status: order.status,
+        tags: order.tags,
+        legacyId: order.legacyId,
+        invoiceNumber: order.invoiceNumber,
+        giftCardCents: order.giftCardCents,
+        remboursements: Number(rendus?.n ?? 0),
+        encaissementDOrigine: origine !== null,
+      });
+      if (refus) return { erreur: refus };
+
+      const avantCents = order.totalCents;
+      const ecriture = ecritureDeCorrection(avantCents, apresCents);
+      // Le même montant : rien à écrire, ni au grand livre ni au journal.
+      if (!ecriture)
+        return { ok: true as const, inchange: true, numero: order.number, avantCents, apresCents };
+
+      await tx
+        .update(schema.orders)
+        .set({ totalCents: apresCents })
+        .where(eq(schema.orders.id, id));
+      await tx.insert(schema.orderTransactions).values({
+        orderId: id,
+        kind: ecriture.kind,
+        status: "success",
+        amountCents: ecriture.amountCents,
+        gateway: PASSERELLE_DU_STAND,
+        parentId: origine,
+        // Le motif seul : la fiche et la facture le relisent tel quel.
+        message: motif,
+      });
+      await tx.insert(schema.orderEvents).values({
+        orderId: id,
+        kind: "event",
+        author: auteur,
+        message: phraseDuJournal(avantCents, apresCents, motif),
+      });
+      return { ok: true as const, inchange: false, numero: order.number, avantCents, apresCents };
+    });
+    if ("introuvable" in resultat) return c.notFound();
+    if ("erreur" in resultat) return c.json({ error: resultat.erreur }, 409);
+    return c.json(resultat);
+  });
+
   /* ------------------------------------------------------------------ */
   /*  La facture                                                        */
   /* ------------------------------------------------------------------ */
@@ -4109,6 +4260,31 @@ export function mountOrderRoutes(app: Hono): void {
         unitPriceCents: it.unitPriceCents,
       };
     });
+
+    // Une vente du stand dont le montant a été corrigé À LA HAUSSE au BO
+    // (26/11, montant-vente-stand.ts : « ils changent d'avis ils veulent un
+    // cadre par exemple ») : ses lignes ne disent plus son total. L'écart
+    // s'imprime sur sa propre ligne, « Ajustement du prix », avec le motif
+    // saisi — sans elle, la facture alignait des articles à 29 € sous un
+    // total de 39 €. Une baisse se lit déjà comme une réduction
+    // (`remiseCents`, plus bas). Seules les ventes du stand ont des
+    // corrections : une commande du site ne fait pas la lecture.
+    if (order.channel === "salon") {
+      // Réussies OU annulées avec la vente : une vente annulée garde son
+      // total, et sa facture doit encore y retomber (ligneDAjustement).
+      const corrections = await db
+        .select()
+        .from(schema.orderTransactions)
+        .where(
+          and(
+            eq(schema.orderTransactions.orderId, orderId),
+            eq(schema.orderTransactions.gateway, PASSERELLE_DU_STAND),
+            isNotNull(schema.orderTransactions.parentId),
+          ),
+        );
+      const ajustement = ligneDAjustement(corrections, t("lignes.ajustement"));
+      if (ajustement) lignes.push(ajustement);
+    }
 
     const sousTotal = lignes.reduce(
       (s, l) => s + l.unitPriceCents * l.quantite,

@@ -35,6 +35,7 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   isNull,
   lte,
   notInArray,
@@ -50,6 +51,15 @@ import {
 } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { HORS_VENTES } from "./statuts-vente.js";
+// Les corrections du montant d'une vente du stand (26/11) : leur règle, et
+// ce que la page attend d'une vente corrigée (essayé sans base).
+import {
+  articlesInexpliques,
+  attendusDUneVente,
+  correctionsParVente,
+  estCorrectionDuMontant,
+  PASSERELLE_DU_STAND,
+} from "./montant-vente-stand.js";
 // Le mode où la boutique encaisse, pour signaler les ventes payées en essai.
 import { configPaiement, payeeEnEssai } from "./paiements-reglages.js";
 
@@ -219,7 +229,7 @@ export interface Mouvement {
   orderId: number;
   canal: string;
   stand: string | null;
-  /** « Vente », « Remboursement », « Encaissement ». */
+  /** « Vente », « Remboursement », « Encaissement », « Correction du montant » (26/11). */
   genre: string;
   /** D'où la ligne est tirée, registre et moyen compris. */
   source: string;
@@ -336,7 +346,7 @@ function libelleCanal(canal: string): string {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Tout ce que la page affiche, en neuf requêtes groupées (une dixième quand
+ * Tout ce que la page affiche, en dix requêtes groupées (une onzième quand
  * la boutique encaisse pour de vrai : les ventes payées en essai).
  *
  * Aucune n'est faite commande par commande : chacune part de sa table et
@@ -364,6 +374,7 @@ async function rapprocher(periode: Periode): Promise<Finances> {
     cartesEmises,
     cartesDepensees,
     cartesEnCirculation,
+    correctionsParCommande,
   ] = await Promise.all([
     // 1. Les commandes de la période, avec leur stand et leur client. C'est la
     //    colonne vertébrale : tout le reste vient s'y accrocher.
@@ -472,6 +483,8 @@ async function rapprocher(periode: Periode): Promise<Finances> {
         date: schema.orderTransactions.createdAt,
         genre: schema.orderTransactions.kind,
         passerelle: schema.orderTransactions.gateway,
+        // Une correction du montant (26/11) se dit comme telle, plus bas.
+        parentId: schema.orderTransactions.parentId,
         cents: schema.orderTransactions.amountCents,
         orderId: schema.orders.id,
         numero: schema.orders.number,
@@ -546,6 +559,35 @@ async function rapprocher(periode: Periode): Promise<Finances> {
           ),
         ),
       ),
+
+    // 10. Les corrections du montant d'une vente du stand (26/11,
+    //     montant-vente-stand.ts) : par commande, ce qu'elles ont ajouté
+    //     (« sale ») ou retiré (« refund ») au montant. Elles sont DÉJÀ dans
+    //     le grand livre de la requête 3 — c'est ce qui garde le
+    //     rapprochement avec les commandes à zéro ; elles ne servent ici
+    //     qu'à expliquer, commande par commande, pourquoi la vente ne vaut
+    //     plus son encaissement d'origine ni la somme de ses articles.
+    db
+      .select({
+        orderId: schema.orderTransactions.orderId,
+        genre: schema.orderTransactions.kind,
+        cents: raw<number>`coalesce(sum(${schema.orderTransactions.amountCents}), 0)::int`,
+      })
+      .from(schema.orderTransactions)
+      .innerJoin(
+        schema.orders,
+        eq(schema.orderTransactions.orderId, schema.orders.id),
+      )
+      .where(
+        and(
+          ventesDeLaPeriode(),
+          eq(schema.orderTransactions.status, "success"),
+          eq(schema.orderTransactions.gateway, PASSERELLE_DU_STAND),
+          isNotNull(schema.orderTransactions.parentId),
+          inArray(schema.orderTransactions.kind, ["sale", "refund"]),
+        ),
+      )
+      .groupBy(schema.orderTransactions.orderId, schema.orderTransactions.kind),
   ]);
 
   /* --- Ce que chaque source dit, commande par commande ------------------- */
@@ -621,6 +663,15 @@ async function rapprocher(periode: Periode): Promise<Finances> {
     remboursementsCents += r.cents;
     remboursementsNombre += r.nombre;
   }
+
+  /**
+   * Les corrections du montant d'une vente du stand (26/11), par commande :
+   * `nette`, ce qu'elles ont ajouté au montant (négatif quand elles l'ont
+   * baissé) ; `baisse`, ce qu'elles ont rendu au client. Elles ne sont pas
+   * des remboursements au sens du bloc « Rembourser » (aucune ligne de
+   * `refund`) : la tuile « Remboursements » ne les compte pas.
+   */
+  const correctionDe = correctionsParVente(correctionsParCommande);
 
   /* --- Les quatre chiffres, côte à côte ---------------------------------- */
 
@@ -723,7 +774,20 @@ async function rapprocher(periode: Periode): Promise<Finances> {
     // écriture ici, et c'est normal. Elle compte dans les ventes, pas dans
     // les anomalies.
     if (cmd.reprise != null) continue;
-    const journalVente = venteJournalDe.get(cmd.id) ?? 0;
+    // Le montant d'une vente du stand corrigé au BO (26/11) : une baisse a
+    // rendu de l'argent sur place, et l'encaissement d'origine, lui, reste
+    // au grand livre tel quel. Ce que le grand livre dit de la vente, c'est
+    // donc ses encaissements moins ce que la correction a rendu — sans quoi
+    // chaque vente corrigée à la baisse passait pour une anomalie. Une hausse
+    // est un encaissement de plus : elle est déjà dans `venteJournalDe`.
+    // Les articles, eux, valent le total d'AVANT les corrections (règles
+    // essayées sans base : attendusDUneVente, montant-vente-stand.ts).
+    const { grandLivreCents: journalVente, articlesCents: attenduDesLignes } = attendusDUneVente({
+      totalCents: cmd.totalCents,
+      portCents: cmd.portCents,
+      encaissementsCents: venteJournalDe.get(cmd.id) ?? 0,
+      correction: correctionDe.get(cmd.id) ?? { nette: 0, baisse: 0 },
+    });
     const aUneEcriture = venteJournalDe.has(cmd.id);
     const paiement = paiementDe.get(cmd.id) ?? 0;
     const lignes = lignesDe.get(cmd.id) ?? 0;
@@ -770,7 +834,8 @@ async function rapprocher(periode: Periode): Promise<Finances> {
     // le total : c'est même sa raison d'être. On ne signale que les écarts
     // qu'aucune remise ne justifie.
     if (!cmd.codePromo) {
-      const attenduDesLignes = cmd.totalCents - cmd.portCents;
+      // Une correction du montant (26/11) explique l'écart au centime près :
+      // `attenduDesLignes` est le total d'AVANT elle (attendusDUneVente).
       // La remise figée au passage en caisse, quand la commande en a une :
       // elle doit expliquer l'écart au centime près.
       const figee = cmd.promotions?.detail;
@@ -778,11 +843,15 @@ async function rapprocher(periode: Periode): Promise<Finances> {
       // où une promotion automatique était en vigueur, c'est la remise,
       // déduite comme partout ailleurs (compte client, courriels). Un total
       // plus élevé que les articles, lui, reste signalé : aucune remise ne
-      // l'explique.
-      const remiseAutomatique = figee
-        ? lignes - figee.reduce((s, d) => s + d.montantCents, 0) === attenduDesLignes
-        : lignes > attenduDesLignes && promotionEnVigueur(cmd.creeLe);
-      if (lignes !== attenduDesLignes && !remiseAutomatique) {
+      // l'explique (articlesInexpliques, montant-vente-stand.ts).
+      if (
+        articlesInexpliques({
+          lignesCents: lignes,
+          attenduCents: attenduDesLignes,
+          remisesFigeesCents: figee ? figee.reduce((s, d) => s + d.montantCents, 0) : null,
+          promotionEnVigueur: !figee && lignes > attenduDesLignes && promotionEnVigueur(cmd.creeLe),
+        })
+      ) {
         raisons.push(
           `Les articles totalisent ${montant(lignes)} et le port ${montant(cmd.portCents)}, ce qui ne retombe pas sur les ${montant(cmd.totalCents)} de la commande.`,
         );
@@ -817,7 +886,14 @@ async function rapprocher(periode: Periode): Promise<Finances> {
     orderId: t.orderId,
     canal: libelleCanal(t.canal),
     stand: t.standNom,
-    genre: t.genre === "refund" ? "Remboursement" : "Vente",
+    // Une correction du montant d'une vente du stand (26/11) n'est ni une
+    // vente de plus ni un remboursement du bloc « Rembourser » : elle se
+    // nomme, et garde son signe (une baisse ressort, une hausse entre).
+    genre: estCorrectionDuMontant({ kind: t.genre, gateway: t.passerelle, parentId: t.parentId })
+      ? "Correction du montant"
+      : t.genre === "refund"
+        ? "Remboursement"
+        : "Vente",
     source: `Grand livre · ${libelleMoyen(t.passerelle)}`,
     // Le grand livre garde tous ses montants positifs et laisse le genre dire
     // le sens ; ici on rend le signe, parce qu'une colonne de montants doit

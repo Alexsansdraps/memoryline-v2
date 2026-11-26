@@ -238,6 +238,15 @@ const cartesSeules =
               <dt class="text-ink-soft">{tr("compte.commande.sous_total")}</dt>
               <dd>{formatPrice(detail.montants.sousTotalCents, locale)}</dd>
             </div>
+            {/* Un achat du stand dont le montant a été corrigé à la hausse
+                (26/11, un cadre pris après coup) : sans cette ligne, le total
+                dépassait les articles sans rien pour l'expliquer. */}
+            {(detail.montants.ajustementCents ?? 0) > 0 && (
+              <div class="flex justify-between gap-4">
+                <dt class="text-ink-soft">{tr("compte.commande.ajustement")}</dt>
+                <dd>+ {formatPrice(detail.montants.ajustementCents ?? 0, locale)}</dd>
+              </div>
+            )}
             {detail.montants.remiseCents > 0 && (
               <div class="flex justify-between gap-4">
                 <dt class="text-ink-soft">{tr("compte.commande.remise")}</dt>

@@ -34,6 +34,13 @@ import {
   type OrderDetail,
 } from "../../lib/api.ts";
 import { estVenteDeTest } from "../../lib/vente-de-test.ts";
+import {
+  centimesSaisis,
+  choixDeLAffiche,
+  correctionsDuMontant,
+  estCorrectionDuMontant,
+  messageDeCorrection,
+} from "../../lib/montant-vente.ts";
 
 const id = Number(Astro.params.id);
 const api = adminApi(Astro.request);
@@ -186,6 +193,18 @@ if (Astro.request.method === "POST" && estProprietaire) {
           ? // Une vente du stand (17/11) : aucun courrier ne part.
             `Vente du stand marquée payée : ${formatPrice(r.montantCents ?? 0)} réglés sur place.`
           : `Commande encaissée : ${formatPrice(r.montantCents ?? 0)} reçus par ${r.moyen}. La confirmation est partie chez le client. Les fichiers d'impression se préparent : leur état est en bas de la fiche.`;
+    } else if (action === "montant-vente") {
+      // Le montant d'une vente du stand déjà validée (26/11, Margaux :
+      // « pouvoir modifier le montant € de la commande stand une fois
+      // qu'elle est validée (car des fois ils changent d'avis ils veulent un
+      // cadre par exemple) le but est d'avoir les statistiques bon »). L'API
+      // fait tout et refuse en clair (apps/api/src/montant-vente-stand.ts).
+      const r = await api.corrigerMontantVente(id, {
+        totalCents: centimesSaisis(String(f.get("montant") ?? "")),
+        motif: String(f.get("motif") ?? ""),
+        author: Astro.locals.user?.email ?? undefined,
+      });
+      flash = messageDeCorrection(r);
     } else if (action === "envoyer-facture") {
       const r = await api.envoyerFacture(id, Astro.locals.user?.email ?? undefined);
       flash = `Facture ${r.numeroFacture} envoyée à ${r.destinataire}.`;
@@ -458,7 +477,15 @@ const sousTotal = items.reduce(
 const nbArticles = items.reduce((s, it) => s + it.quantity, 0);
 const port = order?.shippingCents ?? 0;
 const total = order?.totalCents ?? 0;
-const remise = Math.max(0, sousTotal + port - total);
+/**
+ * Le montant d'une vente du stand corrigé au BO (26/11,
+ * lib/montant-vente.ts) : ce que les corrections ont ajouté ou retiré, et
+ * leurs motifs. Il se lit entre le sous-total et le total, pour que les deux
+ * se recoupent : une hausse (« un cadre ») ne passe pas pour rien, une baisse
+ * ne passe pas pour une réduction.
+ */
+const correction = correctionsDuMontant(mouvements);
+const remise = Math.max(0, sousTotal + port + correction.netteCents - total);
 const rembourse = detail?.rembourseCents ?? 0;
 const portRemboursable = detail?.portRemboursableCents ?? 0;
 const netEncaisse = total - rembourse;
@@ -574,6 +601,42 @@ const estPanier = order?.status === "draft";
 const encaissableALaMain = !!order && !encaisse && !annulee && !estPanier && !auStand;
 /** Une vente du stand pas encore réglée : un seul bouton, « réglé sur place » (17/11). */
 const encaissableAuStand = !!order && !encaisse && !annulee && !estPanier && auStand;
+
+/**
+ * Le choix du client, affiche par affiche (26/11, Margaux : « pouvoir voir
+ * le choix du client (format/cadre) au lieu de "Remise sur le stand" par
+ * exemple qui ne sert à rien ») : « A4 · Sans cadre », « A3 · Cadre noir ».
+ * Une vente du stand le montre là où sa livraison disait « Remise sur le
+ * stand », comme la liste de Ventes stand.
+ */
+// Seules les affiches qui ont une configuration, comme la liste de Ventes
+// stand ; et rien pour une reprise de Shopify (ventes de caisse rangées au
+// stand), dont les lignes ne disent ni format ni cadre : elle garde sa
+// livraison (relecture du 26/11 : « 1. Sans cadre » sur une affiche
+// peut-être encadrée).
+const choixDuClient = (order?.number?.startsWith("SHOP-") ? [] : items)
+  .filter((it) => !it.carteCadeau && it.apercu)
+  .map((it) =>
+    choixDeLAffiche({
+      format: it.format,
+      cadre: it.cadre,
+      quantite: it.quantity,
+      paysage: it.orientation === "paysage",
+    }),
+  );
+
+/**
+ * Le montant d'une vente du stand payée se corrige d'ici (26/11). Une vente
+ * facturée ne le peut plus — une facture émise ne se modifie pas — et le
+ * bloc le dit au lieu du formulaire. L'API tient de toute façon les mêmes
+ * règles (apps/api/src/montant-vente-stand.ts).
+ */
+const montantCorrigeable =
+  estProprietaire &&
+  auStand &&
+  encaisse &&
+  !order?.number?.startsWith("SHOP-") &&
+  (order?.giftCardCents ?? 0) <= 0;
 
 /** Ce que l'annulation laisserait en suspens si elle ne remboursait pas. */
 const resteSiPasRembourse = encaisse ? total - rembourse : 0;
@@ -790,8 +853,24 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
           ) : (
             <p class="text-bo-muted">Aucun client rattaché.</p>
           )}
-          {order.shippingLabel && (
-            <p class="mt-3 text-bo-muted">Livraison : {order.shippingLabel}</p>
+          {/* Au stand, le choix du client plutôt que « Remise sur le
+              stand », qui ne disait rien (26/11). */}
+          {auStand && choixDuClient.length > 0 ? (
+            <div class="mt-3 text-bo-muted">
+              Choix du client :
+              <ul class="mt-0.5">
+                {choixDuClient.map((choix, rang) => (
+                  <li>
+                    {choixDuClient.length > 1 ? `Affiche ${rang + 1} : ` : ""}
+                    {choix}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            order.shippingLabel && (
+              <p class="mt-3 text-bo-muted">Livraison : {order.shippingLabel}</p>
+            )
           )}
           {lieuRetrait && (
             <p class="mt-1 text-bo-muted">
@@ -1142,14 +1221,30 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                   {resteAExpedier > 0 && ` · ${resteAExpedier} à envoyer`}
                 </span>
               </h3>
-              <span class="text-sm text-bo-muted">
-                {order.shippingLabel}
-                {lieuRetrait
-                  ? ` · ${lieuRetrait.nom}`
-                  : order.relayPointLabel
-                    ? ` · ${order.relayPointLabel}`
-                    : ""}
-              </span>
+              {/* Au stand, le choix du client à la place de « Remise sur le
+                  stand », la même phrase sur chaque vente (26/11, Margaux :
+                  « pouvoir voir le choix du client (format/cadre) »). */}
+              {auStand && choixDuClient.length > 0 ? (
+                <ul class="flex flex-wrap justify-end gap-1.5 text-sm" aria-label="Choix du client">
+                  {choixDuClient.map((choix, rang) => (
+                    <li class="rounded bg-bo-bg px-2 py-0.5 text-bo-ink">
+                      {choixDuClient.length > 1 && (
+                        <span class="text-xs text-bo-muted">{rang + 1}. </span>
+                      )}
+                      {choix}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span class="text-sm text-bo-muted">
+                  {order.shippingLabel}
+                  {lieuRetrait
+                    ? ` · ${lieuRetrait.nom}`
+                    : order.relayPointLabel
+                      ? ` · ${order.relayPointLabel}`
+                      : ""}
+                </span>
+              )}
             </header>
 
             <table class="w-full text-sm">
@@ -1805,6 +1900,20 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 </dt>
                 <dd>{formatPrice(sousTotal)}</dd>
               </div>
+              {/* Un montant corrigé au BO (26/11) : l'écart entre les
+                  articles et le total, avec ses motifs. */}
+              {correction.netteCents !== 0 && (
+                <div class="flex justify-between gap-3">
+                  <dt class="text-bo-muted">
+                    Correction du montant
+                    {correction.motifs.length > 0 && ` · ${correction.motifs.join(", ")}`}
+                  </dt>
+                  <dd class="whitespace-nowrap">
+                    {correction.netteCents > 0 ? "+ " : "− "}
+                    {formatPrice(Math.abs(correction.netteCents))}
+                  </dd>
+                </div>
+              )}
               {remise > 0 && (
                 <div class="flex justify-between">
                   <dt class="text-bo-muted">
@@ -1860,17 +1969,26 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                       salon.ts) reste au journal, mais barré : affiché comme
                       les autres, une vente corrigée deux fois se lisait
                       comme trois encaissements. */}
+                  {/* Une correction du montant (26/11) se nomme, avec son
+                      motif et son signe : une hausse lue « Encaissement »
+                      passait pour un second paiement, une baisse lue
+                      « Remboursement » pour un remboursement. */}
                   {mouvements.map((m) => (
                     <li
                       class={`flex flex-wrap items-baseline justify-between gap-2 ${m.status === "annule" ? "text-bo-muted" : ""}`}
                     >
                       <span>
-                        {LIBELLE_MOUVEMENT[m.kind] ?? m.kind}
+                        {estCorrectionDuMontant(m)
+                          ? "Correction du montant"
+                          : (LIBELLE_MOUVEMENT[m.kind] ?? m.kind)}
                         {m.gateway && (
                           <span class="text-bo-muted"> · {libelleMoyen(m.gateway)}</span>
                         )}
                         {m.externalRef && (
                           <span class="ml-1 text-xs text-bo-muted">{m.externalRef}</span>
+                        )}
+                        {estCorrectionDuMontant(m) && m.message && (
+                          <span class="ml-1 text-xs text-bo-muted">« {m.message} »</span>
                         )}
                         {m.status === "annule" && (
                           <span class="ml-1 text-xs"> · annulé, ne compte pas</span>
@@ -1880,12 +1998,12 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                         class={
                           m.status === "annule"
                             ? "line-through"
-                            : m.kind === "refund"
+                            : m.kind === "refund" && !estCorrectionDuMontant(m)
                               ? "text-violet-700"
                               : ""
                         }
                       >
-                        {m.kind === "refund" ? "− " : ""}
+                        {m.kind === "refund" ? "− " : estCorrectionDuMontant(m) ? "+ " : ""}
                         {formatPrice(m.amountCents)}
                         <span class="ml-2 text-xs text-bo-muted">
                           {quand(m.createdAt)}
@@ -1896,6 +2014,76 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
                 </ul>
               </div>
             )}
+
+            {/* Corriger le montant d'une vente du stand payée (26/11,
+                Margaux : « pouvoir modifier le montant € de la commande
+                stand une fois qu'elle est validée (car des fois ils
+                changent d'avis ils veulent un cadre par exemple) le but est
+                d'avoir les statistiques bon »). Une vente facturée le dit à
+                la place du formulaire. */}
+            {montantCorrigeable &&
+              (order.invoiceNumber ? (
+                <p class="border-t border-bo-border px-4 py-3 text-sm text-bo-muted">
+                  Vente déjà facturée ({order.invoiceNumber}) : une facture émise ne
+                  se modifie pas, son montant ne peut donc plus changer.
+                </p>
+              ) : (
+                <details id="corriger-montant" class="border-t border-bo-border">
+                  <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-bo-accent">
+                    Corriger le montant de la vente
+                  </summary>
+                  <form
+                    method="POST"
+                    class="space-y-3 px-4 pb-4"
+                    data-montant-vente
+                    data-numero={order.number}
+                    data-avant={total}
+                  >
+                    <input type="hidden" name="_action" value="montant-vente" />
+                    <p class="text-sm text-bo-muted">
+                      Le client a changé d'avis après la validation (un cadre en
+                      plus, une affiche de moins…) : saisissez le montant total
+                      qu'il a réglé. Les statistiques, la carte de l'accueil, les
+                      totaux du stand, l'export et la page Finances suivent. Le
+                      grand livre garde l'encaissement d'origine et reçoit une
+                      écriture de correction ; le journal de la vente dit l'ancien
+                      et le nouveau montant, le motif et qui l'a changé. Les
+                      affiches, elles, ne changent pas.
+                    </p>
+                    <div class="flex flex-wrap items-end gap-3">
+                      <label class="text-sm">
+                        <span class="mb-1 block text-xs text-bo-muted">Nouveau montant total (€)</span>
+                        <input
+                          type="number"
+                          name="montant"
+                          step="0.01"
+                          min="0.01"
+                          required
+                          value={(total / 100).toFixed(2)}
+                          class="w-32 rounded border border-bo-border px-2 py-1"
+                        />
+                      </label>
+                      <label class="min-w-[12rem] flex-1 text-sm">
+                        <span class="mb-1 block text-xs text-bo-muted">Motif, en quelques mots</span>
+                        <input
+                          name="motif"
+                          required
+                          maxlength="120"
+                          placeholder="cadre ajouté, erreur de saisie…"
+                          class="w-full rounded border border-bo-border px-2 py-1"
+                        />
+                      </label>
+                    </div>
+                    <p class="text-xs text-bo-muted">
+                      Si le montant augmente, une facture éditée ensuite porte
+                      l'écart sur une ligne « Ajustement du prix », avec ce motif.
+                    </p>
+                    <button class="rounded bg-bo-nav px-4 py-2 text-sm text-white">
+                      Enregistrer le nouveau montant
+                    </button>
+                  </form>
+                </details>
+              ))}
 
             {paiement && (
               <p class="border-t border-bo-border px-4 py-3 text-sm text-bo-muted">
@@ -2651,6 +2839,9 @@ const chezStripe = paiement?.provider === "stripe" ? paiement.externalRef : null
   {/* Les PDF d'impression : prêt, en préparation, ou impossible et pourquoi. */}
   <script>
     import "../../lib/impression-bo.ts";
+    // « Corriger le montant de la vente » (26/11) : la confirmation redit
+    // l'ancien et le nouveau montant.
+    import "../../lib/montant-vente-bo.ts";
 
     // Le bloc « Rembourser » : passer de l'euro au pourcentage remet le champ
     // sur « tout » dans la nouvelle unité (le reste, ou 100 %), et la ligne

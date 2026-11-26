@@ -42,6 +42,7 @@ export const it: Partial<Record<CleCourriel, string>> = {
   "lignes.format": "Formato {format}",
   "lignes.indisponible": "Questo poster non è più disponibile.",
   "lignes.titreParDefaut": "Poster personalizzato",
+  "lignes.ajustement": "Adeguamento del prezzo",
 
   /* --- Confirmation de commande ------------------------------------------- */
 

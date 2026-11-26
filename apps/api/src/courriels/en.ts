@@ -38,6 +38,7 @@ export const en: Partial<Record<CleCourriel, string>> = {
   "lignes.format": "Size {format}",
   "lignes.indisponible": "This poster is no longer available.",
   "lignes.titreParDefaut": "Personalised poster",
+  "lignes.ajustement": "Price adjustment",
 
   /* --- Confirmation de commande ------------------------------------------- */
 

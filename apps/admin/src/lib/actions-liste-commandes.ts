@@ -19,6 +19,7 @@ import {
   type ParcoursTraitement,
 } from "@memoryline/types";
 import type { adminApi } from "./api.ts";
+import { centimesSaisis, messageDeCorrection } from "./montant-vente.ts";
 import { compteRenduMiseEnTest } from "./vente-de-test.ts";
 
 type Api = ReturnType<typeof adminApi>;
@@ -30,6 +31,9 @@ type Api = ReturnType<typeof adminApi>;
 export const ACTIONS_DE_LA_LISTE: readonly string[] = [
   "annuler-vente",
   "supprimer-vente",
+  // Corriger le montant d'une vente du stand (26/11) : fait avant que Ventes
+  // stand lise ses chiffres, la carte du stand montre déjà le nouveau total.
+  "montant-vente",
   "etape",
   "masse",
 ];
@@ -73,6 +77,24 @@ export async function faireActionDeLaListe(
       const numero = String(f.get("numero") ?? "");
       await api.supprimerCommande(Number(f.get("id")));
       flash = `Vente ${numero} supprimée définitivement, avec ses lignes et son journal.`;
+    } else if (action === "montant-vente") {
+      // Le montant d'une vente du stand déjà validée (26/11, Margaux :
+      // « des fois ils changent d'avis ils veulent un cadre par exemple […]
+      // le but est d'avoir les statistiques bon »). Un refus de l'API
+      // (vente facturée, annulée…) se lit tel quel, sans « Error: ».
+      try {
+        const r = await api.corrigerMontantVente(Number(f.get("id")), {
+          totalCents: centimesSaisis(String(f.get("montant") ?? "")),
+          motif: String(f.get("motif") ?? ""),
+          author: auteur,
+        });
+        flash = messageDeCorrection(r);
+      } catch (refus) {
+        return {
+          flash: null,
+          erreurAction: refus instanceof Error ? refus.message : String(refus),
+        };
+      }
     } else if (action === "etape") {
       // L'étape suivante, d'un clic dans la liste (17/11) : la même règle que
       // la frise de la fiche (courriel compris).

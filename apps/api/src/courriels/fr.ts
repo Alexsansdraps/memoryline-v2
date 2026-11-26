@@ -51,6 +51,12 @@ export const fr = {
   "lignes.indisponible": "Cette affiche n'est plus disponible.",
   /** Le titre d'une ligne de commande qui n'en a pas. */
   "lignes.titreParDefaut": "Affiche personnalisée",
+  /**
+   * La ligne de la facture qui porte l'écart d'une vente du stand dont le
+   * montant a été corrigé à la hausse au BO (26/11, montant-vente-stand.ts :
+   * un cadre pris après la validation). Le motif saisi s'imprime dessous.
+   */
+  "lignes.ajustement": "Ajustement du prix",
 
   /* --- Confirmation de commande ------------------------------------------- */
 

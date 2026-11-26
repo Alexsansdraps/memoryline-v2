@@ -122,6 +122,12 @@ export interface Expedition {
 export interface Montants {
   sousTotalCents: number;
   remiseCents: number;
+  /**
+   * Une vente du stand dont le montant a été corrigé à la hausse au BO
+   * (26/11 : un cadre pris après la validation) : l'écart, que les articles
+   * ne disent pas. Absent d'une API plus ancienne.
+   */
+  ajustementCents?: number;
   portCents: number;
   totalCents: number;
   rembourseCents: number;

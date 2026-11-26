@@ -31,6 +31,7 @@ import {
   faireActionDeLaListe,
   type ResultatActionListe,
 } from "../lib/actions-liste-commandes.ts";
+import { choixDeLAffiche } from "../lib/montant-vente.ts";
 
 /**
  * Les filtres de la liste, plus celui des ventes de test (20/11) : l'API le
@@ -625,7 +626,12 @@ const filtreActif =
           <th class="px-4 py-2 font-medium">Articles</th>
           {/* Des boutons, pas une valeur : rien à trier dans cette colonne. */}
           <th class="px-2 py-2 font-medium" data-sans-tri>Impression</th>
-          <th class="px-4 py-2 font-medium">Livraison</th>
+          {/* Au stand, le choix du client à la place de la livraison (26/11,
+              Margaux : « pouvoir voir le choix du client (format/cadre) au
+              lieu de "Remise sur le stand" par exemple qui ne sert à
+              rien ») : toutes les ventes du stand y disaient « Remise sur
+              le stand ». Les commandes du site gardent leur livraison. */}
+          <th class="px-4 py-2 font-medium">{channel === "salon" ? "Format et cadre" : "Livraison"}</th>
           {estProprietaire && <th class="px-4 py-2 font-medium">Étiquettes</th>}
           <th class="px-4 py-2 font-medium text-right">Total</th>
         </tr>
@@ -882,7 +888,24 @@ const filtreActif =
                 )}
               </td>
               <td class="px-4 py-2 align-top text-bo-muted">
-                {o.shippingLabel ?? "—"}
+                {channel === "salon" ? (
+                  (o.affiches?.length ?? 0) > 0 ? (
+                    /* Une ligne par affiche, dans l'ordre des vignettes et
+                       des boutons « 1 », « 2 » de la colonne Impression. */
+                    <ul class="space-y-0.5">
+                      {o.affiches!.map((a, i) => (
+                        <li class="whitespace-nowrap">
+                          {o.affiches!.length > 1 && <span class="text-xs">{i + 1}. </span>}
+                          {choixDeLAffiche(a)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    "—"
+                  )
+                ) : (
+                  o.shippingLabel ?? "—"
+                )}
               </td>
               {estProprietaire && (
               <td class="px-4 py-2 align-top">
@@ -909,6 +932,65 @@ const filtreActif =
                     − {formatPrice(o.rembourseCents ?? 0)} remboursé
                   </div>
                 )}
+                {/* Le montant d'une vente du stand validée se corrige d'ici
+                    (26/11, Margaux : « des fois ils changent d'avis ils
+                    veulent un cadre par exemple […] le but est d'avoir les
+                    statistiques bon ») : nouveau total et motif, avec
+                    confirmation (lib/montant-vente-bo.ts). L'API refuse le
+                    reste en clair ; une vente facturée le dit sans
+                    formulaire. */}
+                {estProprietaire && channel === "salon" && o.status === "paid" && !o.number?.startsWith("SHOP-") && (
+                  <details class="mt-1 text-left whitespace-normal">
+                    <summary
+                      class="ml-auto w-fit cursor-pointer rounded border border-bo-border px-2 py-0.5 text-xs text-bo-muted hover:bg-bo-bg"
+                      title="Corriger le montant de la vente"
+                    >
+                      Corriger…
+                    </summary>
+                    {o.invoiceNumber ? (
+                      <p class="mt-1 w-56 text-xs text-bo-muted">
+                        Déjà facturée ({o.invoiceNumber}) : une facture émise ne
+                        se modifie pas, son montant non plus.
+                      </p>
+                    ) : (
+                      <form
+                        method="POST"
+                        class="mt-1 flex w-56 flex-col gap-1"
+                        data-montant-vente
+                        data-numero={o.number}
+                        data-avant={o.totalCents}
+                      >
+                        <input type="hidden" name="_action" value="montant-vente" />
+                        <input type="hidden" name="id" value={o.id} />
+                        <label class="text-xs text-bo-muted">
+                          Nouveau montant total (€)
+                          <input
+                            type="number"
+                            name="montant"
+                            step="0.01"
+                            min="0.01"
+                            required
+                            value={(o.totalCents / 100).toFixed(2)}
+                            class="mt-0.5 block w-full rounded border border-bo-border px-2 py-1 text-sm text-bo-ink"
+                          />
+                        </label>
+                        <label class="text-xs text-bo-muted">
+                          Motif
+                          <input
+                            name="motif"
+                            required
+                            maxlength="120"
+                            placeholder="cadre ajouté"
+                            class="mt-0.5 block w-full rounded border border-bo-border px-2 py-1 text-sm text-bo-ink"
+                          />
+                        </label>
+                        <button class="rounded border border-bo-border px-2 py-1 text-xs hover:bg-bo-bg">
+                          Enregistrer le montant
+                        </button>
+                      </form>
+                    )}
+                  </details>
+                )}
               </td>
             </tr>
           );
@@ -926,9 +1008,11 @@ const filtreActif =
 </section>
 <p class="mt-2 text-sm text-bo-muted">{orders.length} commande(s) affichée(s).</p>
 
-{/* Les PDF d'impression de la colonne « Impression ». */}
+{/* Les PDF d'impression de la colonne « Impression », et la confirmation
+    de « Corriger… » sous le total d'une vente du stand (26/11). */}
 <script>
   import "../lib/impression-bo.ts";
+  import "../lib/montant-vente-bo.ts";
 </script>
 
 {/* La vignette en grand, au survol ou au clavier : cf. ApercuFlottant. */}

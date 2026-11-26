@@ -13,6 +13,7 @@ export const zh: Partial<Record<CleCourriel, string>> = {
   "lignes.format": "尺寸 {format}",
   "lignes.indisponible": "这张海报已不可购买。",
   "lignes.titreParDefaut": "个性化海报",
+  "lignes.ajustement": "价格调整",
   "confirmation.objet": "您的订单 {numero} 已确认",
   "confirmation.titre": "谢谢您，{prenom}！",
   "confirmation.prenomParDefaut": "感谢您的支持",

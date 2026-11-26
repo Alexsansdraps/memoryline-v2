@@ -1079,7 +1079,17 @@ export interface OrderRow {
    * Les affiches à imprimer, dans l'ordre des vignettes : la liste propose
    * leurs PDF d'impression sans ouvrir la commande.
    */
-  affiches?: { id: number; titre: string | null; format: string | null }[];
+  affiches?: {
+    id: number;
+    titre: string | null;
+    format: string | null;
+    /** Le choix du client, pour Ventes stand (26/11) : cadre (null : sans), sens, quantité. */
+    cadre?: string | null;
+    paysage?: boolean;
+    quantite?: number;
+  }[];
+  /** Une vente facturée garde son montant (26/11, lib/montant-vente.ts). */
+  invoiceNumber?: string | null;
   /** Quantités déjà parties. */
   expedies?: number;
   rembourseCents?: number;
@@ -1167,6 +1177,8 @@ export interface Mouvement {
   gateway: string | null;
   externalRef: string | null;
   message: string | null;
+  /** L'écriture dont celle-ci découle : une correction du montant (26/11) en a une. */
+  parentId?: number | null;
   createdAt: string;
 }
 
@@ -1755,6 +1767,8 @@ export interface GenerationIA {
   aPleine: boolean;
   apercu: string | null;
   pleine: string | null;
+  /** Le coût est l'estimation du réglage, pas ce qu'OpenAI a compté (26/11). */
+  coutEstime?: boolean;
 }
 
 /** Une page de générations, la plus récente d'abord. */
@@ -2738,6 +2752,22 @@ export function adminApi(request?: Request) {
         moyen?: string;
         reference?: string | null;
       }>("POST", `/admin/orders/${id}/encaisser`, data, cookie),
+    /**
+     * Corrige le montant d'une vente du stand validée (26/11) : nouveau
+     * total en centimes et motif court. L'API refuse en clair (facturée,
+     * annulée, du site…) ; voir apps/api/src/montant-vente-stand.ts.
+     */
+    corrigerMontantVente: (
+      id: number,
+      data: { totalCents: number | null; motif: string; author?: string },
+    ) =>
+      req<{
+        ok: true;
+        inchange: boolean;
+        numero: string;
+        avantCents: number;
+        apresCents: number;
+      }>("POST", `/admin/orders/${id}/montant`, data, cookie),
     /** Envoie la facture à la cliente, en pièce jointe. */
     envoyerFacture: (id: number, author?: string) =>
       req<{ ok: true; numeroFacture: string; destinataire: string }>(
