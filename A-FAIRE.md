@@ -4,6 +4,13 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 0. État au 26/11, 22 h 40 : tout `main` est en ligne (`29afa2e`)
 
+### 0.000000000 PRODUIT « CIEL ÉTOILÉ » EN VENTE (26/11, 22 h 45, `ab18a0e`)
+- Produit à part, visible : https://memoryline.fr/affiches/ciel-etoile (créé par la migration 0116 en copie de l'affiche photo : A4 23 €, A3 29 €, mêmes rayons ; visuel d'exemple « Naissance de Mathis » servi par le site, `apps/web/public/ciel/`, à remplacer au BO). `/ciel-etoile` y redirige (301). Plus de `?ciel=1`.
+- Sa fiche demande date, heure, ville (au lieu d'une photo) parce que la case **« Affiche ciel étoilé »** est cochée au BO (bloc IA de la fiche produit, colonne `sky_enabled`). L'affiche photo est inchangée.
+- Le BO a aussi un statut **« Caché »** (`masque`) : en vente par son lien, hors catalogue/recherche/plan du site. Pas utilisé pour le moment (Alexandra : « mets le visible »).
+- Le bloc IA du BO relit désormais aiEnabled / consignes / ciel depuis `/admin/products/:id/config` (avant, la route ne les renvoyait pas).
+- À faire par la boutique : traductions du nom et de la description (en BO), visuel définitif. Premier vrai ciel = premier essai sur la fiche.
+
 ### 0.00000000 Ciel étoilé, suite (en ligne le 26/11 à 22 h 37)
 - **Fiche cachée** : `/affiches/affiche-a-partir-de-votre-photo?ciel=1` (ou `/ciel-etoile`, qui y redirige). Date, heure, ville à la place de la photo, puis les textes, personnages, format et panier de la fiche photo. Sans `?ciel=1`, la fiche est inchangée.
 - **Ville libre** : 197 000 lieux GeoNames (toute la France jusqu'aux lieux-dits, CH/BE/LU complets, DE/IT/ES dès 1 000 hab., monde dès 5 000), avec le département, recherche sur notre serveur (`/ia/ciel/villes`, `ciel-villes.tsv.gz`). L'API pèse ~460 Mo en mémoire après chargement (sur 3,7 Go).
