@@ -2,7 +2,18 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 26/11, 22 h 40 : tout `main` est en ligne (`29afa2e`)
+## 0. État au 27/11, 10 h 10 : tout `main` est en ligne (`aa5ec18`)
+
+### 0.0000000000 EN LIGNE DEPUIS LE 27/11 À 10 H 08 (`aa5ec18`) : affiches IA — ciels hors de la galerie, stand ou site, 3 essais par jour sur le site
+- Demandes d'Alexandra (27/11) : « corrige on ne garde pas les affiches étoile ! », « c'est généré et pas gardé dans le bo sur la partie "affiches" », « enfin je veux dire pas dans affiche IA » ; « faut qu'on puisse identifier si la photo vient du stand ou site et si possible quel stand... sur https://memoryline.fr/bo/ia » ; « bloquer à 3 essais par jour uniquement en mode site pas en mode stand » (« je parle de vos photos en affiche, le truc ia pour les clients ») ; « et met en prod ».
+- **Ciels étoilés** (modèle « ciel ») : hors de la galerie et des chiffres de BO › Affiches IA, et du plafond. Rien n'est supprimé : ils restent dans la table, pour le panier et l'impression.
+- **Stand ou site** : chaque nouvelle affiche dit au BO « Stand · <nom du stand> », « Stand » ou « Site ». La tablette envoie le mode stand, le code du stand qu'elle a retenu (X-Salon-Code) et le numéro de sa page. Migration 0118 : colonnes `origine` et `stand_id`, remplies pour les affiches d'avant d'après leur panier ou leur commande ; une affiche jamais mise au panier reste « Origine inconnue ».
+- **3 essais par jour sur le site** (jour de Paris), par panier, compte ou adresse IP. Les échecs, les affiches du stand et les ciels ne comptent pas. À la 4e : « Vous avez fait vos 3 essais du jour. Revenez demain pour créer d'autres affiches. » (7 langues). La tablette n'a pas de limite si elle a retenu le code du stand, ou si un stand est ouvert. Le mode stand seul (?stand=1) hors ouverture ne suffit pas : il ne donne aucun droit.
+- Le nombre 3 est une constante (`ESSAIS_PAR_JOUR_SITE`, ia.ts) et figure dans les textes du site (`ia.err.quota`). Si Margaux veut le changer : un réglage au BO.
+- À savoir : plusieurs personnes derrière la même box partagent leurs 3 essais (comptés aussi par adresse IP, pour qu'une fenêtre privée ne remette pas le compteur à zéro).
+- Avant : tsc de l'API, 600 tests de l'API (598 réussis, 2 sautés, 0 échec, dont 4 nouveaux : `tests/ia-origine-et-essais-base.test.ts`), 82 tests du BO, astro check sans erreur, tsc du site (les 3 erreurs anciennes de StandSalon.tsx). En local, BO › Affiches IA : 2 « Stand · Marché de Noël Mulhouse », 3 « Stand », 28 « Site », 6 « Origine inconnue », aucun ciel.
+- Après : sauvegarde faite, migrations appliquées, site 200, API (base comprise) 200, BO 302 vers la connexion, le code servi porte « 3 essais du jour » et `limiteDuJour`, conteneurs relancés. Pas vérifié (pas d'accès au BO ni à la base de prod) : la galerie de BO › Affiches IA en prod.
+- Restes : la relecture indépendante de `cb7b282` et `5e3a223` lancée le 26/11 s'est arrêtée avec la session, sans rien corriger ; elle a laissé en local le stand 112 ouvert, avec 15 ventes pas mises en test (local seulement).
 
 ### 0.000000000 PRODUIT « CIEL ÉTOILÉ » EN VENTE (26/11, 22 h 45, `ab18a0e`)
 - Produit à part, visible : https://memoryline.fr/affiches/ciel-etoile (créé par la migration 0116 en copie de l'affiche photo : A4 23 €, A3 29 €, mêmes rayons ; visuel d'exemple « Naissance de Mathis » servi par le site, `apps/web/public/ciel/`, à remplacer au BO). `/ciel-etoile` y redirige (301). Plus de `?ciel=1`.
