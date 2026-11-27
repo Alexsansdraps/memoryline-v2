@@ -2209,7 +2209,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   /*
    * Plusieurs scènes à nouveau (27/11 au soir, Alexandra : « on peut plus
    * ajouter plusieurs personnages là, on peut en mettre qu'un seul ??? ») :
-   * un toucher ajoute la scène, un second la retire, jusqu'à SCENES_MAX ; elles
+   * un toucher ajoute la scène, jusqu'à SCENES_MAX ; elles
    * se posent de gauche à droite dans l'ordre choisi. Les groupes restent : on
    * ne voit que ceux d'un onglet à la fois.
    */
@@ -2218,15 +2218,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   // rapetisse pour tenir dans la largeur.
   const SCENES_MAX = 8;
   const sansMiroir = (x: string) => x.split(":")[0]!;
-  const estChoisie = (id: SceneSilhouette) => choixSilhouettes().some((x) => sansMiroir(x) === id);
-  const basculerScene = (id: SceneSilhouette) =>
-    setChoixSilhouettes((l) =>
-      l.some((x) => sansMiroir(x) === id)
-        ? l.filter((x) => sansMiroir(x) !== id)
-        : l.length < SCENES_MAX
-          ? [...l, id]
-          : l,
-    );
+  /*
+   * Un toucher AJOUTE toujours (27/11 au soir, Alexandra : « si je veux mettre
+   * plusieurs fois le même lapin ou plusieurs fois la même scène, ça me la
+   * supprime. Pour supprimer, il faut uniquement qu'on puisse le faire au
+   * niveau de la croix ») : la même scène peut revenir plusieurs fois ; seule
+   * la croix de la scène posée la retire.
+   */
+  const ajouterScene = (id: SceneSilhouette) =>
+    setChoixSilhouettes((l) => (l.length < SCENES_MAX ? [...l, id] : l));
+  /** Combien de fois la scène est posée : le chiffre sur sa vignette. */
+  const foisPosee = (id: SceneSilhouette) => choixSilhouettes().filter((x) => sansMiroir(x) === id).length;
   const blocSilhouettes = () => (
     <div class="mt-5">
       <p class="text-sm font-medium">{tr("ia.perso.titre")}</p>
@@ -2269,7 +2271,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           )}
         </For>
       </div>
-      {/* 2. Les scènes (un toucher la pose ou la retire, le ciel se redessine). Plus
+      {/* 2. Les scènes (un toucher en pose une de plus, le ciel se redessine). Plus
           de bouton « Aucun » (27/11 au soir, Alexandra : « il sert à rien ») :
           la croix de chaque scène posée la retire. */}
       <div role="group" aria-label={tr(`ciel.groupe.${groupeSilhouettes()}`)} class="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -2277,14 +2279,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           {(id) => (
             <button
               type="button"
-              role="checkbox"
-              aria-checked={estChoisie(id)}
-              disabled={!estChoisie(id) && choixSilhouettes().length >= SCENES_MAX}
-              onClick={() => basculerScene(id)}
-              class="ml-choix flex min-w-0 flex-col items-center gap-1 border border-ink/15 px-1 pb-1.5 pt-2 text-center text-[11px] leading-tight hover:border-ink/45"
+              disabled={choixSilhouettes().length >= SCENES_MAX}
+              onClick={() => ajouterScene(id)}
+              class="relative flex min-w-0 flex-col items-center gap-1 border border-ink/15 px-1 pb-1.5 pt-2 text-center text-[11px] leading-tight hover:border-ink/45 disabled:opacity-50"
             >
               {dessinSilhouette(id, "h-14 w-full text-ink/80")}
               <span>{nomSilhouette(id)}</span>
+              <Show when={foisPosee(id) > 0}>
+                <span class="absolute right-1 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-terracotta px-1 text-[10px] font-semibold leading-none text-paper">
+                  {foisPosee(id)}
+                </span>
+              </Show>
             </button>
           )}
         </For>
@@ -2293,11 +2298,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           retourne (27/11, « pouvoir inverser le sens des personnages »). */}
       <Show when={choixSilhouettes().length > 0}>
         <div class="mt-3 flex flex-wrap items-end gap-3 border border-dashed border-ink/20 p-2">
-          <For each={choixSilhouettes()}>
+          {/* Par position (Index) : la même scène peut être posée deux fois, la croix retire celle-ci. */}
+          <Index each={choixSilhouettes()}>
             {(x, i) => (
               <div class="relative flex h-16 w-16 items-end justify-center text-ink">
-                <span class="flex h-full w-full" style={x.endsWith(":m") ? { transform: "scaleX(-1)" } : undefined}>
-                  {dessinSilhouette(sansMiroir(x), "h-full w-full")}
+                <span class="flex h-full w-full" style={x().endsWith(":m") ? { transform: "scaleX(-1)" } : undefined}>
+                  {dessinSilhouette(sansMiroir(x()), "h-full w-full")}
                 </span>
                 <button
                   type="button"
@@ -2305,7 +2311,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   title={tr("ciel.silh.inverser")}
                   onClick={() =>
                     setChoixSilhouettes((l) =>
-                      l.map((y, k) => (k !== i() ? y : y.endsWith(":m") ? y.slice(0, -2) : `${y}:m`)),
+                      l.map((y, k) => (k !== i ? y : y.endsWith(":m") ? y.slice(0, -2) : `${y}:m`)),
                     )
                   }
                   class="absolute -bottom-1 -left-1 flex h-6 w-6 items-center justify-center rounded-full border border-ink/30 bg-paper text-xs leading-none hover:border-ink"
@@ -2314,15 +2320,15 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 </button>
                 <button
                   type="button"
-                  aria-label={`${tr("ciel.silh.retirer")} : ${nomSilhouette(sansMiroir(x) as SceneSilhouette)}`}
-                  onClick={() => setChoixSilhouettes((l) => l.filter((_, k) => k !== i()))}
+                  aria-label={`${tr("ciel.silh.retirer")} : ${nomSilhouette(sansMiroir(x()) as SceneSilhouette)}`}
+                  onClick={() => setChoixSilhouettes((l) => l.filter((_, k) => k !== i))}
                   class="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-ink text-[11px] leading-none text-paper hover:bg-terracotta"
                 >
                   ✕
                 </button>
               </div>
             )}
-          </For>
+          </Index>
           <span class="ml-auto self-center text-xs tabular-nums text-ink-soft">
             {choixSilhouettes().length}/{SCENES_MAX}
           </span>
