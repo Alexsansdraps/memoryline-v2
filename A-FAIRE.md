@@ -2,6 +2,22 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
+## 000. ÉTAT AU 27/11, 21 H 05 — tout `main` est EN LIGNE (`38c48be`, mis en ligne à 21 h 00 sur « et met en prod »)
+
+Fait ce soir (PC de la maison), tout en ligne :
+- **Tailles de texte** (`717da2f`) : trois « A » (petit / moyen / grand) sous chaque ligne de la fenêtre photo IA et ciel ; aperçu, place des lignes sur le ciel et impression (pdf.ts lit déjà `taille`). « Moyen » n'écrit rien. → 00.B point 1 FAIT ; restent 00.B points 2 à 4.
+- **Couple en paysage** (`43039c3`) : l'API dessine le couple sur 3508 × 2480, la fenêtre se couche, la ligne de panier part en paysage. Les couples créés avant gardent leur portrait. → 00.A point 6 FAIT. Pas essayé : panier + impression d'un couple paysage jusqu'au bout.
+- **Ombres chinoises** (`91caceb`, `50c81c9`) : 28 scènes découpées dans `protos/ombres-2.png` + 6 sans doublon dans `protos/ombres-3.png` (hors dépôt), `apps/api/src/ciel-ombres-2.ts` (généré). L'étape Personnages propose 4 onglets (Seul·e, En couple, En famille, Avec un animal) puis UNE scène + « Retourner » ; plus de glisser-déposer ni de « /8 » (« trop de possibilités »). Les 10 ombres d'avant restent connues de l'API pour les ciels déjà créés. Ombres plus grandes (0,22 H pour 175 cm). → 00.A points 1, 3, 7 sans objet (petit/grand chien : il y a « enfant et chien » et « femme/homme et chien »).
+- **Mise en page centrée** (`38c48be`) : constellation au milieu au départ, poussée par le texte (haut ou bas), texte centré entre le bord et elle, bande réservée aux personnages en bas (place jusqu'à 70 % avec personnages, 85 % sans). La fiche envoie `hauteurTexte`, le ciel se redessine 0,9 s après la frappe. Même calcul dans `ciel.ts` (dispositionCentree) et `CielEtoile.tsx` : si l'un change, changer l'autre. Rendu vérifié sur 4 cas ; PAS essayé dans le navigateur (frappe → redessin).
+
+Reste (ciel) : 00.A point 5 (couleur des personnages dans les thèmes), point 8 (case par silhouette au BO — à revoir : 34 scènes en 4 groupes), point 9 + nettoyage (clés `ciel.silh.*` des anciennes ombres, `ciel.silh.glisser`, `ciel.silh.retirer`, `ciel.silh.mettre`, code mort ciel-silhouettes.ts) ; 00.B points 2 à 4 ; message rouge « crédit » (lui demander une capture) ; 00.C personnages classiques en dernier.
+
+**Base locale = copie de la prod (PC de la maison, 27/11 au soir, « faire le même env que sur l'autre pc »)** :
+- `docker-compose.override.yml` (hors git, `.git/info/exclude`) : service `db18` (Postgres 18, port 5436, conteneur `memoryline-db18`) et l'API locale qui le lit au lieu de Neon (Neon de dev était à 90 migrations sur 120). `memoryline-db` (16) reste pour la recette des tests (§ 0.2).
+- Copie chargée le 27/11 à 20 h 46 (`Documents/memory-line/copie-prod/`, hors dépôt, avec un LISEZMOI pour recharger) ; images de la prod copiées dans `data/assets`.
+- NEUTRALISÉE (local seulement) : `DELETE FROM cle_paiement`, `relance.active = false`, e-mails de `customer`, `gift_card.recipient_email`, `newsletter_sub`, `newsletter_subscriber`, `lettre_envoi`, `lettre_jeton`, `relance_refus` → `…@exemple.invalid`. À REJOUER après chaque rechargement.
+- Sur l'autre PC : la même chose s'il veut la même base (rien n'est commité de ce côté).
+
 ## 00. POUR LE CLAUDE DE CHEZ ALEXANDRA — reprise du 27/11 au soir (écrit à 17 h)
 
 Tout est commité et poussé sur `main`. RIEN de ce qui suit n'est en ligne : la prod est à `c75d866`. Mise en ligne SEULEMENT sur un « met en prod » d'Alexandra, en listant ce qui part (§5 pour la marche à suivre).
