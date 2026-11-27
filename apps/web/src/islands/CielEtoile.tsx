@@ -112,7 +112,15 @@ export interface MiseDuCiel {
  * des personnages, qui ont leur bande dessous).
  */
 export const MARGE_HAUT_CIEL = 0.035;
-export const ECART_TEXTE_CIEL = 0.03;
+/**
+ * L'écart entre le bloc de texte et le dessin, LE MÊME en haut et en bas
+ * (27/11 vers 23 h 55, Alexandra, captures du signe « Gémeaux » : « problème
+ * d'espacement entre texte en haut et texte en bas » — centré dans sa place,
+ * le texte du haut flottait loin du cercle, celui du bas le touchait presque).
+ * Le texte se pose maintenant à cet écart du dessin, des deux côtés ; le
+ * dessin lui garde cette place en se poussant (dispositionCentree).
+ */
+export const ECART_TEXTE_CIEL = 0.05;
 /**
  * Le bas de la place du dessin et du texte : FIXE, avec ou sans personnages
  * (27/11 au soir, Alexandra : « quand j'ajoute un perso ça décale la

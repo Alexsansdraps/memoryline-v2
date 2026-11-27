@@ -396,16 +396,25 @@ export const placeParDefaut = (style: StyleCiel): PlaceTexte => (style === "nuit
  * La place : de 3,5 % sous le haut de la feuille jusqu'à 85 % de sa hauteur
  * (les collines), ou 70 % quand des personnages sont posés (leur bande à eux,
  * dessous). Sans texte, le dessin se centre dans cette place. Avec un texte de
- * hauteur h (envoyé par la fiche, en fraction de la hauteur), le dessin et le
- * texte (plus 3 % d'écart) se centrent ensemble ; le texte se centre ensuite,
- * côté fiche, entre le bord de la place et le dessin. Trop long, le dessin
- * rapetisse (jusqu'à 60 % de son rayon).
+ * hauteur h (envoyé par la fiche, en fraction de la hauteur), le dessin se
+ * pousse de ce qu'il faut pour garder au texte sa place plus l'écart
+ * (ECART_TEXTE_CIEL) ; le texte se pose ensuite, côté fiche, à cet écart du
+ * dessin, en haut comme en bas. Trop long, le dessin rapetisse (jusqu'à la
+ * moitié de son rayon).
  *
  * La fenêtre du ciel (apps/web/src/islands/CielEtoile.tsx, zoneDuDessin) fait
  * le MÊME calcul : si l'un change, changer l'autre.
  */
 export const MARGE_HAUT_CIEL = 0.035;
-export const ECART_TEXTE_CIEL = 0.03;
+/**
+ * L'écart entre le bloc de texte et le dessin, LE MÊME en haut et en bas
+ * (27/11 vers 23 h 55, Alexandra, captures du signe « Gémeaux » : « problème
+ * d'espacement entre texte en haut et texte en bas » — centré dans sa place,
+ * le texte du haut flottait loin du cercle, celui du bas le touchait presque).
+ * Le texte se pose maintenant à cet écart du dessin, des deux côtés ; le
+ * dessin lui garde cette place en se poussant (dispositionCentree).
+ */
+export const ECART_TEXTE_CIEL = 0.05;
 /**
  * Le bas de la place du dessin et du texte : FIXE, avec ou sans personnages
  * (27/11 au soir, Alexandra : « quand j'ajoute un perso ça décale la

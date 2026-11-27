@@ -70,6 +70,7 @@ import CielEtoile, {
   basDuTexte,
   basDeLaPlace,
   MARGE_HAUT_CIEL,
+  ECART_TEXTE_CIEL,
   type IdSigne,
   type MiseDuCiel,
   type PlaceTexte,
@@ -783,15 +784,6 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * bougent pas.
    */
   const [texteCiel, setTexteCiel] = createSignal<PlaceTexte>("haut");
-  /**
-   * Le bloc de texte dans sa place : entre le haut de l'affiche et le dessin
-   * (texte en haut), ou entre le dessin et la bande des personnages (texte en
-   * bas), toujours centré.
-   */
-  // Plus de choix : le bloc se centre TOUJOURS dans sa place, une ligne ou
-  // trois (27/11 au soir, Alexandra : « si je ne remplis que la ligne 1, elle
-  // doit se centrer au milieu de la place disponible et basta »).
-  const calageTexte = (): "haut" | "milieu" | "bas" => "milieu";
   /** Le style du formulaire, pour la place du texte par défaut. */
   let styleCielVu: StyleCiel | null = null;
   /** Le même, à suivre : l'étape Personnages n'existe que pour « nuit » (27/11). */
@@ -881,20 +873,19 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       ecarts.reduce((s, e) => s + e, 0) +
       (boites[0]?.deborde ?? 0) +
       (boites[boites.length - 1]?.deborde ?? 0);
-    // Mise en page centrée (27/11 au soir) : le bloc se centre dans sa place,
-    // entre le bord (ou la bande des personnages) et le dessin. Avant : il se
-    // tenait à 3 % du dessin.
+    // Mise en page centrée (27/11 au soir) : le bloc se pose à ECART_TEXTE_CIEL
+    // du dessin, LE MÊME écart en haut et en bas (27/11 vers 23 h 55,
+    // Alexandra : « problème d'espacement entre texte en haut et texte en
+    // bas » : centré entre le bord et le dessin, le texte du haut flottait loin
+    // du cercle quand celui du bas le touchait presque). Le dessin s'est poussé
+    // pour lui garder cette place (dispositionCentree) ; les bornes ne servent
+    // que de garde-fou, une ligne ou trois.
     const centre = typeof mise.hauteurTexte === "number";
     const bande = basDeLaPlace(!!mise.personnages && mise.style === "nuit");
-    // Sa place, puis le calage choisi dedans (27/11 au soir).
-    const debutPlace = mise.texte === "haut" ? MARGE_HAUT_CIEL : zone.bas + 0.012;
-    const finPlace = mise.texte === "haut" ? zone.haut - 0.012 : bande;
-    const cale = calageTexte();
     const haut = centre
-      ? Math.max(
-          debutPlace,
-          cale === "haut" ? debutPlace : cale === "bas" ? finPlace - hauteur : (debutPlace + finPlace - hauteur) / 2,
-        )
+      ? mise.texte === "haut"
+        ? Math.max(MARGE_HAUT_CIEL, zone.haut - ECART_TEXTE_CIEL - hauteur)
+        : Math.max(zone.bas, Math.min(zone.bas + ECART_TEXTE_CIEL, bande - hauteur))
       : mise.texte === "haut"
         ? Math.max(0.045, zone.haut - 0.03 - hauteur)
         : // Avec des personnages, le bloc s'arrête au-dessus de leurs têtes (27/11).
