@@ -17,11 +17,13 @@ Ordre voulu par Alexandra (27/11, 16 h 30 : « J'aimerais au moins que tous les 
 - Textes du site « moins IA » (ui.ts 7 langues, compte, contact, configurateur). Alexandra : on n'y touche plus.
 - Ciel étoilé : voir 00.A (styles, signes, qualités, texte en haut/bas, personnages assis, glisser-déposer…).
 
+- Stand : e-mail du client FACULTATIF (`0072263`), seul le nom est demandé.
+
 ### 00.A Ciel étoilé — ce qui RESTE de la passe finale (état à 16 h 50, commité)
 FAIT à 16 h 50 (dernier commit du jour) : personnages ASSIS sur le ciel et dans les vignettes (ciel-silhouettes-assises.ts, sans plaid/lanterne/lunette : « c'est quoi ce bordel au niveau du rendu ? ») ; chien sans museau ni truffe ; CHAT ajouté ; bras de « montre le ciel » raccourci de 20 % ; même taille de personnages en texte en haut et en bas (0,145 H) ; personnages centrés (« les personnages doivent être centrés au milieu ») ; jusqu'à 8 personnages (« maximum 8, pas 4 ») ; étape « Personnages » seulement pour « Ciel de cette nuit », changer de style les retire ; plus de bouton « Mettre sur mon ciel » (redessin 400 ms après chaque clic) ; réordonner par glisser-déposer (souris et doigt) ; ligne 3 des qualités vidée en revenant à la nuit (vérifié). Pas de teinte automatique des personnages (Alexandra : « supp ça »).
 RESTE, dans cet ordre :
 1. Un PETIT chien et un GRAND chien (« faut un petit et un grand chien ») : deux silhouettes assises distinctes (ids "petit-chien" / "grand-chien" ; garder "chien" = grand pour les anciens réglages), vignettes + 7 langues.
-2. Pouvoir INVERSER le sens des personnages (« pouvoir inverser le sens des personnages ») : sur chaque personnage choisi, un petit bouton ⇄ qui le retourne en miroir (scale(-1,1) autour de son axe) ; à envoyer à l'API dans la liste (ex. "chien:m") et à valider dans lireReglagesCiel.
+2. FAIT (0072263^) : bouton ⇄ qui retourne un personnage en miroir (« id:m »).
 3. 8 personnages : vérifier au rendu que 8 tiennent dans la largeur une fois centrés (sinon réduire l'écart, puis l'échelle) — non vérifié à 16 h 50.
 4. « Texte en haut » : les têtes touchent la ligne des coordonnées → réduire et remonter le cercle SEULEMENT quand il y a des personnages (l'essai « ciel de cette nuit sans rien de nouveau : le SVG d'avant au caractère près » doit rester vrai). Piste de l'agent : cy = H×(CENTRE_Y_CIEL−0,035), R = W×0,315, et le centreY du filigrane suit cy.
 5. Couleur des personnages réglable dans les thèmes (« dans le réglage thème on doit pouvoir régler la couleur des persos ») : couleur optionnelle `personnages` dans teintesDuTheme / THEMES_CIEL_DE_BASE + champ dans l'écran des thèmes du ciel au BO ; absente = couleur de la colline (comme aujourd'hui).
