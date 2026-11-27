@@ -2,7 +2,13 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 000. ÉTAT AU 27/11, 22 H 20 — tout `main` est EN LIGNE (`6f707a5`)
+## 000. ÉTAT AU 27/11, 22 H 30 — tout `main` est EN LIGNE (`3c9f0be`)
+
+- **Réglés par Alexandra le 27/11 à 22 h 30** : le message rouge « crédit » (« ok », plus rien à chercher) et les deux lectures de contrôle des ventes du stand du 26/11 (`verifier-ventes-stand-26-11.sql`, `lignes-touchees.ts`) (« c bon », pas à faire). Ne plus les proposer.
+- 22 h 25 : un toucher sur une scène d'ombre en ajoute toujours une (la même plusieurs fois possible), seule la croix retire (`3c9f0be`).
+- RESTE : couleur des ombres dans les thèmes (BO) ; ménage des anciennes ombres et clés `ciel.silh.*` inutilisées ; tailles de texte (réduction des lignes longues × taille, test auto) ; essais de bout en bout (couple paysage → impression, 8 scènes, frappe → redessin) ; personnages classiques (00.C) en dernier.
+
+### 22 h 20
 
 - **« Modifier » une affiche IA depuis le panier : FAIT** (`395f360`). Lien sur les lignes IA (CartIsland, récapitulatif de CheckoutIsland) → fiche `?edit=ID` → AfficheIA rouvre la ligne (création, textes et tailles, personnages, format, nombre ; pour un ciel, son formulaire relu par `GET /ia/ciel/reglages/:publicId`, lecture seule, `afficherVille` désormais enregistré) ; « Valider l'affiche » fait `PUT /cart/:id/items/:itemId` (route existante, rien changé côté commandes). Essayé en local de bout en bout (rouvrir, modifier une ligne et sa taille, revalider : une seule ligne, vignette à jour, formulaire du ciel rouvert).
 - Onglet **« Animaux »** (`6f707a5`) : chien, chat, lapin, deux lapins détachés de leurs scènes (2e planche, `decoupe-animaux.py` dans le scratchpad, non gardé), plus chien et cheval. API : 63 tracés ; liste en `?v=ombres-groupes-4`.
