@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import TexteAfficheIA, { type LigneIA } from "./TexteAfficheIA.tsx";
 import {
   lien,
   t,
@@ -674,6 +675,13 @@ export default function CartIsland(props: {
                               // l'icône d'image cassée du navigateur.
                               e.currentTarget.hidden = true;
                             }}
+                          />
+                          {/* Ses lignes de texte, à leur place (27/11 au soir,
+                              Alexandra : « dans le panier avec un ciel étoilé,
+                              j'ai perdu le texte »). */}
+                          <TexteAfficheIA
+                            lignes={lignesRemplies(it.config!.texts) as LigneIA[]}
+                            paysage={it.config!.orientation === "paysage"}
                           />
                         </div>
                           }

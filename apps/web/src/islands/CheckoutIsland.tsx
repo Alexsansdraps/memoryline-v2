@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import TexteAfficheIA, { type LigneIA } from "./TexteAfficheIA.tsx";
 import {
   t,
   lien,
@@ -35,6 +36,7 @@ import {
   urlAsset,
   type OptionLivraison,
   type RegleParier,
+  lignesRemplies,
 } from "@memoryline/types";
 import {
   PosterPreview,
@@ -2974,6 +2976,14 @@ export default function CheckoutIsland(props: {
                               onError={(e) => {
                                 e.currentTarget.hidden = true;
                               }}
+                            />
+                            {/* Ses lignes de texte, à leur place : l'affiche telle
+                                qu'elle sera imprimée (27/11 au soir, Alexandra : « il
+                                faut que les affiches soient fidèles même dans le
+                                panier »). Affichage seulement. */}
+                            <TexteAfficheIA
+                              lignes={lignesRemplies(it.config!.texts) as LigneIA[]}
+                              paysage={it.config!.orientation === "paysage"}
                             />
                           </div>
                             }
