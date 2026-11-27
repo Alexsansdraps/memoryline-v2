@@ -1005,7 +1005,17 @@ export interface PoseSilhouettes {
  * Rend un <g> à glisser à la fin du SVG du ciel ; "" si rien n'est choisi.
  */
 export function poserSilhouettes(choix: readonly string[], o: PoseSilhouettes): string {
-  const liste = choix.map((id) => (o.catalogue ?? SILHOUETTES_PAR_ID).get(id)).filter((s): s is Silhouette => !!s);
+  // « id:m » = le personnage retourné en miroir (27/11, Alexandra : « pouvoir
+  // inverser le sens des personnages ») : ses bords s'échangent, et il se
+  // dessine avec scale(-s, s).
+  const liste = choix
+    .map((choisi) => {
+      const [id, sens] = choisi.split(":");
+      const x = (o.catalogue ?? SILHOUETTES_PAR_ID).get(id ?? "");
+      if (!x) return null;
+      return sens === "m" ? { ...x, gauche: -x.droite, droite: -x.gauche, miroir: true } : { ...x, miroir: false };
+    })
+    .filter((x): x is Silhouette & { miroir: boolean } => !!x);
   if (!liste.length) return "";
   // 0,145 de la hauteur (au lieu de 0,125) : un peu plus grandes, les
   // silhouettes se lisent mieux sur le tirage (27/11).
@@ -1046,7 +1056,7 @@ export function poserSilhouettes(choix: readonly string[], o: PoseSilhouettes): 
   const posees = places(s);
   const chemins = posees.map(({ x, tx, sol }) => {
     const ty = sol + 3 * s;
-    return `<path transform="translate(${tx.toFixed(1)} ${ty.toFixed(1)}) scale(${s.toFixed(4)})" d="${x.d}"/>`;
+    return `<path transform="translate(${tx.toFixed(1)} ${ty.toFixed(1)}) scale(${x.miroir ? `-${s.toFixed(4)} ${s.toFixed(4)}` : s.toFixed(4)})" d="${x.d}"/>`;
   });
   // Les détails autour (27/11), du bord gauche du premier au bord droit du dernier.
   const premier = posees[0]!;

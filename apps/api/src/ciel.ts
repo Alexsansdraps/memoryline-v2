@@ -422,7 +422,12 @@ export function lireReglagesCiel(
   if (
     !Array.isArray(silhouettes) ||
     silhouettes.length > SILHOUETTES_MAX ||
-    !silhouettes.every((id) => typeof id === "string" && SILHOUETTES_ASSISES_PAR_ID.has(id))
+    !silhouettes.every(
+      (id) =>
+        typeof id === "string" &&
+        /^[a-z-]+(:m)?$/.test(id) &&
+        SILHOUETTES_ASSISES_PAR_ID.has(id.split(":")[0]!),
+    )
   )
     return { ok: false, error: "Personnages invalides" };
   const langue = (LANGUES_CIEL as readonly string[]).includes(String(b.langue)) ? (b.langue as LangueCiel) : "fr";

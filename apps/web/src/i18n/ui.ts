@@ -925,6 +925,7 @@ export const ui = {
     "ciel.silh.retirer": "Retirer",
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Glissez pour changer l'ordre",
+    "ciel.silh.inverser": "Retourner",
     "ciel.silh.femme-cheveux-longs": "Femme, cheveux longs",
     "ciel.silh.femme-chignon": "Femme au chignon",
     "ciel.silh.homme-manteau": "Homme en manteau",
@@ -1808,6 +1809,7 @@ export const ui = {
     "ciel.silh.retirer": "Remove",
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Drag to change the order",
+    "ciel.silh.inverser": "Flip",
     "ciel.silh.femme-cheveux-longs": "Woman, long hair",
     "ciel.silh.femme-chignon": "Woman with a bun",
     "ciel.silh.homme-manteau": "Man in a coat",
@@ -2707,6 +2709,7 @@ export const ui = {
     "ciel.silh.retirer": "Entfernen",
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Ziehen, um die Reihenfolge zu ändern",
+    "ciel.silh.inverser": "Umdrehen",
     "ciel.silh.femme-cheveux-longs": "Frau, lange Haare",
     "ciel.silh.femme-chignon": "Frau mit Dutt",
     "ciel.silh.homme-manteau": "Mann im Mantel",
@@ -3587,6 +3590,7 @@ export const ui = {
     "ciel.silh.retirer": "Rimuovi",
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Trascinate per cambiare l'ordine",
+    "ciel.silh.inverser": "Capovolgere",
     "ciel.silh.femme-cheveux-longs": "Donna, capelli lunghi",
     "ciel.silh.femme-chignon": "Donna con chignon",
     "ciel.silh.homme-manteau": "Uomo con cappotto",
@@ -4466,6 +4470,7 @@ export const ui = {
     "ciel.silh.retirer": "Quitar",
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Arrastre para cambiar el orden",
+    "ciel.silh.inverser": "Voltear",
     "ciel.silh.femme-cheveux-longs": "Mujer, pelo largo",
     "ciel.silh.femme-chignon": "Mujer con moño",
     "ciel.silh.homme-manteau": "Hombre con abrigo",
@@ -5234,6 +5239,7 @@ export const ui = {
     "ciel.silh.retirer": "外す",
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "ドラッグで順番を変更",
+    "ciel.silh.inverser": "向きを反転",
     "ciel.silh.femme-cheveux-longs": "ロングヘアの女性",
     "ciel.silh.femme-chignon": "おだんごヘアの女性",
     "ciel.silh.homme-manteau": "コートの男性",
@@ -6002,6 +6008,7 @@ export const ui = {
     "ciel.silh.retirer": "移除",
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "拖动以调整顺序",
+    "ciel.silh.inverser": "翻转",
     "ciel.silh.femme-cheveux-longs": "长发女子",
     "ciel.silh.femme-chignon": "盘发女子",
     "ciel.silh.homme-manteau": "穿大衣的男子",

@@ -1925,7 +1925,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     // `?v=assises` (27/11, Alexandra : les vignettes montraient encore les
     // silhouettes debout) : la réponse reste une heure en cache, l'adresse
     // neuve passe outre l'ancienne liste.
-    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=assises`)
+    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=assises-chat`)
       .then((r) => r.json())
       .then((data: { silhouettes?: { id: string; d: string; gauche: number; droite: number; haut: number }[] }) =>
         setFormesSilhouettes(Object.fromEntries((data.silhouettes ?? []).map((s) => [s.id, s]))),
@@ -2040,13 +2040,31 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 glisseSilhouette() === i() ? "opacity-50" : ""
               }`}
             >
-              {dessinSilhouette(id, "pointer-events-none h-full w-full")}
+              {/* « id:m » = retourné en miroir (27/11, Alexandra : « pouvoir
+                  inverser le sens des personnages »). */}
+              <span class="pointer-events-none flex h-full w-full" style={id.endsWith(":m") ? { transform: "scaleX(-1)" } : undefined}>
+                {dessinSilhouette(id.split(":")[0]!, "pointer-events-none h-full w-full")}
+              </span>
+              <button
+                type="button"
+                aria-label={tr("ciel.silh.inverser")}
+                title={tr("ciel.silh.inverser")}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() =>
+                  setChoixSilhouettes((l) =>
+                    l.map((x, k) => (k !== i() ? x : x.endsWith(":m") ? x.slice(0, -2) : `${x}:m`)),
+                  )
+                }
+                class="absolute -bottom-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full border border-ink/30 bg-paper text-[11px] leading-none text-ink hover:border-ink"
+              >
+                ⇄
+              </button>
               <span aria-hidden="true" class="pointer-events-none absolute -left-1 -top-1 text-[11px] leading-none text-ink-soft">
                 ⠿
               </span>
               <button
                 type="button"
-                aria-label={`${tr("ciel.silh.retirer")} : ${nomSilhouette(id as (typeof SILHOUETTES_CIEL)[number])}`}
+                aria-label={`${tr("ciel.silh.retirer")} : ${nomSilhouette(id.split(":")[0] as (typeof SILHOUETTES_CIEL)[number])}`}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => setChoixSilhouettes((l) => l.filter((_, k) => k !== i()))}
                 class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink text-[10px] leading-none text-paper hover:bg-terracotta"
