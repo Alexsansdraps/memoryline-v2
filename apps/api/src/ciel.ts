@@ -32,6 +32,18 @@ import { eq } from "drizzle-orm";
 import sharp from "sharp";
 import { db, schema } from "./db/client.js";
 import { CONSTELLATIONS, ETOILES } from "./ciel-donnees.js";
+import {
+  LANGUES_CIEL,
+  dateEcrite,
+  defsDuSigne,
+  dessinDuSigne,
+  estUnSigne,
+  petiteEtoile,
+  signeDeLaDate,
+  type IdSigne,
+  type LangueCiel,
+} from "./ciel-signes.js";
+import { SILHOUETTES, SILHOUETTES_PAR_ID, poserSilhouettes } from "./ciel-silhouettes.js";
 import { IA_DIR, MODELE_CIEL, fabriquerApercu, ipDeLaRequete } from "./ia.js";
 import { clientDeLaRequete } from "./comptes.js";
 
@@ -137,6 +149,34 @@ export function instantLocal(date: string, heure: string, fuseau: string): Date 
   } catch {
     return null; // fuseau inconnu
   }
+}
+
+/** Échappe un texte pour le SVG. */
+function enSvg(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * Sous le cercle : les coordonnées, et, si la cliente l'a coché, le nom de
+ * la ville au-dessus d'elles (27/11, Alexandra : « afficher la ville case à
+ * cocher, faut l'afficher à un endroit sympa joliment »). La ville en
+ * capitales espacées, dans la serif des titres, couleur des dorures ; les
+ * coordonnées passent dessous, plus discrètes. Sans ville : comme avant.
+ */
+function legendeDuLieu(
+  ville: string | null,
+  cx: number,
+  basCercle: number,
+  dorures: string,
+  coords: string,
+): string {
+  const nom = (ville ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 40);
+  if (!nom)
+    return `<text x="${cx}" y="${basCercle + 180}" text-anchor="middle" font-family="League Spartan, DejaVu Sans, sans-serif" font-size="44" fill="${dorures}" fill-opacity="0.85" letter-spacing="3">${coords}</text>`;
+  return (
+    `<text x="${cx}" y="${basCercle + 175}" text-anchor="middle" font-family="DM Serif Display, serif" font-size="76" fill="${dorures}" letter-spacing="14">${enSvg(nom.toLocaleUpperCase("fr-FR"))}</text>` +
+    `<text x="${cx}" y="${basCercle + 245}" text-anchor="middle" font-family="League Spartan, DejaVu Sans, sans-serif" font-size="38" fill="${dorures}" fill-opacity="0.7" letter-spacing="3">${coords}</text>`
+  );
 }
 
 /** Une coordonnée lisible : « 47,75° N · 7,34° E ». */
@@ -280,12 +320,259 @@ export function teintesDuTheme(t: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"
   };
 }
 
+/* ------------------------------------------------------------------------ *
+ * Les styles et la mise en page (27/11, Alexandra : « peut-être choisir un
+ * style de constellation (double donc couple, simple, etc) », « pas de drag
+ * and drop par les clients surtout, ils vont faire n'imp ça doit être
+ * simple », « pouvoir mettre le texte en haut ou en bas (donc décaler le
+ * cercle) »).
+ *
+ * Quatre styles : le ciel de cette nuit (l'actuel), un signe dans un cercle,
+ * un couple (deux cercles qui se touchent), un signe sans cercle. Et deux
+ * places du texte : en haut (le dessin descend), en bas (il monte). Le style
+ * et la place décident de tout : où est le dessin, où vont les trois lignes
+ * (posées par la fenêtre du ciel, apps/web/src/islands/AfficheIA.tsx, qui
+ * reprend les fractions `haut` et `bas` ci-dessous — si elles changent ici,
+ * les changer là-bas).
+ * ------------------------------------------------------------------------ */
+export const STYLES_CIEL = ["nuit", "signe", "couple", "libre"] as const;
+export type StyleCiel = (typeof STYLES_CIEL)[number];
+export type PlaceTexte = "haut" | "bas";
+
+/** Le texte va en haut pour le ciel de cette nuit (comme avant), en bas pour un signe. */
+export const placeParDefaut = (style: StyleCiel): PlaceTexte => (style === "nuit" ? "haut" : "bas");
+
+/**
+ * Où se dessine le cercle (centre `cy` et rayon `R`, en pixels du fichier),
+ * et la bande qu'occupe le dessin (`haut`, `bas`, en fraction de la hauteur) :
+ * les lignes de texte se posent au-dessus de `haut` ou sous `bas`. Pour un
+ * couple, `R` est le rayon de chacun des deux cercles.
+ */
+export function dispositionDuCiel(
+  style: StyleCiel,
+  texte: PlaceTexte,
+  ville = false,
+): { cy: number; R: number; haut: number; bas: number } {
+  const W = LARGEUR_CIEL;
+  const H = HAUTEUR_CIEL;
+  if (style === "nuit") {
+    // Texte en haut : le cercle d'avant, au pixel près.
+    const cy = texte === "haut" ? H * CENTRE_Y_CIEL : H * 0.31;
+    const R = texte === "haut" ? W * 0.34 : W * 0.31;
+    // Haut : la lettre N ; bas : les coordonnées, ou la ville et les coordonnées.
+    return { cy, R, haut: (cy - R - 93) / H, bas: (cy + R + (ville ? 257 : 192)) / H };
+  }
+  if (style === "couple") {
+    const cy = H * (texte === "haut" ? 0.5 : 0.36);
+    const R = W * 0.205;
+    // La date du cercle de gauche monte en arc au-dessus de lui.
+    return { cy, R, haut: (cy - R * 1.14) / H, bas: (cy + R + 12) / H };
+  }
+  const cy = H * (texte === "haut" ? CENTRE_Y_CIEL : 0.33);
+  const R = W * 0.34;
+  if (style === "libre") return { cy, R, haut: (cy - R * 0.78) / H, bas: (cy + R * 0.98) / H };
+  return { cy, R, haut: (cy - R - 24) / H, bas: (cy + R + 24) / H };
+}
+
+/** Ce que la cliente a réglé, une fois lu et vérifié (POST /ia/ciel). */
+export interface ReglagesCiel {
+  style: StyleCiel;
+  texte: PlaceTexte;
+  /** Un signe (signe, sans cercle), deux (couple), aucun (ciel de cette nuit). */
+  signes: IdSigne[];
+  /** Les dates de naissance écrites sur l'affiche, une par signe (null : pas de date). */
+  dates: (string | null)[];
+  /** Les ombres chinoises, de gauche à droite (ciel-silhouettes.ts). */
+  silhouettes: string[];
+  langue: LangueCiel;
+}
+
+/** Au plus quatre personnages sur un ciel (27/11). */
+export const SILHOUETTES_MAX = 4;
+
+/**
+ * Lit les nouveaux champs de POST /ia/ciel. Rien d'envoyé : le ciel de cette
+ * nuit, texte en haut, sans personnage — exactement comme avant. Un champ
+ * envoyé mais faux est refusé, jamais corrigé en silence.
+ */
+export function lireReglagesCiel(
+  b: Record<string, unknown>,
+): { ok: true; reglages: ReglagesCiel } | { ok: false; error: string } {
+  const style = b.style ?? "nuit";
+  if (typeof style !== "string" || !(STYLES_CIEL as readonly string[]).includes(style))
+    return { ok: false, error: "Style inconnu" };
+  const s = style as StyleCiel;
+  const texte = b.texte ?? placeParDefaut(s);
+  if (texte !== "haut" && texte !== "bas") return { ok: false, error: "Place du texte inconnue" };
+  const silhouettes = b.silhouettes ?? [];
+  if (
+    !Array.isArray(silhouettes) ||
+    silhouettes.length > SILHOUETTES_MAX ||
+    !silhouettes.every((id) => typeof id === "string" && SILHOUETTES_PAR_ID.has(id))
+  )
+    return { ok: false, error: "Personnages invalides" };
+  const langue = (LANGUES_CIEL as readonly string[]).includes(String(b.langue)) ? (b.langue as LangueCiel) : "fr";
+  const signes: IdSigne[] = [];
+  const dates: (string | null)[] = [];
+  if (s !== "nuit") {
+    const nb = s === "couple" ? 2 : 1;
+    const sb = b.signes === undefined ? [] : b.signes;
+    const db_ = b.dates === undefined ? [] : b.dates;
+    if (!Array.isArray(sb) || !Array.isArray(db_) || sb.length > nb || db_.length > nb)
+      return { ok: false, error: "Signe invalide" };
+    for (let i = 0; i < nb; i++) {
+      const brute = db_[i];
+      let date: string | null = null;
+      if (brute !== undefined && brute !== null && brute !== "") {
+        const m = typeof brute === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(brute) : null;
+        const d = m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : null;
+        if (!m || !d || d.getUTCDate() !== Number(m[3]) || d.getUTCMonth() !== Number(m[2]) - 1)
+          return { ok: false, error: "Date invalide" };
+        if (Number(m[1]) < 1900 || Number(m[1]) > 2100) return { ok: false, error: "Date hors limites (1900–2100)" };
+        date = brute as string;
+      }
+      const choisi = sb[i];
+      if (choisi !== undefined && choisi !== null && choisi !== "" && !estUnSigne(choisi))
+        return { ok: false, error: "Signe inconnu" };
+      const signe = estUnSigne(choisi) ? choisi : date ? signeDeLaDate(date) : null;
+      if (!signe) return { ok: false, error: "Choisissez une date ou un signe" };
+      signes.push(signe);
+      dates.push(date);
+    }
+  }
+  return { ok: true, reglages: { style: s, texte, signes, dates, silhouettes: silhouettes as string[], langue } };
+}
+
+/**
+ * Les ombres chinoises posées sur la colline du premier plan, de sa couleur
+ * (27/11, Alexandra : « les personnages tu mets uniquement les ombres
+ * chinoises hein ! »). Un peu plus petites quand le texte est en bas : il
+ * descend vers elles. Le groupe se tient à droite du milieu, d'autant plus
+ * près du centre qu'il est nombreux.
+ *
+ * Et jamais sur un texte (27/11, relecture : « les têtes du couple passent
+ * sur 2 NOVEMBRE 1990 », « les silhouettes coupent Passion • Détermination •
+ * Magnétisme ») — elles rapetissent plutôt (poserSilhouettes, `plafond`) :
+ * - texte en bas : leurs têtes restent sous la place gardée aux trois lignes
+ *   (plafondDesSilhouettes ; la fenêtre du ciel y arrête le bloc de lignes) ;
+ * - texte en haut, un signe ou un signe sans cercle : celles qui se tiennent
+ *   sous la date (à défaut, sous le nom du signe) restent sous elle.
+ * Le ciel de cette nuit texte en haut et le couple ne changent pas.
+ */
+function silhouettesDuCiel(
+  ids: readonly string[],
+  couleur: string,
+  m: { style: StyleCiel; texte: PlaceTexte; ville?: boolean; date?: boolean },
+): string {
+  if (!ids.length) return "";
+  const W = LARGEUR_CIEL;
+  const H = HAUTEUR_CIEL;
+  let plafond: { y: number; x0?: number; x1?: number } | undefined;
+  if (m.texte === "bas") plafond = { y: plafondDesSilhouettes(m.style, m.ville) * H };
+  else if (m.style === "signe" || m.style === "libre") {
+    // Mêmes mesures que dessinDuSigne (ciel-signes.ts) : la date sous le nom.
+    const { cy, R } = dispositionDuCiel(m.style, m.texte);
+    const sans = m.style === "libre";
+    const bas = m.date ? cy + (sans ? 0.94 : 0.8) * R + 0.05 * R : cy + (sans ? 0.76 : 0.6) * R + 0.09 * R;
+    plafond = { y: bas, x0: W / 2 - 0.6 * R, x1: W / 2 + 0.6 * R };
+  }
+  return poserSilhouettes(ids, {
+    couleur,
+    largeur: W,
+    hauteur: H,
+    ...(m.texte === "bas" ? { taillePx: H * 0.125 } : {}),
+    centre: ids.length <= 2 ? 0.7 : ids.length === 3 ? 0.62 : 0.55,
+    ...(plafond ? { plafond } : {}),
+  });
+}
+
+/**
+ * Texte en bas : la place gardée aux lignes sous le dessin (3 % d'écart, puis
+ * 18 % de la hauteur, de quoi poser un titre et deux lignes), et sous elle, à
+ * 1,5 % près, le plus haut où monte une tête (27/11). La fenêtre du ciel
+ * (apps/web/src/islands/CielEtoile.tsx, `basDuTexte`) arrête le bloc de
+ * lignes à `bas + 0,03 + 0,18` quand des personnages sont posés : si l'un
+ * change, changer l'autre.
+ */
+export function plafondDesSilhouettes(style: StyleCiel, ville = false): number {
+  return dispositionDuCiel(style, "bas", ville).bas + 0.03 + 0.18 + 0.015;
+}
+
+/** Les deux collines du bas, communes à tous les styles. */
+function collines(W: number, H: number) {
+  return {
+    loin: `M0 ${H * 0.895} C ${W * 0.18} ${H * 0.865}, ${W * 0.36} ${H * 0.885}, ${W * 0.55} ${H * 0.878} S ${W * 0.85} ${H * 0.86}, ${W} ${H * 0.875} L ${W} ${H} L 0 ${H} Z`,
+    pres: `M0 ${H * 0.925} C ${W * 0.22} ${H * 0.9}, ${W * 0.45} ${H * 0.917}, ${W * 0.62} ${H * 0.912} S ${W * 0.88} ${H * 0.895}, ${W} ${H * 0.908} L ${W} ${H} L 0 ${H} Z`,
+  };
+}
+
+/**
+ * L'affiche d'un signe, d'un couple, ou d'un signe sans cercle (27/11) : le
+ * même fond, le même dôme et le même anneau doré que le ciel de cette nuit,
+ * au même thème ; dedans, la constellation du signe (ciel-signes.ts). Pas de
+ * points cardinaux ni de coordonnées : ce n'est pas le ciel d'un lieu.
+ */
+export function svgDuSigne(
+  reglages: Pick<ReglagesCiel, "style" | "texte" | "signes" | "dates" | "silhouettes" | "langue">,
+  theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
+): string {
+  const c = teintesDuTheme(theme);
+  const W = LARGEUR_CIEL;
+  const H = HAUTEUR_CIEL;
+  const cx = W / 2;
+  const { cy, R } = dispositionDuCiel(reglages.style, reglages.texte);
+  const date = (i: number) => dateEcrite(reglages.dates[i], reglages.langue);
+  const couleurs = { etoiles: c.etoiles, dorures: c.dorures };
+  const dome = (x: number, r: number) => `<circle cx="${x}" cy="${cy}" r="${r}" fill="url(#dome)"/>`;
+  let dessin = "";
+  if (reglages.style === "couple") {
+    const [a, b] = [cx - R, cx + R];
+    dessin =
+      dome(a, R) +
+      dome(b, R) +
+      dessinDuSigne({ id: reglages.signes[0]!, cx: a, cy, R, couleurs, langue: reglages.langue, date: date(0), placeDate: "arc-gauche" }) +
+      dessinDuSigne({ id: reglages.signes[1]!, cx: b, cy, R, couleurs, langue: reglages.langue, date: date(1), placeDate: "arc-droite" }) +
+      `<circle cx="${a}" cy="${cy}" r="${R}" fill="none" stroke="${c.dorures}" stroke-width="5"/>` +
+      `<circle cx="${b}" cy="${cy}" r="${R}" fill="none" stroke="${c.dorures}" stroke-width="5"/>` +
+      // Là où les deux cercles se touchent, une petite étoile : le lien.
+      petiteEtoile(cx, cy, R * 0.075, c.dorures);
+  } else if (reglages.style === "libre") {
+    dessin = dessinDuSigne({ id: reglages.signes[0]!, cx, cy, R, couleurs, langue: reglages.langue, date: date(0), placeDate: "dedans", sansCercle: true });
+  } else {
+    dessin =
+      dome(cx, R) +
+      dessinDuSigne({ id: reglages.signes[0]!, cx, cy, R, couleurs, langue: reglages.langue, date: date(0), placeDate: "dedans" }) +
+      `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${c.dorures}" stroke-width="5"/>` +
+      `<circle cx="${cx}" cy="${cy}" r="${R + 22}" fill="none" stroke="${c.dorures}" stroke-opacity="0.45" stroke-width="2"/>`;
+  }
+  const { loin, pres } = collines(W, H);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs>
+    <linearGradient id="nuit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${c.haut}"/>
+      <stop offset="0.75" stop-color="${c.milieu}"/>
+      <stop offset="1" stop-color="${c.horizon}"/>
+    </linearGradient>
+    <radialGradient id="dome" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="${c.domeCentre}"/>
+      <stop offset="1" stop-color="${c.domeBord}"/>
+    </radialGradient>
+    ${defsDuSigne(c.etoiles, c.halo)}
+  </defs>
+  <rect width="${W}" height="${H}" fill="url(#nuit)"/>
+  ${dessin}
+  <path d="${loin}" fill="${c.collineLoin}"/>
+  <path d="${pres}" fill="${c.collinePres}"/>${silhouettesDuCiel(reglages.silhouettes, c.collinePres, { style: reglages.style, texte: reglages.texte, date: !!reglages.dates[0] })}
+</svg>`;
+}
+
 /** Le SVG du fond, à la taille du fichier. */
 export function svgDuCiel(
   lat: number,
   lon: number,
   instant: Date,
   theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
+  options: { ville?: string | null; texte?: PlaceTexte; silhouettes?: readonly string[] } = {},
 ): string {
   const c = teintesDuTheme(theme);
   const W = LARGEUR_CIEL;
@@ -293,9 +580,10 @@ export function svgDuCiel(
   const cx = W / 2;
   // Le cercle laisse le haut libre (26/11, « descends un peu le cercle on
   // doit pouvoir avoir la place pour le texte ») : les lignes de texte de
-  // l'affiche s'empilent en haut, sur le premier petit tiers.
-  const cy = H * CENTRE_Y_CIEL;
-  const R = W * 0.34;
+  // l'affiche s'empilent en haut, sur le premier petit tiers. Texte en bas
+  // (27/11) : le cercle monte, un peu plus petit (dispositionDuCiel).
+  const texte = options.texte ?? "haut";
+  const { cy, R } = dispositionDuCiel("nuit", texte);
   const px = (p: { x: number; y: number }) => `${(cx + p.x * R).toFixed(1)},${(cy + p.y * R).toFixed(1)}`;
 
   // Tracés des constellations : un segment n'est gardé que si ses deux
@@ -326,8 +614,7 @@ export function svgDuCiel(
 
   // Collines : deux plans, le plus proche le plus sombre. Courbes fixes —
   // la même scène pour tout le monde, seul le ciel change.
-  const collineLoin = `M0 ${H * 0.895} C ${W * 0.18} ${H * 0.865}, ${W * 0.36} ${H * 0.885}, ${W * 0.55} ${H * 0.878} S ${W * 0.85} ${H * 0.86}, ${W} ${H * 0.875} L ${W} ${H} L 0 ${H} Z`;
-  const collinePres = `M0 ${H * 0.925} C ${W * 0.22} ${H * 0.9}, ${W * 0.45} ${H * 0.917}, ${W * 0.62} ${H * 0.912} S ${W * 0.88} ${H * 0.895}, ${W} ${H * 0.908} L ${W} ${H} L 0 ${H} Z`;
+  const { loin: collineLoin, pres: collinePres } = collines(W, H);
 
   const etiquette = (txt: string, x: number, y: number) =>
     `<text x="${x.toFixed(0)}" y="${y.toFixed(0)}" text-anchor="middle" dominant-baseline="middle">${txt}</text>`;
@@ -364,9 +651,9 @@ export function svgDuCiel(
     ${etiquette("E", cx - R - 70, cy)}
     ${etiquette("O", cx + R + 70, cy)}
   </g>
-  <text x="${cx}" y="${cy + R + 180}" text-anchor="middle" font-family="League Spartan, DejaVu Sans, sans-serif" font-size="44" fill="${c.dorures}" fill-opacity="0.85" letter-spacing="3">${coordonnees(lat, lon)}</text>
+  ${legendeDuLieu(options.ville ?? null, cx, cy + R, c.dorures, coordonnees(lat, lon))}
   <path d="${collineLoin}" fill="${c.collineLoin}"/>
-  <path d="${collinePres}" fill="${c.collinePres}"/>
+  <path d="${collinePres}" fill="${c.collinePres}"/>${silhouettesDuCiel(options.silhouettes ?? [], c.collinePres, { style: "nuit", texte, ville: !!(options.ville ?? "").trim() })}
 </svg>`;
 }
 
@@ -376,8 +663,9 @@ export async function rendreCiel(
   lon: number,
   instant: Date,
   theme?: Pick<ThemeCiel, "fond" | "etoiles" | "dorures">,
+  options: { ville?: string | null; texte?: PlaceTexte; silhouettes?: readonly string[] } = {},
 ): Promise<Buffer> {
-  return sharp(Buffer.from(svgDuCiel(lat, lon, instant, theme))).png().toBuffer();
+  return sharp(Buffer.from(svgDuCiel(lat, lon, instant, theme, options))).png().toBuffer();
 }
 
 /** Les thèmes réglés au BO (tous, actifs ou non). */
@@ -518,6 +806,18 @@ export function mountCielRoutes(app: Hono): void {
   });
 
   /**
+   * GET /ia/ciel/silhouettes → les tracés des ombres chinoises (27/11), pour
+   * les vignettes de l'étape Personnages : les mêmes que ceux posés sur le ciel.
+   */
+  app.get("/ia/ciel/silhouettes", (c: Context) =>
+    c.json(
+      { silhouettes: SILHOUETTES.map(({ id, d, gauche, droite, haut }) => ({ id, d, gauche, droite, haut })) },
+      200,
+      { "Cache-Control": "public, max-age=3600" },
+    ),
+  );
+
+  /**
    * GET /ia/ciel/themes → les thèmes proposés aux clientes (actifs), avec
    * les teintes de leur dégradé pour dessiner la pastille de chacun.
    */
@@ -563,7 +863,10 @@ export function mountCielRoutes(app: Hono): void {
 
   /**
    * POST /ia/ciel { productId, cartId, date: "AAAA-MM-JJ", heure: "HH:MM",
-   *                 fuseau: "Europe/Paris", lat, lon, lieu, theme }
+   *                 fuseau: "Europe/Paris", lat, lon, lieu, theme,
+   *                 style?, texte?, signes?, dates?, silhouettes?, langue? }
+   * (les champs du 27/11 : voir lireReglagesCiel ; un signe ou un couple se
+   * passe de date, d'heure et de lieu)
    * → { publicId, status: "prete", apercu } — la même réponse que /ia/generer.
    */
   app.post("/ia/ciel", async (c: Context) => {
@@ -572,12 +875,18 @@ export function mountCielRoutes(app: Hono): void {
       return c.json({ error: "Trop de demandes d'affilée, réessayez dans une minute" }, 429);
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const productId = Number(b.productId);
-    const lat = Number(b.lat);
-    const lon = Number(b.lon);
+    // Le style, la place du texte, les signes, les personnages (27/11).
+    const lus = lireReglagesCiel(b);
+    if (!lus.ok) return c.json({ error: lus.error }, 400);
+    const reglages = lus.reglages;
+    const nuit = reglages.style === "nuit";
+    // Date, heure et lieu ne servent qu'au ciel de cette nuit.
+    const lat = nuit ? Number(b.lat) : 0;
+    const lon = nuit ? Number(b.lon) : 0;
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180)
       return c.json({ error: "Lieu invalide" }, 400);
     const fuseau = String(b.fuseau ?? "Europe/Paris").slice(0, 64);
-    const instant = instantLocal(String(b.date ?? ""), String(b.heure ?? ""), fuseau);
+    const instant = nuit ? instantLocal(String(b.date ?? ""), String(b.heure ?? ""), fuseau) : new Date();
     if (!instant) return c.json({ error: "Date ou heure invalide" }, 400);
     const an = instant.getUTCFullYear();
     if (an < 1900 || an > 2100) return c.json({ error: "Date hors limites (1900–2100)" }, 400);
@@ -596,10 +905,20 @@ export function mountCielRoutes(app: Hono): void {
     const theme =
       proposes.find((t) => t.id === String(b.theme ?? "")) ?? proposes[0] ?? THEMES_CIEL_DE_BASE[0]!;
     try {
-      const pleine = await rendreCiel(lat, lon, instant, theme);
+      // La ville sous le cercle, si la cliente l'a demandée (27/11).
+      const ville = nuit && b.afficherVille === true ? String(b.ville ?? "").slice(0, 80) : null;
+      const pleine = nuit
+        ? await rendreCiel(lat, lon, instant, theme, { ville, texte: reglages.texte, silhouettes: reglages.silhouettes })
+        : await sharp(Buffer.from(svgDuSigne(reglages, theme))).png().toBuffer();
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
-      const apercu = await fabriquerApercu(pleine, `${publicId}-apercu.jpg`, { x: 0.5, y: CENTRE_Y_CIEL });
+      // Le filigrane se cale sur le centre du dessin, où qu'il soit.
+      const { cy } = dispositionDuCiel(reglages.style, reglages.texte);
+      const centreY = nuit && reglages.texte === "haut" ? CENTRE_Y_CIEL : cy / HAUTEUR_CIEL;
+      // Sans anneau pour un couple ou un signe sans cercle (27/11) : il ne
+      // suivrait pas le dessin.
+      const anneau = reglages.style === "nuit" || reglages.style === "signe";
+      const apercu = await fabriquerApercu(pleine, `${publicId}-apercu.jpg`, { x: 0.5, y: centreY }, anneau);
       await db.insert(schema.aiGenerations).values({
         publicId,
         productId: produit.id,
@@ -609,13 +928,13 @@ export function mountCielRoutes(app: Hono): void {
         // Ce qui a servi au calcul, lisible au back-office à la place d'une consigne.
         prompt: JSON.stringify({
           ciel: true,
-          date: b.date,
-          heure: b.heure,
-          fuseau,
-          lieu,
-          lat,
-          lon,
-          utc: instant.toISOString(),
+          ...(nuit
+            ? { date: b.date, heure: b.heure, fuseau, lieu, lat, lon, utc: instant.toISOString() }
+            : { style: reglages.style, signes: reglages.signes, dates: reglages.dates }),
+          // Seulement s'ils changent quelque chose (27/11) : la ligne d'un
+          // ciel de cette nuit sans rien reste celle d'avant.
+          ...(reglages.texte !== placeParDefaut(reglages.style) ? { texte: reglages.texte } : {}),
+          ...(reglages.silhouettes.length ? { silhouettes: reglages.silhouettes } : {}),
           theme: { id: theme.id, nom: theme.nom, fond: theme.fond, etoiles: theme.etoiles, dorures: theme.dorures },
         }),
         // Hors de BO › Affiches IA et du plafond (filtreDuPerimetre, ia.ts, 27/11).
@@ -627,7 +946,11 @@ export function mountCielRoutes(app: Hono): void {
         costCents: 0,
         ip,
       });
-      console.log(`[ciel] ${publicId} : ${lieu || `${lat},${lon}`} le ${instant.toISOString()}`);
+      console.log(
+        nuit
+          ? `[ciel] ${publicId} : ${lieu || `${lat},${lon}`} le ${instant.toISOString()}`
+          : `[ciel] ${publicId} : ${reglages.style} ${reglages.signes.join(" + ")}`,
+      );
       return c.json({ publicId, status: "prete", apercu: `/ia/apercu/${publicId}` });
     } catch (e) {
       console.error("Ciel étoilé : rendu impossible :", e instanceof Error ? e.message : e);

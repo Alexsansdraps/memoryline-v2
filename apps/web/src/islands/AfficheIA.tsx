@@ -47,7 +47,7 @@ import {
   type TextBlock,
 } from "@memoryline/types";
 import { createReductionDesLignes, ZoneDefilante } from "@memoryline/configurator";
-import { assetUrl, browserApi, formatPrice, getCartId, versLePanier } from "../lib/api.ts";
+import { PUBLIC_API_URL, assetUrl, browserApi, formatPrice, getCartId, versLePanier } from "../lib/api.ts";
 import {
   apercuAbsolu,
   attendreApercu,
@@ -61,7 +61,14 @@ import {
   type EchecIA,
 } from "../lib/ia.ts";
 import RelaisPhoto from "./RelaisPhoto.tsx";
-import CielEtoile from "./CielEtoile.tsx";
+import CielEtoile, {
+  zoneDuDessin,
+  basDuTexte,
+  type IdSigne,
+  type MiseDuCiel,
+  type PlaceTexte,
+  type StyleCiel,
+} from "./CielEtoile.tsx";
 import type { CompositionIA } from "./PersonnagesIA.tsx";
 
 /*
@@ -636,6 +643,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     compo?: CompositionIA;
     /** Quand elle a été créée (ms) : au-delà de JOURS_DES_CREATIONS, elle n'est plus proposée. */
     le?: number;
+    /** Un ciel étoilé (27/11) : son style et la place de son texte, d'où se posent les lignes. */
+    mise?: MiseDuCiel;
   };
   /** Lue dans le navigateur seulement : le panier n'existe pas au rendu serveur. */
   let cleCreations = "";
@@ -721,7 +730,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * personnages, format, panier — est celle de cette fiche.
    */
   const modeCiel = () => props.ciel === true;
-  function cielCree(c: { publicId: string; apercuChemin: string; apercu: string }) {
+  function cielCree(c: { publicId: string; apercuChemin: string; apercu: string; mise: MiseDuCiel }) {
     setEchec(null);
     setChemin(null);
     setPublicId(c.publicId);
@@ -734,6 +743,140 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       { ...c, sens: "portrait", source: "" },
     ]);
   }
+
+  /*
+   * La mise en page du ciel (27/11, Alexandra : « pas de drag and drop par
+   * les clients surtout, ils vont faire n'imp ça doit être simple », « genre
+   * "texte en haut, texte en bas" », « texte trop collé aussi », « ensemble
+   * mais trop de place entre tête et cercle »).
+   *
+   * Dans la fenêtre du ciel, les lignes ne se déplacent plus : elles se
+   * POSENT d'office, en un bloc rapproché du dessin — au-dessus de lui (texte
+   * en haut) ou dessous (texte en bas) —, avec un vrai écart entre elles,
+   * mesuré sur les polices (une Manuscrite déborde de sa ligne, elle ne mord
+   * plus sur la voisine). Ces places partent avec chaque ligne, comme celles
+   * d'une ligne déplacée sur l'affiche photo : le moteur commun (aperçu,
+   * fichier d'impression) n'en sait pas plus, et les autres affiches ne
+   * bougent pas.
+   */
+  const [texteCiel, setTexteCiel] = createSignal<PlaceTexte>("haut");
+  /** Le style du formulaire, pour la place du texte par défaut. */
+  let styleCielVu: StyleCiel | null = null;
+  /** Les qualités posées d'office sur la dernière ligne, tant qu'on n'y touche pas. */
+  let qualitesPosees = "";
+  /**
+   * Le style ou les signes changent dans le formulaire : la place du texte
+   * revient à celle du style (en haut pour le ciel de cette nuit, en bas pour
+   * un signe) ; un seul signe remplit la dernière ligne de ses trois qualités
+   * (27/11, Alexandra : « pas mal du tout l'idée des qualités ! ») si elle est
+   * vide — ou si elle porte encore celles posées d'office pour un autre signe.
+   * Pour un couple, rien d'automatique.
+   */
+  function reglageCiel(r: { style: StyleCiel; signes: IdSigne[] }) {
+    if (r.style !== styleCielVu) {
+      styleCielVu = r.style;
+      setTexteCiel(r.style === "nuit" ? "haut" : "bas");
+    }
+    const derniere = NB_LIGNES_AFFICHE - 1;
+    const actuelle = lignes()[derniere]?.value ?? "";
+    const unSigne = (r.style === "signe" || r.style === "libre") && r.signes.length === 1;
+    const qualites = unSigne ? tr(`ciel.qualites.${r.signes[0]!}`) : "";
+    if (qualites && (actuelle.trim() === "" || actuelle === qualitesPosees)) {
+      modifierLigne(derniere, { value: qualites });
+      qualitesPosees = qualites;
+    } else if (!qualites && qualitesPosees && actuelle === qualitesPosees) {
+      // Plus un seul signe (couple, ciel de cette nuit) : les qualités posées
+      // d'office s'en vont ; une ligne retouchée par la cliente reste (27/11,
+      // relecture : « la ligne 3 garde les qualités de la Vierge sur le couple »).
+      modifierLigne(derniere, { value: "" });
+      qualitesPosees = "";
+    }
+  }
+  /** La mise du ciel montré (celle de sa création), à défaut celle d'avant les styles. */
+  const miseMontree = (): MiseDuCiel =>
+    creations().find((c) => c.publicId === publicId())?.mise ?? { style: "nuit", texte: "haut", ville: false, signes: [] };
+  /*
+   * Sur un fond clair (« Crème »), le texte passe en gris anthracite tant que
+   * la cliente n'a pas choisi sa couleur ; sur un fond sombre, il revient au
+   * blanc (27/11, relecture : « les lignes sont blanches sur beige »).
+   */
+  let couleurChoisie = false;
+  const ANTHRACITE = COULEURS_TEXTE_AFFICHE.find((c) => c.id === "anthracite")?.hex ?? COULEUR_TEXTE_DEFAUT;
+  createEffect(() => {
+    if (!modeCiel()) return;
+    const clair = miseMontree().clair === true;
+    if (!couleurChoisie) setCouleur(clair ? ANTHRACITE : COULEUR_TEXTE_DEFAUT);
+  });
+  /** Le redessin attend une date ou un signe (CielEtoile, `onIncomplet`). */
+  const [cielIncomplet, setCielIncomplet] = createSignal(false);
+
+  /**
+   * Les places des lignes remplies sur le ciel montré : x au milieu, y au
+   * centre de chaque ligne (en fraction de la hauteur), comme une ligne posée.
+   */
+  const placesDuCiel = createMemo(() => {
+    const remplies = lignesRemplies();
+    const mise = miseMontree();
+    const zone = zoneDuDessin(mise);
+    // Taille d'une ligne en fraction de la HAUTEUR (portrait, rapport √2).
+    const taille = (rang: number) => ((tailleDeLigneCqw(rang) / 100) * (1 - 2 * MARGE_DU_TEXTE)) / Math.SQRT2;
+    const boites = remplies.map((l, rang) => {
+      const police = policeDeLigne(l.font, rang);
+      const t = taille(rang);
+      const n = Math.max(1, sousLignes(l.value).length);
+      // Ce qui dépasse de la boîte de ligne, en haut et en bas : les grandes
+      // hampes de la Manuscrite (et de sa police de secours pour les chiffres).
+      const polices = [police, ...morceauxDeTexte(l.value, police).map((m) => m.police)];
+      const deborde = Math.max(0, ...polices.map((p) => (p.ascendante + p.descendante - INTERLIGNE_LIGNE_POSEE) / 2)) * t;
+      return { t, boite: n * t * INTERLIGNE_LIGNE_POSEE, deborde };
+    });
+    // Entre deux lignes : leurs débords, plus un tiers de la plus petite.
+    const ecarts = boites.slice(1).map((b, i) => boites[i]!.deborde + b.deborde + 0.33 * Math.min(b.t, boites[i]!.t));
+    const hauteur =
+      boites.reduce((s, b) => s + b.boite, 0) +
+      ecarts.reduce((s, e) => s + e, 0) +
+      (boites[0]?.deborde ?? 0) +
+      (boites[boites.length - 1]?.deborde ?? 0);
+    // Le bloc se tient à 3 % de la hauteur du dessin, sans sortir de la feuille.
+    const haut =
+      mise.texte === "haut"
+        ? Math.max(0.045, zone.haut - 0.03 - hauteur)
+        : // Avec des personnages, le bloc s'arrête au-dessus de leurs têtes (27/11).
+          Math.min(zone.bas + 0.03, basDuTexte(mise) - hauteur);
+    const places = new Map<number, { x: number; y: number }>();
+    let y = haut + (boites[0]?.deborde ?? 0);
+    remplies.forEach((l, i) => {
+      const b = boites[i]!;
+      places.set(l.rang, { x: 0.5, y: Math.round((y + b.boite / 2) * 10000) / 10000 });
+      y += b.boite + (ecarts[i] ?? 0);
+    });
+    return places;
+  });
+  /** Les lignes remplies telles qu'on les dessine : posées d'office sur un ciel. */
+  const lignesAffichees = () =>
+    modeCiel() ? lignesRemplies().map((l) => ({ ...l, ...placesDuCiel().get(l.rang) })) : lignesRemplies();
+
+  /*
+   * Les ombres chinoises du ciel (27/11, Alexandra : « les personnages tu
+   * mets uniquement les ombres chinoises hein ! ») : de 0 à 4, de gauche à
+   * droite, posées par l'API dans l'image même. `choixSilhouettes` : ce qui
+   * est coché ; `silhouettesCiel` : ce qui est sur le ciel (« Mettre sur mon
+   * ciel » le redessine).
+   */
+  const SILHOUETTES_CIEL = [
+    "femme-cheveux-longs",
+    "femme-chignon",
+    "homme-manteau",
+    "homme-bonnet",
+    "enfant",
+    "enfant-sur-epaules",
+    "adulte-bebe",
+    "montre-le-ciel",
+    "chien",
+    "couple",
+  ] as const;
+  const [choixSilhouettes, setChoixSilhouettes] = createSignal<string[]>([]);
+  const [silhouettesCiel, setSilhouettesCiel] = createSignal<string[]>([]);
   function basculerAjout(id: string) {
     setAAjouter((liste) =>
       liste.includes(id) ? liste.filter((x) => x !== id) : [...liste, id],
@@ -1071,7 +1214,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       // Compacte, sans trou : l'API refuse une entrée vide au milieu, et
       // le rendu ne lit de toute façon que la suite des lignes remplies.
       texts: {
-        lines: lignesRemplies().map(
+        lines: lignesAffichees().map(
           (l): TextBlock => ({
             value: l.value.trim(),
             font: l.font,
@@ -1517,6 +1660,30 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    */
   const blocTextes = () => (
     <div class="mt-5 space-y-3">
+      {/* Sur le ciel (27/11, Alexandra : « genre "texte en haut, texte en
+          bas" ») : deux boutons, comme les choix de police. Le dessin passe
+          de l'autre côté et les lignes se replacent d'office. */}
+      <Show when={modeCiel()}>
+        <div role="group" aria-label={tr("ciel.texte_place")} class="flex flex-wrap gap-2.5">
+          <For each={["haut", "bas"] as const}>
+            {(place) => (
+              <button
+                type="button"
+                aria-pressed={texteCiel() === place}
+                onClick={() => setTexteCiel(place)}
+                class="ml-choix inline-flex items-center gap-2 border border-ink/20 px-3 py-1.5 text-sm hover:border-ink/45"
+              >
+                <svg viewBox="0 0 16 22" class="h-5 w-4 text-ink/70" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
+                  <rect x="0.65" y="0.65" width="14.7" height="20.7" rx="1" />
+                  <path d={place === "haut" ? "M4.5 4h7M5.5 6.5h5" : "M4.5 16h7M5.5 18.5h5"} />
+                  <circle cx="8" cy={place === "haut" ? 13 : 8.5} r="3.6" />
+                </svg>
+                {tr(place === "haut" ? "ciel.texte_haut" : "ciel.texte_bas")}
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
       <Index each={lignes()}>
         {(ligne, rang) => (
           <label class="block text-sm">
@@ -1565,7 +1732,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                 aria-pressed={couleur() === c.hex}
                 aria-label={nomTraduit(CLES_COULEURS, c)}
                 title={nomTraduit(CLES_COULEURS, c)}
-                onClick={() => setCouleur(c.hex)}
+                onClick={() => {
+                  couleurChoisie = true;
+                  setCouleur(c.hex);
+                }}
                 // La couleur garde son fond (style en ligne) ; le choix
                 // fait reçoit les marques communes (`ml-choix`).
                 class="ml-choix h-9 w-9 border border-ink/30 hover:border-ink/60"
@@ -1633,11 +1803,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           when={compoMontree()}
           fallback={
             <>
-              <p class="mt-1 text-sm text-ink-soft">{tr("ia.perso.aide")}</p>
               {/* Deux gros boutons, le muret d'abord (décision du
                   20/11) : assez grands pour le doigt, et l'on voit
-                  d'un coup d'œil ce que chacun donne. */}
-              <div class="mt-3 grid grid-cols-2 gap-3">
+                  d'un coup d'œil ce que chacun donne. Plus de phrase
+                  d'aide au-dessus (27/11, Alexandra : « supprimer les
+                  phrases côté client qui sont inutiles ») : le titre et
+                  les deux cartes suffisent. */}
+              <div class="mt-2 grid grid-cols-2 gap-3">
                 <For each={["back", "front"] as const}>
                   {(vue) => (
                     <button
@@ -1699,6 +1871,101 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             </p>
           )}
         </Show>
+      </Show>
+    </div>
+  );
+
+  /**
+   * Les ombres chinoises du ciel (27/11), à la place des personnages de
+   * l'affiche photo : leurs tracés viennent de l'API (les mêmes que ceux
+   * posés dans l'image), lus à la première ouverture de l'étape.
+   */
+  const [formesSilhouettes, setFormesSilhouettes] = createSignal<
+    Record<string, { d: string; gauche: number; droite: number; haut: number }>
+  >({});
+  createEffect(() => {
+    if (!modeCiel() || volet() !== "personnages" || Object.keys(formesSilhouettes()).length) return;
+    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes`)
+      .then((r) => r.json())
+      .then((data: { silhouettes?: { id: string; d: string; gauche: number; droite: number; haut: number }[] }) =>
+        setFormesSilhouettes(Object.fromEntries((data.silhouettes ?? []).map((s) => [s.id, s]))),
+      )
+      .catch(() => {
+        /* sans tracés, les vignettes gardent leur nom */
+      });
+  });
+  const dessinSilhouette = (id: string, classe: string) => {
+    const f = formesSilhouettes()[id];
+    return (
+      <Show when={f} fallback={<span class={classe} />}>
+        {(s) => (
+          <svg
+            viewBox={`${s().gauche - 4} ${s().haut - 4} ${s().droite - s().gauche + 8} ${-s().haut + 8}`}
+            class={classe}
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d={s().d} />
+          </svg>
+        )}
+      </Show>
+    );
+  };
+  const nomSilhouette = (id: (typeof SILHOUETTES_CIEL)[number]) => tr(`ciel.silh.${id}`);
+  const blocSilhouettes = () => (
+    <div class="mt-5">
+      <p class="flex items-baseline justify-between text-sm font-medium">
+        <span>{tr("ia.perso.titre")}</span>
+        <span class="text-xs tabular-nums text-ink-soft">{choixSilhouettes().length}/4</span>
+      </p>
+      {/* Celles qui seront posées, dans l'ordre, de gauche à droite : un
+          toucher en retire une. */}
+      <div class="mt-2 flex min-h-[4.5rem] flex-wrap items-end gap-2 border border-dashed border-ink/20 p-2">
+        <For each={choixSilhouettes()}>
+          {(id, i) => (
+            <button
+              type="button"
+              aria-label={`${tr("ciel.silh.retirer")} : ${nomSilhouette(id as (typeof SILHOUETTES_CIEL)[number])}`}
+              onClick={() => setChoixSilhouettes((l) => l.filter((_, k) => k !== i()))}
+              class="relative flex h-16 w-12 items-end justify-center text-ink hover:text-terracotta"
+            >
+              {dessinSilhouette(id, "h-full w-full")}
+              <span aria-hidden="true" class="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-ink text-[10px] leading-none text-paper">
+                ✕
+              </span>
+            </button>
+          )}
+        </For>
+      </div>
+      <div class="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5">
+        <For each={SILHOUETTES_CIEL}>
+          {(id) => (
+            <button
+              type="button"
+              disabled={choixSilhouettes().length >= 4}
+              onClick={() => setChoixSilhouettes((l) => (l.length < 4 ? [...l, id] : l))}
+              class="flex min-w-0 flex-col items-center gap-1 border border-ink/15 px-1 pb-1.5 pt-2 text-center text-[11px] leading-tight transition-colors hover:border-ink/45 disabled:opacity-50"
+            >
+              {dessinSilhouette(id, "h-14 w-full text-ink/80")}
+              <span>{nomSilhouette(id)}</span>
+            </button>
+          )}
+        </For>
+      </div>
+      <button
+        type="button"
+        disabled={occupe() || choixSilhouettes().join(",") === silhouettesCiel().join(",")}
+        onClick={() => setSilhouettesCiel([...choixSilhouettes()])}
+        class="mt-4 rounded-full bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85 disabled:opacity-60"
+      >
+        {tr("ciel.silh.mettre")}
+      </button>
+      {/* Le ciel ne peut pas se redessiner (un couple à une seule date) :
+          on le dit ici aussi (27/11, relecture). */}
+      <Show when={cielIncomplet()}>
+        <p role="status" class="mt-2 text-sm text-terracotta-deep">
+          {tr("ciel.signe_manque")}
+        </p>
       </Show>
     </div>
   );
@@ -1999,16 +2266,16 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   "z-index": "200",
                 }}
               >
-                <Index each={lignesRemplies()}>
+                <Index each={lignesAffichees()}>
                   {(ligne, rang) => (
                     <Show when={typeof ligne().x !== "number"}>
                       <div
                         data-rang-texte={rang}
-                        title={tr("ia.deplacer_ligne")}
-                        onPointerDown={(e) => attraperLigne(e, ligne().rang)}
+                        title={modeCiel() ? undefined : tr("ia.deplacer_ligne")}
+                        onPointerDown={(e) => !modeCiel() && attraperLigne(e, ligne().rang)}
                         style={{
-                          "pointer-events": "auto",
-                          cursor: "move",
+                          "pointer-events": modeCiel() ? "none" : "auto",
+                          cursor: modeCiel() ? "default" : "move",
                           "touch-action": "none",
                           "user-select": "none",
                           "font-family": familleCss(policeDeLigne(ligne().font, rang)),
@@ -2040,13 +2307,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   "z-index": "201",
                 }}
               >
-                <Index each={lignesRemplies()}>
+                <Index each={lignesAffichees()}>
                   {(ligne, rang) => (
                     <Show when={typeof ligne().x === "number"}>
                       <div
                         data-rang-texte={rang}
-                        title={tr("ia.deplacer_ligne")}
-                        onPointerDown={(e) => attraperLigne(e, ligne().rang)}
+                        title={modeCiel() ? undefined : tr("ia.deplacer_ligne")}
+                        onPointerDown={(e) => !modeCiel() && attraperLigne(e, ligne().rang)}
                         style={{
                           position: "absolute",
                           left: `${(ligne().x ?? 0.5) * 100}%`,
@@ -2057,8 +2324,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           // les pose.
                           "text-align": "center",
                           "white-space": "nowrap",
-                          "pointer-events": "auto",
-                          cursor: "move",
+                          "pointer-events": modeCiel() ? "none" : "auto",
+                          cursor: modeCiel() ? "default" : "move",
                           "touch-action": "none",
                           "user-select": "none",
                           "font-family": familleCss(policeDeLigne(ligne().font, rang)),
@@ -2229,6 +2496,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   productId={Number(props.product.id)}
                   occupe={occupe() || !!composer()}
                   onCree={cielCree}
+                  texte={texteCiel()}
+                  silhouettes={silhouettesCiel()}
+                  onReglage={reglageCiel}
+                  onIncomplet={setCielIncomplet}
                 />
               </div>
             </Show>
@@ -2239,8 +2510,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   sur la tablette du stand. */}
               <Show when={choixDuStyle()}>
                 <div ref={blocStyle}>
+                  {/* Le titre seul, sans phrase d'aide (27/11, Alexandra :
+                      « supprimer les phrases côté client qui sont inutiles »). */}
                   <p class="mt-5 font-medium">{tr("ia.style_titre")}</p>
-                  <p class="mt-1 text-sm text-ink-soft">{tr("ia.style_aide")}</p>
                   <Show when={rappelStyle() && styleManquant()}>
                     <p role="alert" class="mt-2 bg-terracotta/10 px-3 py-2 text-sm font-medium text-terracotta-deep">
                       {tr("ia.style_manquant")}
@@ -2550,7 +2822,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               when={apercu()}
               fallback={<p class="mt-5 text-sm text-ink-soft">{tr("ia.etape.creer_dabord")}</p>}
             >
-              {blocPersonnages()}
+              {modeCiel() ? blocSilhouettes() : blocPersonnages()}
             </Show>
           </div>
 

@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, For, on, onCleanup, onMount, Show, untrack, type JSX } from "solid-js";
 import { LOCALE_COMPLETE, t, type Langue } from "../i18n/utils.ts";
 import { PUBLIC_API_URL, getCartId } from "../lib/api.ts";
 import { apercuAbsolu } from "../lib/ia.ts";
@@ -45,6 +45,137 @@ const MULHOUSE: Ville = {
   fuseau: "Europe/Paris",
 };
 
+/*
+ * Les styles du ciel (27/11, Alexandra : « peut-être choisir un style de
+ * constellation (double donc couple, simple, etc) », « pas de drag and drop
+ * par les clients surtout, ils vont faire n'imp ça doit être simple »). Un
+ * seul choix en tête du formulaire, en vignettes ; le style décide de la mise
+ * en page. Mêmes noms que l'API (apps/api/src/ciel.ts, STYLES_CIEL).
+ */
+export type StyleCiel = "nuit" | "signe" | "couple" | "libre";
+const STYLES: StyleCiel[] = ["nuit", "signe", "couple", "libre"];
+export type PlaceTexte = "haut" | "bas";
+
+/** Les douze signes, par leur sigle (apps/api/src/ciel-signes.ts). */
+export const IDS_SIGNES = ["Ari", "Tau", "Gem", "Cnc", "Leo", "Vir", "Lib", "Sco", "Sgr", "Cap", "Aqr", "Psc"] as const;
+export type IdSigne = (typeof IDS_SIGNES)[number];
+/** Premier jour de chaque signe (« MM-JJ »), comme l'API. */
+const DEBUTS: Record<IdSigne, string> = {
+  Ari: "03-21", Tau: "04-20", Gem: "05-21", Cnc: "06-21", Leo: "07-23", Vir: "08-23",
+  Lib: "09-23", Sco: "10-23", Sgr: "11-22", Cap: "12-22", Aqr: "01-20", Psc: "02-19",
+};
+/** Le signe d'une date de naissance « AAAA-MM-JJ » (dates habituelles du zodiaque). */
+export function signeDeLaDate(date: string): IdSigne | null {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return null;
+  const mmjj = `${m[1]}-${m[2]}`;
+  let trouve: IdSigne = "Cap";
+  let meilleur = "";
+  for (const id of IDS_SIGNES)
+    if (DEBUTS[id] <= mmjj && DEBUTS[id] > meilleur) {
+      meilleur = DEBUTS[id];
+      trouve = id;
+    }
+  return trouve;
+}
+
+/** Ce qu'un ciel dessiné porte : de quoi y poser les lignes de texte (AfficheIA). */
+export interface MiseDuCiel {
+  style: StyleCiel;
+  texte: PlaceTexte;
+  /** La ville est écrite sous le cercle (ciel de cette nuit). */
+  ville: boolean;
+  signes: IdSigne[];
+  /** Des ombres chinoises sont posées sur la colline (27/11) : le texte en bas s'arrête au-dessus. */
+  personnages?: boolean;
+  /** Le fond du thème est clair (« Crème ») : le texte passe en anthracite (27/11). */
+  clair?: boolean;
+}
+
+/**
+ * La bande qu'occupe le dessin, en fraction de la hauteur de l'affiche : les
+ * lignes de texte se posent au-dessus de `haut` (texte en haut) ou sous
+ * `bas` (texte en bas). MÊMES calculs que dispositionDuCiel
+ * (apps/api/src/ciel.ts) : si l'un change, changer l'autre.
+ */
+export function zoneDuDessin(m: Pick<MiseDuCiel, "style" | "texte" | "ville">): { haut: number; bas: number } {
+  const W = 2480;
+  const H = 3508;
+  if (m.style === "nuit") {
+    const cy = m.texte === "haut" ? H * 0.55 : H * 0.31;
+    const R = m.texte === "haut" ? W * 0.34 : W * 0.31;
+    return { haut: (cy - R - 93) / H, bas: (cy + R + (m.ville ? 257 : 192)) / H };
+  }
+  if (m.style === "couple") {
+    const cy = H * (m.texte === "haut" ? 0.5 : 0.36);
+    const R = W * 0.205;
+    return { haut: (cy - R * 1.14) / H, bas: (cy + R + 12) / H };
+  }
+  const cy = H * (m.texte === "haut" ? 0.55 : 0.33);
+  const R = W * 0.34;
+  if (m.style === "libre") return { haut: (cy - R * 0.78) / H, bas: (cy + R * 0.98) / H };
+  return { haut: (cy - R - 24) / H, bas: (cy + R + 24) / H };
+}
+
+/**
+ * Texte en bas : le plus bas où descend le bloc de lignes, en fraction de la
+ * hauteur (27/11, relecture : « les silhouettes coupent Passion •
+ * Détermination • Magnétisme »). Sans personnage, le bas de la feuille ; avec,
+ * la place gardée aux lignes sous le dessin (3 % d'écart puis 18 %) : l'API
+ * garde les têtes 1,5 % plus bas (plafondDesSilhouettes, apps/api/src/ciel.ts).
+ * Si l'un change, changer l'autre.
+ */
+export function basDuTexte(m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages">): number {
+  if (m.texte !== "bas" || !m.personnages) return 0.97;
+  return zoneDuDessin({ ...m, texte: "bas" }).bas + 0.03 + 0.18;
+}
+
+/** Un fond clair, comme l'API le juge (teintesDuTheme, apps/api/src/ciel.ts). */
+function fondClair(hex: string): boolean {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex.trim());
+  if (!m) return false;
+  const [r, g, b] = [m[1], m[2], m[3]].map((x) => parseInt(x!, 16) / 255);
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b! > 0.55;
+}
+
+/** Une petite image de chaque mise en page, pour les vignettes des styles. */
+function VignetteStyle(props: { style: StyleCiel }): JSX.Element {
+  // Trois traits de texte : en haut pour le ciel de cette nuit, en bas sinon.
+  const traits = (y: number) => (
+    <>
+      <path d={`M13 ${y}h14`} stroke-width="2" />
+      <path d={`M15 ${y + 4}h10M16 ${y + 7.5}h8`} stroke-width="1.2" />
+    </>
+  );
+  return (
+    <svg viewBox="0 0 40 56" class="h-full w-full" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="1" y="1" width="38" height="54" rx="1.5" stroke-width="1" />
+      <Show when={props.style === "nuit"}>
+        {traits(7)}
+        <circle cx="20" cy="31" r="11" stroke-width="1.2" />
+        <path d="M15 27l.01 0M23 25l.01 0M19 32l.01 0M25 34l.01 0M14 35l.01 0" stroke-width="2" />
+        <path d="M1 49c10-3 22-2 38-4" stroke-width="1" />
+      </Show>
+      <Show when={props.style === "signe"}>
+        <circle cx="20" cy="20" r="13" stroke-width="1.2" />
+        <path d="M12 22l5-5 4 3 6-7M21 20l1 6" stroke-width="1" stroke-dasharray="1.6 1.4" />
+        {traits(40)}
+      </Show>
+      <Show when={props.style === "couple"}>
+        <circle cx="12.5" cy="21" r="8" stroke-width="1.2" />
+        <circle cx="27.5" cy="21" r="8" stroke-width="1.2" />
+        <path d="M8 23l4-4 3 2M24 18l3 4 3-3" stroke-width="1" stroke-dasharray="1.4 1.2" />
+        {traits(38)}
+      </Show>
+      <Show when={props.style === "libre"}>
+        <path d="M9 25l6-7 5 4 7-9 4 6M20 22l2 8" stroke-width="1" stroke-dasharray="1.6 1.4" />
+        <path d="M30 9l.01 0M8 12l.01 0M33 26l.01 0M11 31l.01 0" stroke-width="1.6" />
+        {traits(40)}
+      </Show>
+    </svg>
+  );
+}
+
 export interface CielEtoileProps {
   langue: Langue;
   /** L'affiche « à partir d'une photo » qui accueille le ciel. */
@@ -56,9 +187,24 @@ export interface CielEtoileProps {
    * formulaire seul, et le ciel dessiné lui est rendu — elle le montre et
    * enchaîne sur ses textes, ses personnages, son format.
    */
-  onCree?: (c: { publicId: string; apercuChemin: string; apercu: string }) => void;
+  onCree?: (c: { publicId: string; apercuChemin: string; apercu: string; mise: MiseDuCiel }) => void;
   /** La fiche est occupée (création, composition) : le bouton s'éteint. */
   occupe?: boolean;
+  /**
+   * La place du texte, réglée à l'étape Texte de la fenêtre (27/11) ; à
+   * défaut, en haut pour le ciel de cette nuit, en bas pour un signe. La
+   * changer redessine le ciel déjà dessiné.
+   */
+  texte?: PlaceTexte;
+  /** Les ombres chinoises posées (étape Personnages, 27/11) ; les changer redessine le ciel. */
+  silhouettes?: readonly string[];
+  /** Dit à la fenêtre le style et les signes choisis, à chaque changement. */
+  onReglage?: (r: { style: StyleCiel; signes: IdSigne[] }) => void;
+  /**
+   * Le redessin attend une date ou un signe (un couple à une seule date) :
+   * la fenêtre le redit à l'étape Personnages (27/11).
+   */
+  onIncomplet?: (oui: boolean) => void;
 }
 
 export default function CielEtoile(props: CielEtoileProps): JSX.Element {
@@ -85,6 +231,9 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
     setHeure(HEURE_NOEL);
     if (themes().some((t) => t.id === "noel")) setTheme("noel");
     setAnnonceNoel(tr("ciel.noel.regle"));
+    // Un ciel déjà dessiné prend aussitôt la date et le thème de Noël, comme
+    // après un clic sur une pastille (27/11, relecture) : un seul dessin.
+    redessinerSiDessine();
   }
   const [ville, setVille] = createSignal<Ville | null>(MULHOUSE);
   const [saisie, setSaisie] = createSignal(MULHOUSE.nom);
@@ -192,31 +341,152 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
   const [erreur, setErreur] = createSignal<"ciel.erreur" | "ia.err.rafale" | null>(null);
   const [creation, setCreation] = createSignal<{ publicId: string; apercuChemin: string; apercu: string } | null>(null);
 
-  async function dessiner(e: Event) {
-    e.preventDefault();
+  /**
+   * Un ciel a déjà été dessiné : changer de couleur le redessine aussitôt
+   * (27/11, Alexandra : « quand on choisit les couleurs ça doit corriger
+   * direct la couleur »). Un ciel ne coûte rien (pas d'OpenAI). Une couleur
+   * touchée pendant un dessin en cours relance un dessin juste après.
+   */
+  const [dejaDessine, setDejaDessine] = createSignal(false);
+  let aRedessiner = false;
+  /**
+   * Redessine le ciel déjà montré (couleur, ville, style, place du texte,
+   * personnages) ; rien avant le premier dessin. Plusieurs changements du
+   * même instant — un style qui change aussi la place du texte — ne font
+   * qu'un dessin (27/11).
+   */
+  let redessinPrevu = false;
+  function redessinerSiDessine() {
+    if (!dejaDessine() || redessinPrevu) return;
+    redessinPrevu = true;
+    queueMicrotask(() => {
+      redessinPrevu = false;
+      if (occupe()) aRedessiner = true;
+      else void dessiner(undefined, true);
+    });
+  }
+  function choisirTheme(id: string) {
+    if (id === theme()) return;
+    setTheme(id);
+    redessinerSiDessine();
+  }
+  /**
+   * La ville écrite sous le cercle (27/11, Alexandra : « afficher la ville
+   * case à cocher, faut l'afficher à un endroit sympa joliment »). Décochée
+   * par défaut : le ciel reste tel qu'il était.
+   */
+  const [afficherVille, setAfficherVille] = createSignal(false);
+
+  /*
+   * Le style, et pour un signe ou un couple les dates de naissance (27/11,
+   * Alexandra : « dans le principe les dates avec constellation, noms, et une
+   * phrase »). Le signe se DÉDUIT de la date ; la liste ne sert qu'à le
+   * corriger (« corrige » reste tant que la date ne change pas). Date, heure
+   * et ville du ciel de cette nuit restent en mémoire quand on passe à un
+   * signe, et reviennent avec lui.
+   */
+  const [style, setStyle] = createSignal<StyleCiel>("nuit");
+  const [naissances, setNaissances] = createSignal<[string, string]>(["", ""]);
+  const [corriges, setCorriges] = createSignal<[IdSigne | "", IdSigne | ""]>(["", ""]);
+  const [signeManque, setSigneManque] = createSignal(false);
+  const nbSignes = () => (style() === "couple" ? 2 : style() === "nuit" ? 0 : 1);
+  /** Le signe de chaque date : corrigé à la main, sinon déduit, sinon aucun. */
+  const signeN = (i: 0 | 1): IdSigne | null => corriges()[i] || signeDeLaDate(naissances()[i]);
+  const signesEffectifs = (): IdSigne[] =>
+    ([0, 1] as const).slice(0, nbSignes()).map(signeN).filter((s): s is IdSigne => !!s);
+  function changerNaissance(i: 0 | 1, valeur: string) {
+    setNaissances((n) => (i === 0 ? [valeur, n[1]] : [n[0], valeur]));
+    // Une nouvelle date : le signe redevient celui de la date.
+    setCorriges((c) => (i === 0 ? ["", c[1]] : [c[0], ""]));
+    setSigneManque(false);
+  }
+  function corrigerSigne(i: 0 | 1, valeur: string) {
+    const v = (IDS_SIGNES as readonly string[]).includes(valeur) ? (valeur as IdSigne) : "";
+    setCorriges((c) => (i === 0 ? [v, c[1]] : [c[0], v]));
+    setSigneManque(false);
+  }
+  /** La place du texte demandée : celle de la fenêtre, sinon celle du style. */
+  const placeTexte = (): PlaceTexte => props.texte ?? (style() === "nuit" ? "haut" : "bas");
+  // La fenêtre suit le style et les signes (place du texte par défaut, qualités).
+  // Hors suivi : ce que la fenêtre lit et écrit alors (ses lignes de texte)
+  // ne doit pas relancer cet effet.
+  createEffect(() => {
+    const r = { style: style(), signes: signesEffectifs() };
+    untrack(() => props.onReglage?.(r));
+  });
+  createEffect(() => {
+    const oui = signeManque();
+    untrack(() => props.onIncomplet?.(oui));
+  });
+  // Un style, une place du texte, des personnages, une date de naissance ou un
+  // signe changés : le ciel déjà
+  // dessiné se redessine aussitôt, comme pour une couleur.
+  createEffect(
+    on(
+      [style, placeTexte, () => (props.silhouettes ?? []).join(","), () => signesEffectifs().join(","), () => naissances().join(",")],
+      () => redessinerSiDessine(),
+      { defer: true },
+    ),
+  );
+
+  async function dessiner(e?: Event, auto = false) {
+    e?.preventDefault();
     if (occupe()) return;
+    const s = style();
     const v = ville();
-    if (!v) {
+    if (s === "nuit" && !v) {
       setManque(true);
       return;
     }
+    if (s !== "nuit" && signesEffectifs().length < nbSignes()) {
+      // Redessin compris (27/11, relecture : « l'aperçu n'a pas changé, le
+      // bouton est désactivé et aucun message n'apparaît ») : on dit ce qui
+      // manque, ici et à l'étape Personnages.
+      setSigneManque(true);
+      return;
+    }
+    const mise: MiseDuCiel = {
+      style: s,
+      texte: placeTexte(),
+      ville: s === "nuit" && afficherVille(),
+      signes: signesEffectifs(),
+      personnages: (props.silhouettes ?? []).length > 0,
+      clair: fondClair(themes().find((t) => t.id === theme())?.fond ?? ""),
+    };
     setOccupe(true);
     setErreur(null);
     try {
+      const communs = {
+        productId: props.productId,
+        cartId: getCartId(),
+        theme: theme() ?? undefined,
+        style: s,
+        texte: mise.texte,
+        silhouettes: [...(props.silhouettes ?? [])],
+        langue: props.langue,
+      };
       const r = await fetch(`${PUBLIC_API_URL}/ia/ciel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: props.productId,
-          cartId: getCartId(),
-          date: date(),
-          heure: heure(),
-          fuseau: v.fuseau,
-          lat: v.lat,
-          lon: v.lon,
-          lieu: [v.nom, v.region, v.pays].filter(Boolean).join(", "),
-          theme: theme() ?? undefined,
-        }),
+        body: JSON.stringify(
+          s === "nuit" && v
+            ? {
+                ...communs,
+                date: date(),
+                heure: heure(),
+                fuseau: v.fuseau,
+                lat: v.lat,
+                lon: v.lon,
+                lieu: [v.nom, v.region, v.pays].filter(Boolean).join(", "),
+                afficherVille: afficherVille(),
+                ville: v.nom,
+              }
+            : {
+                ...communs,
+                signes: mise.signes,
+                dates: naissances().slice(0, nbSignes()),
+              },
+        ),
       });
       const data = (await r.json().catch(() => null)) as { publicId?: string; apercu?: string } | null;
       if (r.status === 429) {
@@ -224,13 +494,18 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
         return;
       }
       if (!r.ok || !data?.publicId || !data.apercu) throw new Error(String(r.status));
-      const cree = { publicId: data.publicId, apercuChemin: data.apercu, apercu: apercuAbsolu(data.apercu) };
+      const cree = { publicId: data.publicId, apercuChemin: data.apercu, apercu: apercuAbsolu(data.apercu), mise };
       if (props.onCree) props.onCree(cree);
       else setCreation(cree);
+      setDejaDessine(true);
     } catch {
       setErreur("ciel.erreur");
     } finally {
       setOccupe(false);
+      if (aRedessiner) {
+        aRedessiner = false;
+        void dessiner(undefined, true);
+      }
     }
   }
 
@@ -256,15 +531,80 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
 
   return (
     <div class={props.onCree ? "" : "grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"}>
-      <form onSubmit={dessiner} class="space-y-4">
-        <label class="block text-sm font-medium">
-          {tr("ciel.date")}
-          <input type="date" required min="1900-01-01" max="2100-12-31" value={date()} onInput={(e) => setDate(e.currentTarget.value)} class={champ} />
-        </label>
-        <label class="block text-sm font-medium">
-          {tr("ciel.heure")}
-          <input type="time" required value={heure()} onInput={(e) => setHeure(e.currentTarget.value)} class={champ} />
-        </label>
+      {/* Condensé (27/11, Alexandra : « condenser ») : la date et l'heure
+          côte à côte, des écarts plus serrés. */}
+      <form onSubmit={dessiner} class="space-y-3">
+        {/* Le style, en tête (27/11) : une vignette par mise en page. */}
+        <div>
+          <span class="block text-sm font-medium" id="ciel-style-titre">
+            {tr("ciel.style")}
+          </span>
+          <div role="radiogroup" aria-labelledby="ciel-style-titre" class="mt-1 grid grid-cols-4 gap-2 pr-1 pt-1.5">
+            <For each={STYLES}>
+              {(s) => (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={style() === s}
+                  onClick={() => {
+                    setStyle(s);
+                    setSigneManque(false);
+                  }}
+                  class={`ml-choix flex min-w-0 flex-col items-center gap-1 border px-1 pb-1.5 pt-1.5 text-xs leading-tight ${
+                    style() === s ? "border-ink font-semibold" : "border-ink/15 hover:border-ink/45"
+                  }`}
+                >
+                  <span class="block h-14 w-10 text-ink/70">
+                    <VignetteStyle style={s} />
+                  </span>
+                  <span class="text-center">{tr(`ciel.style.${s}`)}</span>
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+        {/* Un signe, un couple : la date de naissance (deux pour un couple),
+            le signe qui s'en déduit, et qu'on peut corriger. */}
+        <Show when={style() !== "nuit"}>
+          <For each={nbSignes() === 2 ? ([0, 1] as const) : ([0] as const)}>
+            {(i) => (
+              <div class="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-3">
+                <label class="block min-w-0 text-sm font-medium">
+                  {nbSignes() === 2 ? tr("ciel.naissance_n").replace("{n}", String(i + 1)) : tr("ciel.naissance")}
+                  <input
+                    type="date"
+                    min="1900-01-01"
+                    max="2100-12-31"
+                    value={naissances()[i]}
+                    onInput={(e) => changerNaissance(i, e.currentTarget.value)}
+                    class={champ}
+                  />
+                </label>
+                <label class="block min-w-0 text-sm font-medium">
+                  {tr("ciel.signe")}
+                  <select value={signeN(i) ?? ""} onChange={(e) => corrigerSigne(i, e.currentTarget.value)} class={champ}>
+                    <option value="">—</option>
+                    <For each={IDS_SIGNES}>{(id) => <option value={id}>{tr(`ciel.signe.${id}`)}</option>}</For>
+                  </select>
+                </label>
+              </div>
+            )}
+          </For>
+          <Show when={signeManque()}>
+            <span role="status" class="block text-sm text-terracotta-deep">{tr("ciel.signe_manque")}</span>
+          </Show>
+        </Show>
+        <Show when={style() === "nuit"}>
+        <div class="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-3">
+          <label class="block min-w-0 text-sm font-medium">
+            {tr("ciel.date")}
+            <input type="date" required min="1900-01-01" max="2100-12-31" value={date()} onInput={(e) => setDate(e.currentTarget.value)} class={champ} />
+          </label>
+          <label class="block min-w-0 text-sm font-medium">
+            {tr("ciel.heure")}
+            <input type="time" required value={heure()} onInput={(e) => setHeure(e.currentTarget.value)} class={champ} />
+          </label>
+        </div>
         {/* L'étiquette de cadeau de la nuit de Noël (27/11, voir
             `reglerNoel`) : accrochée au formulaire, penchée comme si elle
             pendait, elle se redresse quand on l'effleure, et reste droite
@@ -272,7 +612,7 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
             forme est un dessin posé DERRIÈRE le texte : le bouton n'est pas
             découpé, son contour de focus reste entier. */}
         <Show when={enSaison}>
-          <div class="pt-1">
+          <div>
             <button
               type="button"
               class="ml-etiquette-noel"
@@ -362,19 +702,65 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
             <span role="status" class="mt-1 block text-sm text-terracotta-deep">{tr("ciel.ville_choisir")}</span>
           </Show>
         </div>
+        </Show>
+        <button
+          type="submit"
+          disabled={occupe() || !!props.occupe}
+          class="rounded-full bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85 disabled:opacity-60"
+        >
+          {occupe() ? tr("ciel.calcul") : creation() ? tr("ciel.redessiner") : tr("ciel.dessiner")}
+        </button>
+        <Show when={erreur()}>
+          {(cle) => (
+            <p role="status" class="border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep">
+              {tr(cle())}
+            </p>
+          )}
+        </Show>
+        {/* APRÈS « Dessiner mon ciel », qui ne porte que sur la date, l'heure
+            et la ville (27/11, Alexandra : « Dessiner mon ciel ne concerne
+            que date heure et ville et la couleur doit pouvoir être choisie
+            après le dessin fait ») : la ville sous le ciel et les couleurs
+            s'appliquent tout de suite au ciel déjà dessiné. */}
+        {/* Le premier dessin prend la première couleur ; on choisit ensuite
+            (Alexandra : « dessiner le ciel quand tu cliques ça fait le ciel
+            avec la première couleur tu vois, et après tu choisis »). */}
+        <Show when={dejaDessine()}>
+        <Show when={style() === "nuit"}>
+        <label class="flex items-center gap-2 pt-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            checked={afficherVille()}
+            onChange={(e) => {
+              setAfficherVille(e.currentTarget.checked);
+              redessinerSiDessine();
+            }}
+            class="h-4 w-4 accent-ink"
+          />
+          {tr("ciel.afficher_ville")}
+        </label>
+        </Show>
         <Show when={themes().length > 1}>
           <div>
             <span class="block text-sm font-medium" id="ciel-theme-titre">
               {tr("ciel.theme")}
             </span>
-            <div role="radiogroup" aria-labelledby="ciel-theme-titre" class="mt-2 flex flex-wrap gap-3">
+            {/* Sur UNE ligne qui défile de côté (27/11, Alexandra : « scroll
+                horizontal et tout sur la même ligne »), comme les styles de
+                l'affiche photo. Un peu de marge en haut et à droite : la
+                coche du choix déborde du coin. */}
+            <div
+              role="radiogroup"
+              aria-labelledby="ciel-theme-titre"
+              class="mt-1 flex snap-x flex-nowrap gap-3 overflow-x-auto pb-2 pr-2 pt-2 [&>*]:shrink-0 [&>*]:snap-start"
+            >
               <For each={themes()}>
                 {(th) => (
                   <button
                     type="button"
                     role="radio"
                     aria-checked={theme() === th.id}
-                    onClick={() => setTheme(th.id)}
+                    onClick={() => choisirTheme(th.id)}
                     class={`ml-choix flex w-[4.75rem] flex-col items-center gap-1.5 border px-1 pb-1.5 pt-1 text-xs ${
                       theme() === th.id ? "border-ink font-semibold" : "border-ink/15 hover:border-ink/45"
                     }`}
@@ -400,19 +786,6 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
             </div>
           </div>
         </Show>
-        <button
-          type="submit"
-          disabled={occupe() || !!props.occupe}
-          class="rounded-full bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85 disabled:opacity-60"
-        >
-          {occupe() ? tr("ciel.calcul") : creation() ? tr("ciel.redessiner") : tr("ciel.dessiner")}
-        </button>
-        <Show when={erreur()}>
-          {(cle) => (
-            <p role="status" class="border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep">
-              {tr(cle())}
-            </p>
-          )}
         </Show>
       </form>
 
@@ -436,7 +809,8 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
               >
                 {tr("ciel.personnaliser")}
               </button>
-              <p class="mt-2 max-w-[460px] text-sm text-ink-soft">{tr("ciel.personnaliser_aide")}</p>
+              {/* Plus de phrase d'aide sous le bouton (27/11, Alexandra : « supprimer
+                  les phrases côté client qui sont inutiles ») : le bouton suffit. */}
             </>
           )}
         </Show>

@@ -731,6 +731,8 @@ async function calquesFiligrane(
   hauteur: number,
   /** Centre du filigrane en fractions de l'image ; absent = le milieu. */
   centre?: { x: number; y: number },
+  /** Sans l'anneau : le logo seul (ciel d'un couple, signe sans cercle, 27/11). */
+  anneau = true,
 ): Promise<{ input: Buffer; left: number; top: number }[]> {
   const cx = largeur * (centre?.x ?? 0.5);
   const cy = hauteur * (centre?.y ?? 0.5);
@@ -753,7 +755,7 @@ async function calquesFiligrane(
     await sharp(logo).metadata();
 
   return [
-    { input: cercle, left: 0, top: 0 },
+    ...(anneau ? [{ input: cercle, left: 0, top: 0 }] : []),
     {
       input: logo,
       left: Math.round(cx - lw / 2),
@@ -772,13 +774,20 @@ export async function fabriquerApercu(
    * tombait à côté de celui du ciel et se voyait comme une erreur.
    */
   centre?: { x: number; y: number },
+  /**
+   * L'anneau du filigrane (27/11, relecture : « on voit un troisième grand
+   * cercle gris qui entoure les deux cercles dorés ») : il a la taille du
+   * cercle du ciel de cette nuit ; un couple ou un signe sans cercle s'en
+   * passe. Les autres affiches ne changent pas.
+   */
+  anneau = true,
 ): Promise<string> {
   const reduite = await sharp(pleine)
     .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
     .toBuffer();
   const meta = await sharp(reduite).metadata();
   const marquee = await sharp(reduite)
-    .composite(await calquesFiligrane(meta.width ?? 1024, meta.height ?? 1024, centre))
+    .composite(await calquesFiligrane(meta.width ?? 1024, meta.height ?? 1024, centre, anneau))
     .jpeg({ quality: 82 })
     .toBuffer();
   await writeFile(resolve(IA_DIR, nom), marquee);
