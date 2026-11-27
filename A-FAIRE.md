@@ -2,7 +2,13 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 000. ÉTAT AU 27/11, 21 H 55 — tout `main` est EN LIGNE (`b2c1298`)
+## 000. ÉTAT AU 27/11, 22 H 05 — tout `main` est EN LIGNE (`42dd9cc`)
+
+- Depuis 21 h 55 : texte toujours centré dans sa place, boutons de calage retirés (`1c2b4fb`) ; bouton « Aucun » retiré (`4c478e5`) ; texte des affiches IA sur les vignettes du panier et du récapitulatif de caisse, affichage seulement (`80c481b`, nouveau `TexteAfficheIA.tsx`) ; taille des personnages petite / moyenne / grande, une pour toutes (`9abe4dc`).
+- **Stands « calendrier »** (`42dd9cc`) : la tablette prend des ventes de l'heure d'ouverture du premier créneau jusqu'à 1 h après la fin du dernier (avant : toute la journée). Règle dans `apps/api/src/stands-calendrier.ts` (`ouvertAuxHeures`), PAS dans packages/types (empreinte d'impression). Vérifié : Mulhouse fermé automatiquement à 22 h 04. À savoir : avant l'heure d'ouverture du calendrier, la tablette est fermée (l'ouvrir à la main = passer en manuel).
+- **À FAIRE (demande d'Alexandra, 27/11 22 h)** : « quand on est dans le panier, on puisse modifier une affiche, la modifier pour la revalider et la remettre modifiée ». Existe pour les affiches personnalisables (`?edit=ITEM_ID`, ProductConfigurator) ; absent pour les affiches IA (photo et ciel : `lienModifier` renvoie null). Plan : lien « Modifier » pour une ligne IA → fiche `?edit=ID` → AfficheIA rouvre la création (aiPublicId), les textes, tailles, format, quantité ; pour un ciel, relire ses réglages (style, date, lieu, thème, ombres, taille) depuis la ligne `ai_generation.prompt` (route à ajouter, sans écriture) ; « Ajouter au panier » devient « Mettre à jour » (même route de mise à jour que les affiches personnalisables). Ne pas toucher au paiement ni aux commandes passées.
+
+### 21 h 55
 
 - 21 h 55 : le cercle au MILIEU DE LA PAGE pour tous les styles, avec ou sans personnages ; un texte ne le pousse que du nécessaire (taille fixe, réduite seulement si plus de place) ; bas de la place à 0,76 (`b2c1298`). Remplace la règle « tout le vide au-dessus » de `7f8e1a0`.
 
