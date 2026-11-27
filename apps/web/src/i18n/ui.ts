@@ -926,6 +926,7 @@ export const ui = {
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Glissez pour changer l'ordre",
     "ciel.silh.inverser": "Retourner",
+    "ciel.silh.taille": "Taille des personnages",
     "ciel.groupe.seul": "Seul·e",
     "ciel.groupe.couple": "En couple",
     "ciel.groupe.famille": "En famille",
@@ -1863,6 +1864,7 @@ export const ui = {
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Drag to change the order",
     "ciel.silh.inverser": "Flip",
+    "ciel.silh.taille": "Size of the figures",
     "ciel.groupe.seul": "On my own",
     "ciel.groupe.couple": "As a couple",
     "ciel.groupe.famille": "As a family",
@@ -2816,6 +2818,7 @@ export const ui = {
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Ziehen, um die Reihenfolge zu ändern",
     "ciel.silh.inverser": "Umdrehen",
+    "ciel.silh.taille": "Größe der Figuren",
     "ciel.groupe.seul": "Allein",
     "ciel.groupe.couple": "Zu zweit",
     "ciel.groupe.famille": "Als Familie",
@@ -3750,6 +3753,7 @@ export const ui = {
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Trascinate per cambiare l'ordine",
     "ciel.silh.inverser": "Capovolgere",
+    "ciel.silh.taille": "Dimensione dei personaggi",
     "ciel.groupe.seul": "Da solo",
     "ciel.groupe.couple": "In coppia",
     "ciel.groupe.famille": "In famiglia",
@@ -4683,6 +4687,7 @@ export const ui = {
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "Arrastre para cambiar el orden",
     "ciel.silh.inverser": "Voltear",
+    "ciel.silh.taille": "Tamaño de los personajes",
     "ciel.groupe.seul": "Solo",
     "ciel.groupe.couple": "En pareja",
     "ciel.groupe.famille": "En familia",
@@ -5505,6 +5510,7 @@ export const ui = {
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "ドラッグで順番を変更",
     "ciel.silh.inverser": "向きを反転",
+    "ciel.silh.taille": "人物の大きさ",
     "ciel.groupe.seul": "ひとり",
     "ciel.groupe.couple": "ふたり",
     "ciel.groupe.famille": "家族",
@@ -6327,6 +6333,7 @@ export const ui = {
     // 27/11, Alexandra : « non on interverti au drag and drop »
     "ciel.silh.glisser": "拖动以调整顺序",
     "ciel.silh.inverser": "翻转",
+    "ciel.silh.taille": "人物大小",
     "ciel.groupe.seul": "一个人",
     "ciel.groupe.couple": "情侣",
     "ciel.groupe.famille": "一家人",

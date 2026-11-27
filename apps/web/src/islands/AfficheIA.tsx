@@ -990,6 +990,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   type GroupeSilhouettes = keyof typeof GROUPES_SILHOUETTES;
   type SceneSilhouette = (typeof GROUPES_SILHOUETTES)[GroupeSilhouettes][number];
   const [groupeSilhouettes, setGroupeSilhouettes] = createSignal<GroupeSilhouettes>("seul");
+  /**
+   * La taille de TOUTES les ombres (27/11 au soir, Alexandra : « 3 tailles
+   * différentes […] pas une taille par personnage, sinon des deltas
+   * bizarres ») : petite, moyenne (celle d'avant), grande.
+   */
+  const [tailleSilhouettes, setTailleSilhouettes] = createSignal<"s" | "m" | "l">("m");
   const [choixSilhouettes, setChoixSilhouettes] = createSignal<string[]>([]);
   const [silhouettesCiel, setSilhouettesCiel] = createSignal<string[]>([]);
   /*
@@ -2099,6 +2105,27 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const blocSilhouettes = () => (
     <div class="mt-5">
       <p class="text-sm font-medium">{tr("ia.perso.titre")}</p>
+      {/* La taille de toutes les ombres, d'un seul réglage (27/11 au soir). */}
+      <div role="group" aria-label={tr("ciel.silh.taille")} class="mt-2 flex flex-wrap items-center gap-2.5">
+        <span class="text-sm text-ink-soft">{tr("ciel.silh.taille")}</span>
+        <For each={[["s", "cfg.taille_s", 12], ["m", "cfg.taille_m", 16], ["l", "cfg.taille_l", 20]] as const}>
+          {([id, cle, px]) => (
+            <button
+              type="button"
+              aria-pressed={tailleSilhouettes() === id}
+              aria-label={tr(cle)}
+              title={tr(cle)}
+              onClick={() => setTailleSilhouettes(id)}
+              class="ml-choix flex h-9 min-w-[2.5rem] items-end justify-center border border-ink/20 px-2 pb-1 hover:border-ink/45"
+            >
+              <svg viewBox="0 0 10 14" style={{ height: `${px}px` }} fill="currentColor" aria-hidden="true">
+                <circle cx="5" cy="3" r="2.6" />
+                <path d="M0.6 14c0-4.4 1.9-8 4.4-8s4.4 3.6 4.4 8z" />
+              </svg>
+            </button>
+          )}
+        </For>
+      </div>
       {/* 1. Qui : quatre onglets. */}
       <div role="tablist" aria-label={tr("ia.perso.titre")} class="mt-2 flex flex-wrap gap-2">
         <For each={Object.keys(GROUPES_SILHOUETTES) as GroupeSilhouettes[]}>
@@ -2714,6 +2741,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   onCree={cielCree}
                   texte={texteCiel()}
                   silhouettes={silhouettesCiel()}
+                  tailleSilhouettes={tailleSilhouettes()}
                   hauteurTexte={hauteurTexteCiel()}
                   onReglage={reglageCiel}
                   onIncomplet={setCielIncomplet}

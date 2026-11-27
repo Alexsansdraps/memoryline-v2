@@ -502,6 +502,13 @@ export interface ReglagesCiel {
   dates: (string | null)[];
   /** Les ombres chinoises, de gauche à droite (ciel-silhouettes.ts). */
   silhouettes: string[];
+  /**
+   * La taille de TOUTES les ombres de l'affiche, petite / moyenne / grande
+   * (27/11 au soir, Alexandra : « 3 tailles différentes […] pour tous les
+   * personnages la même taille, sinon on va se retrouver avec des deltas
+   * bizarres »). Absente : moyenne, la taille d'avant.
+   */
+  tailleSilhouettes?: "s" | "m" | "l";
   langue: LangueCiel;
   /** Hauteur du bloc de texte, en fraction de la hauteur (mise en page centrée, 27/11 au soir). */
   hauteurTexte?: number;
@@ -577,6 +584,7 @@ export function lireReglagesCiel(
       signes,
       dates,
       silhouettes: connues,
+      ...(b.tailleSilhouettes === "s" || b.tailleSilhouettes === "l" ? { tailleSilhouettes: b.tailleSilhouettes } : {}),
       langue,
       ...(typeof ht === "number" ? { hauteurTexte: ht } : {}),
     },
@@ -603,7 +611,14 @@ export function lireReglagesCiel(
 function silhouettesDuCiel(
   ids: readonly string[],
   couleur: string,
-  m: { style: StyleCiel; texte: PlaceTexte; ville?: boolean; date?: boolean; hauteurTexte?: number },
+  m: {
+    style: StyleCiel;
+    texte: PlaceTexte;
+    ville?: boolean;
+    date?: boolean;
+    hauteurTexte?: number;
+    tailleSilhouettes?: "s" | "m" | "l";
+  },
 ): string {
   if (!ids.length) return "";
   // 27/11, Alexandra : « supp ça » — pas de teinte automatique, les
@@ -635,7 +650,8 @@ function silhouettesDuCiel(
     // trop petits ») : 0,22 de la hauteur pour 175 cm au lieu de 0,145 — un
     // adulte assis fait 11 % de l'affiche au lieu de 7,5 %. Le plafond
     // (jamais sur un texte) les rapetisse encore s'il le faut.
-    taillePx: H * 0.22,
+    // × la taille choisie pour toutes (27/11 au soir) : petite 0,8, grande 1,25.
+    taillePx: H * 0.22 * (m.tailleSilhouettes === "s" ? 0.8 : m.tailleSilhouettes === "l" ? 1.25 : 1),
     // Assises (27/11, Alexandra : « je les veux assis les personnages !!! qui
     // regardent bien », « et ils sont debout mdr »), nettement espacées et sans
     // accessoires autour (27/11, Alexandra : « c'est quoi ce bordel au niveau du
@@ -677,7 +693,7 @@ function collines(W: number, H: number) {
  * points cardinaux ni de coordonnées : ce n'est pas le ciel d'un lieu.
  */
 export function svgDuSigne(
-  reglages: Pick<ReglagesCiel, "style" | "texte" | "signes" | "dates" | "silhouettes" | "langue" | "hauteurTexte">,
+  reglages: Pick<ReglagesCiel, "style" | "texte" | "signes" | "dates" | "silhouettes" | "langue" | "hauteurTexte" | "tailleSilhouettes">,
   theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
 ): string {
   const c = teintesDuTheme(theme);
@@ -726,7 +742,7 @@ export function svgDuSigne(
   <rect width="${W}" height="${H}" fill="url(#nuit)"/>
   ${dessin}
   <path d="${loin}" fill="${c.collineLoin}"/>
-  <path d="${pres}" fill="${c.collinePres}"/>${silhouettesDuCiel(reglages.silhouettes, c.collinePres, { style: reglages.style, texte: reglages.texte, date: !!reglages.dates[0], hauteurTexte: reglages.hauteurTexte })}
+  <path d="${pres}" fill="${c.collinePres}"/>${silhouettesDuCiel(reglages.silhouettes, c.collinePres, { style: reglages.style, texte: reglages.texte, date: !!reglages.dates[0], hauteurTexte: reglages.hauteurTexte, tailleSilhouettes: reglages.tailleSilhouettes })}
 </svg>`;
 }
 
@@ -736,7 +752,13 @@ export function svgDuCiel(
   lon: number,
   instant: Date,
   theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
-  options: { ville?: string | null; texte?: PlaceTexte; silhouettes?: readonly string[]; hauteurTexte?: number } = {},
+  options: {
+    ville?: string | null;
+    texte?: PlaceTexte;
+    silhouettes?: readonly string[];
+    hauteurTexte?: number;
+    tailleSilhouettes?: "s" | "m" | "l";
+  } = {},
 ): string {
   const c = teintesDuTheme(theme);
   const W = LARGEUR_CIEL;
@@ -819,7 +841,7 @@ export function svgDuCiel(
   </g>
   ${legendeDuLieu(options.ville ?? null, cx, cy + R, c.dorures, coordonnees(lat, lon))}
   <path d="${collineLoin}" fill="${c.collineLoin}"/>
-  <path d="${collinePres}" fill="${c.collinePres}"/>${silhouettesDuCiel(options.silhouettes ?? [], c.collinePres, { style: "nuit", texte, ville: !!(options.ville ?? "").trim(), hauteurTexte: options.hauteurTexte })}
+  <path d="${collinePres}" fill="${c.collinePres}"/>${silhouettesDuCiel(options.silhouettes ?? [], c.collinePres, { style: "nuit", texte, ville: !!(options.ville ?? "").trim(), hauteurTexte: options.hauteurTexte, tailleSilhouettes: options.tailleSilhouettes })}
 </svg>`;
 }
 
@@ -829,7 +851,13 @@ export async function rendreCiel(
   lon: number,
   instant: Date,
   theme?: Pick<ThemeCiel, "fond" | "etoiles" | "dorures">,
-  options: { ville?: string | null; texte?: PlaceTexte; silhouettes?: readonly string[]; hauteurTexte?: number } = {},
+  options: {
+    ville?: string | null;
+    texte?: PlaceTexte;
+    silhouettes?: readonly string[];
+    hauteurTexte?: number;
+    tailleSilhouettes?: "s" | "m" | "l";
+  } = {},
 ): Promise<Buffer> {
   return sharp(Buffer.from(svgDuCiel(lat, lon, instant, theme, options))).png().toBuffer();
 }
@@ -1084,6 +1112,7 @@ export function mountCielRoutes(app: Hono): void {
             texte: reglages.texte,
             silhouettes: reglages.silhouettes,
             hauteurTexte: reglages.hauteurTexte,
+            tailleSilhouettes: reglages.tailleSilhouettes,
           })
         : await sharp(Buffer.from(svgDuSigne(reglages, theme))).png().toBuffer();
       const nomPleine = `${publicId}-pleine.png`;
@@ -1119,7 +1148,7 @@ export function mountCielRoutes(app: Hono): void {
           // ciel de cette nuit sans rien reste celle d'avant.
           ...(reglages.texte !== placeParDefaut(reglages.style) ? { texte: reglages.texte } : {}),
           ...(reglages.silhouettes.length ? { silhouettes: reglages.silhouettes } : {}),
-          ...(typeof reglages.hauteurTexte === "number" ? { hauteurTexte: reglages.hauteurTexte } : {}),
+          ...(typeof reglages.hauteurTexte === "number" ? { hauteurTexte: reglages.hauteurTexte } : {}), ...(reglages.tailleSilhouettes ? { tailleSilhouettes: reglages.tailleSilhouettes } : {}),
           theme: { id: theme.id, nom: theme.nom, fond: theme.fond, etoiles: theme.etoiles, dorures: theme.dorures },
         }),
         // Hors de BO › Affiches IA et du plafond (filtreDuPerimetre, ia.ts, 27/11).

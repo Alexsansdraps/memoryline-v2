@@ -290,6 +290,8 @@ export interface CielEtoileProps {
   texte?: PlaceTexte;
   /** Les ombres chinoises posées (étape Personnages, 27/11) ; les changer redessine le ciel. */
   silhouettes?: readonly string[];
+  /** La taille de toutes les ombres (27/11 au soir) : la changer redessine le ciel. */
+  tailleSilhouettes?: "s" | "m" | "l";
   /**
    * La hauteur du bloc de texte, en fraction de la hauteur de l'affiche
    * (27/11 au soir) : le dessin se place autour d'elle ; quand elle change
@@ -521,7 +523,7 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
   // dessiné se redessine aussitôt, comme pour une couleur.
   createEffect(
     on(
-      [style, placeTexte, () => (props.silhouettes ?? []).join(","), () => signesEffectifs().join(","), () => naissances().join(",")],
+      [style, placeTexte, () => (props.silhouettes ?? []).join(","), () => props.tailleSilhouettes ?? "m", () => signesEffectifs().join(","), () => naissances().join(",")],
       () => redessinerSiDessine(),
       { defer: true },
     ),
@@ -589,6 +591,7 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
         // autour du bloc de texte.
         hauteurTexte: mise.hauteurTexte,
         silhouettes: [...(props.silhouettes ?? [])],
+        ...(props.tailleSilhouettes && props.tailleSilhouettes !== "m" ? { tailleSilhouettes: props.tailleSilhouettes } : {}),
         langue: props.langue,
       };
       const r = await fetch(`${PUBLIC_API_URL}/ia/ciel`, {
