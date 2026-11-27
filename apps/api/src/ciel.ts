@@ -32,7 +32,7 @@ import { eq } from "drizzle-orm";
 import sharp from "sharp";
 import { db, schema } from "./db/client.js";
 import { CONSTELLATIONS, ETOILES } from "./ciel-donnees.js";
-import { IA_DIR, fabriquerApercu, ipDeLaRequete } from "./ia.js";
+import { IA_DIR, MODELE_CIEL, fabriquerApercu, ipDeLaRequete } from "./ia.js";
 import { clientDeLaRequete } from "./comptes.js";
 
 /** Hauteur du centre de la carte, en fraction de l'image (le filigrane s'y cale). */
@@ -392,7 +392,8 @@ export function mountCielRoutes(app: Hono): void {
           lon,
           utc: instant.toISOString(),
         }),
-        model: "ciel",
+        // Hors de BO › Affiches IA et du plafond (filtreDuPerimetre, ia.ts, 27/11).
+        model: MODELE_CIEL,
         size: `${LARGEUR_CIEL}x${HAUTEUR_CIEL}`,
         status: "prete",
         previewPath: apercu,

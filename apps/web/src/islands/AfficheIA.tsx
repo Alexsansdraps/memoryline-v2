@@ -797,6 +797,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         return tr("ia.err.trop_lourde");
       case "rafale":
         return tr("ia.err.rafale");
+      // Trois essais par jour sur le site (27/11) ; la tablette du stand n'a
+      // pas de limite.
+      case "quota":
+        return tr("ia.err.quota");
       case "plafond":
         return tr("ia.err.plafond");
       // Plus de crédit chez OpenAI (25/11). Jamais dit à la cliente (Alexandra :

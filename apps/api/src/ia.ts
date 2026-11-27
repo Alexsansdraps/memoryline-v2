@@ -42,6 +42,7 @@ import sharp from "sharp";
 import { FILIGRANE, debutDuMoisAParis } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { clientDeLaRequete } from "./comptes.js";
+import { requeteDuStand } from "./cadres.js";
 import { HORS_VENTES } from "./statuts-vente.js";
 import { supprimerPourToujours } from "./suppression.js";
 import { traductionDe } from "./traductions.js";
@@ -488,8 +489,25 @@ function debutDuMois(): Date {
  */
 export type PerimetreDepense = "affiches" | "fonds" | "tout";
 
+/**
+ * Le modèle des ciels étoilés (ciel.ts). Ils sont rangés dans la même table
+ * que les affiches IA pour la suite (panier, commande, impression), mais ce
+ * n'en sont pas : calculés ici, sans OpenAI, et gratuits. 27/11, Alexandra :
+ * « on ne garde pas les affiches étoile ! », « c'est généré et pas gardé
+ * dans le bo sur la partie "affiches" », « enfin je veux dire pas dans
+ * affiche IA ». Ils restent donc hors de BO › Affiches IA, de sa galerie
+ * comme de ses chiffres, et hors du plafond.
+ */
+export const MODELE_CIEL = "ciel";
+
 function filtreDuPerimetre(perimetre: PerimetreDepense): SQL | undefined {
-  if (perimetre === "affiches") return isNull(schema.aiGenerations.fondId);
+  // Les affiches des clients, sans leurs ciels étoilés (27/11). « is distinct
+  // from » : une ligne sans modèle reste une affiche.
+  if (perimetre === "affiches")
+    return and(
+      isNull(schema.aiGenerations.fondId),
+      raw`${schema.aiGenerations.model} is distinct from ${MODELE_CIEL}`,
+    );
   if (perimetre === "fonds") return isNotNull(schema.aiGenerations.fondId);
   return undefined;
 }
@@ -514,6 +532,91 @@ export async function depenseDuMoisCents(
     .from(schema.aiGenerations)
     .where(and(gte(schema.aiGenerations.createdAt, debutDuMois()), filtreDuPerimetre(perimetre)));
   return Number(row?.total ?? 0);
+}
+
+/**
+ * Les essais d'un visiteur du SITE, par jour de Paris (27/11, Alexandra :
+ * « bloquer à 3 essais par jour uniquement en mode site pas en mode stand »,
+ * « je parle de vos photos en affiche, le truc ia pour les clients »). La
+ * tablette du stand n'a pas de limite. Les textes du site disent « 3 »
+ * (ia.err.quota, apps/web/src/i18n/ui.ts) : à changer avec eux.
+ */
+export const ESSAIS_PAR_JOUR_SITE = 3;
+
+/** D'où vient une demande d'affiche, telle que l'API la retient. */
+export interface OrigineDemande {
+  /** « stand » : la tablette d'un stand, reconnue ; « site » : tout le reste. */
+  origine: "stand" | "site";
+  /** Le stand, quand il est connu : celui du code de la tablette, sinon celui de sa page (?stand=N). */
+  standId: number | null;
+}
+
+/**
+ * D'où vient cette demande d'affiche (27/11) : « stand » ou « site », et quel
+ * stand. Écrit sur l'affiche (BO › Affiches IA le montre) ; « stand » la
+ * soustrait à la limite d'essais du jour.
+ *
+ * Le mode stand seul (en-tête X-Stand, ?stand=N dans l'adresse) ne donne
+ * aucun droit (cadres.ts) : n'importe qui peut l'ajouter à l'adresse. Il ne
+ * suffit donc que pendant l'ouverture d'un stand. Ce qui prouve la tablette,
+ * c'est le code du stand qu'elle a retenu (en-tête X-Salon-Code, comme au
+ * relais photo et à la validation d'une vente) : avec lui, « stand » à toute
+ * heure, et le stand de ce code. Sans lui, le stand du numéro de la page,
+ * s'il existe.
+ */
+export async function origineDeLaDemande(c: Context, standDeLaPage: unknown): Promise<OrigineDemande> {
+  const s = schema.stands;
+  const code = String(c.req.header("x-salon-code") ?? "").trim().toUpperCase();
+  const [parCode] = code
+    ? await db.select({ id: s.id }).from(s).where(eq(s.code, code)).limit(1)
+    : [];
+  if (parCode) return { origine: "stand", standId: parCode.id };
+  if (!requeteDuStand(c)) return { origine: "site", standId: null };
+  const [ouvert] = await db
+    .select({ id: s.id })
+    .from(s)
+    .where(and(eq(s.ouvert, true), eq(s.actif, true), isNull(s.archivedAt)))
+    .limit(1);
+  if (!ouvert) return { origine: "site", standId: null };
+  const numero = Number(standDeLaPage);
+  const [parNumero] =
+    Number.isInteger(numero) && numero > 0
+      ? await db.select({ id: s.id }).from(s).where(eq(s.id, numero)).limit(1)
+      : [];
+  return { origine: "stand", standId: parNumero?.id ?? null };
+}
+
+/**
+ * Les affiches qu'un visiteur du site a déjà lancées aujourd'hui, jour de
+ * Paris : même panier, même compte, ou même adresse — une fenêtre privée ne
+ * remet pas le compteur à zéro. Ni ses échecs (la faute n'en est pas à lui),
+ * ni les affiches du stand, ni les ciels étoilés.
+ */
+export async function essaisDuJourSurLeSite(v: {
+  cartId: string | null;
+  customerId: number | null;
+  ip: string | null;
+}): Promise<number> {
+  const g = schema.aiGenerations;
+  const qui: SQL[] = [];
+  if (v.cartId) qui.push(eq(g.cartId, v.cartId));
+  if (v.customerId) qui.push(eq(g.customerId, v.customerId));
+  // « local » : aucune adresse transmise (développement) ; elle ne désigne personne.
+  if (v.ip && v.ip !== "local") qui.push(eq(g.ip, v.ip));
+  if (!qui.length) return 0;
+  const [r] = await db
+    .select({ n: raw<number>`count(*)::int` })
+    .from(g)
+    .where(
+      and(
+        filtreDuPerimetre("affiches"),
+        ne(g.status, "echec"),
+        raw`${g.origine} is distinct from 'stand'`,
+        raw`${g.createdAt} >= (date_trunc('day', now() at time zone 'Europe/Paris') at time zone 'Europe/Paris')`,
+        or(...qui),
+      ),
+    );
+  return Number(r?.n ?? 0);
 }
 
 /**
@@ -2135,6 +2238,25 @@ export function mountIaRoutes(app: Hono): void {
     );
 
     const client = await clientDeLaRequete(c);
+
+    // Stand ou site, et quel stand (27/11) : écrit sur l'affiche. Sur le
+    // site, ESSAIS_PAR_JOUR_SITE par jour ; la tablette du stand, sans limite.
+    // Contrôlé juste avant d'écrire la ligne : une demande refusée plus haut
+    // (photo, affiche) ne dit pas « revenez demain ».
+    const provenance = await origineDeLaDemande(c, body.stand);
+    if (provenance.origine === "site") {
+      const deja = await essaisDuJourSurLeSite({ cartId, customerId: client?.id ?? null, ip });
+      if (deja >= ESSAIS_PAR_JOUR_SITE)
+        return c.json(
+          {
+            error: `Vous avez fait vos ${ESSAIS_PAR_JOUR_SITE} essais du jour. Revenez demain pour créer d'autres affiches.`,
+            limiteDuJour: true,
+            limite: ESSAIS_PAR_JOUR_SITE,
+          },
+          429,
+        );
+    }
+
     const publicId = randomUUID();
     const [ligne] = await db
       .insert(schema.aiGenerations)
@@ -2149,6 +2271,8 @@ export function mountIaRoutes(app: Hono): void {
         size: tailleChoisie,
         status: "en_cours",
         ip,
+        origine: provenance.origine,
+        standId: provenance.standId,
       })
       .returning();
 
@@ -2377,10 +2501,12 @@ export function mountIaRoutes(app: Hono): void {
    * Les affiches des CLIENTS seulement : les versions des fonds (Créer un
    * fond, lignes à `fond_id`) n'en sont pas — ni aperçu, ni produit, ni
    * panier. Elles se voient dans leur fond, et leur coût dans leur plafond.
+   * Les ciels étoilés non plus (MODELE_CIEL, 27/11) : ce ne sont pas des
+   * affiches IA.
    */
   app.get("/admin/ia/generations", async (c) => {
     const q = c.req.query();
-    const conditions: SQL[] = [isNull(schema.aiGenerations.fondId)];
+    const conditions: SQL[] = [filtreDuPerimetre("affiches")!];
     if (q.statut) conditions.push(eq(schema.aiGenerations.status, q.statut));
     if (q.productId) conditions.push(eq(schema.aiGenerations.productId, Number(q.productId)));
     if (q.cartId) conditions.push(eq(schema.aiGenerations.cartId, q.cartId));
@@ -2417,12 +2543,17 @@ export function mountIaRoutes(app: Hono): void {
         ip: schema.aiGenerations.ip,
         createdAt: schema.aiGenerations.createdAt,
         paidAt: schema.aiGenerations.paidAt,
+        // Stand ou site, et le nom du stand (27/11, migration 0118).
+        origine: schema.aiGenerations.origine,
+        standId: schema.aiGenerations.standId,
+        stand: schema.stands.nom,
         // Les chemins disque ne sortent pas : le BO passe par les routes.
         aApercu: raw<boolean>`${schema.aiGenerations.previewPath} is not null`,
         aPleine: raw<boolean>`${schema.aiGenerations.fullPath} is not null`,
       })
       .from(schema.aiGenerations)
       .leftJoin(schema.products, eq(schema.aiGenerations.productId, schema.products.id))
+      .leftJoin(schema.stands, eq(schema.aiGenerations.standId, schema.stands.id))
       .where(filtre)
       .orderBy(desc(schema.aiGenerations.createdAt))
       .limit(limite)
@@ -2458,7 +2589,8 @@ export function mountIaRoutes(app: Hono): void {
    *
    * Les chiffres sont ceux des affiches des CLIENTS, face à LEUR plafond : les
    * versions des fonds (Créer un fond) n'y sont ni des aperçus, ni des essais.
-   * Elles ont leur ligne à part, `fonds`, face au plafond des fonds.
+   * Elles ont leur ligne à part, `fonds`, face au plafond des fonds. Les ciels
+   * étoilés n'y sont pas non plus (MODELE_CIEL, 27/11).
    */
   app.get("/admin/ia/stats", async (c) => {
     const reg = await reglages();

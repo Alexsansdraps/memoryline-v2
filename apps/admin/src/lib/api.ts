@@ -1776,6 +1776,11 @@ export interface GenerationIA {
   pleine: string | null;
   /** Le coût est l'estimation du réglage, pas ce qu'OpenAI a compté (26/11). */
   coutEstime?: boolean;
+  /** D'où vient l'affiche (27/11) : la tablette d'un stand, le site, ou null (inconnue, d'avant). */
+  origine?: "stand" | "site" | null;
+  standId?: number | null;
+  /** Le nom du stand, quand il est connu. */
+  stand?: string | null;
 }
 
 /** Une page de générations, la plus récente d'abord. */

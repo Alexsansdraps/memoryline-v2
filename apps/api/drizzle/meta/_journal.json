@@ -820,6 +820,13 @@
       "when": 1795270000000,
       "tag": "0117_ciel_etoile_desactive",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1795280000000,
+      "tag": "0118_ia_origine_stand_ou_site",
+      "breakpoints": true
     }
   ]
 }

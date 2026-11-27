@@ -368,6 +368,17 @@ export const aiGenerations = pgTable(
     fondMessageId: integer("fond_message_id").references((): AnyPgColumn => fondsIaMessages.id, {
       onDelete: "set null",
     }),
+    /**
+     * D'où vient l'affiche : « stand » (la tablette) ou « site » (27/11,
+     * migration 0118). Null : inconnue (une affiche d'avant, jamais mise au
+     * panier). Elle décide aussi de la limite d'essais du jour, qui ne vaut
+     * que pour le site (ia.ts).
+     */
+    origine: text("origine"),
+    /** Le stand de la tablette, quand il est connu (son code, ou le numéro de sa page). */
+    standId: integer("stand_id").references((): AnyPgColumn => stands.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => [
     uniqueIndex("ai_generation_public_id_uniq").on(t.publicId),

@@ -1,14 +1,16 @@
 /// <reference lib="dom" />
 import { PUBLIC_API_URL } from "./api.ts";
+import { enModeStand, enteteStand } from "./api-navigateur.ts";
+import { codeMemorise } from "./code-stand.ts";
 
 /**
  * Affiches générées par IA — appels effectués DEPUIS LE NAVIGATEUR.
  *
  * Le client envoie une photo, l'API la donne à OpenAI et renvoie un aperçu
- * FILIGRANÉ. Aucun quota n'est appliqué ici : c'est un choix assumé de la
- * cliente, le client recommence autant qu'il veut. Les garde-fous (dépense
- * mensuelle, anti-rafale par IP) vivent côté serveur, et se traduisent pour
- * nous par un code d'échec à afficher poliment.
+ * FILIGRANÉ. Les garde-fous vivent côté serveur (dépense mensuelle,
+ * anti-rafale par IP et, depuis le 27/11, trois essais par jour sur le site,
+ * aucune limite à la tablette du stand), et se traduisent pour nous par un
+ * code d'échec à afficher poliment.
  */
 
 /** Types d'image acceptés. Aligné sur ce qu'un téléphone produit. */
@@ -28,6 +30,8 @@ export type EchecIA =
   | "format"
   | "trop_lourde"
   | "rafale"
+  /** Les essais du jour sur le site sont faits (27/11) : revenir demain. */
+  | "quota"
   | "plafond"
   /** Plus de crédit chez OpenAI (25/11) : le serveur le dit (creditEpuise). */
   | "credit"
@@ -254,11 +258,21 @@ export async function genererAffiche(entree: {
   /** Le sens de l'affiche ; absent = portrait. */
   orientation?: "portrait" | "paysage";
 }): Promise<GenerationIA> {
+  // À la tablette du stand (27/11) : le mode stand, le code du stand qu'elle a
+  // retenu (le même qu'au relais photo et à la validation) et le numéro de sa
+  // page. L'API écrit d'où vient l'affiche (BO › Affiches IA) et ne limite
+  // pas les essais du stand ; sur le site, rien de tout cela.
+  const auStand = enModeStand();
+  const code = auStand ? codeMemorise() : null;
   let reponse: Response;
   try {
     reponse = await fetch(`${PUBLIC_API_URL}/ia/generer`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...enteteStand(),
+        ...(code ? { "X-Salon-Code": code } : {}),
+      },
       body: JSON.stringify({
         productId: entree.productId,
         photo: entree.photo,
@@ -266,6 +280,7 @@ export async function genererAffiche(entree: {
         precision: entree.precision?.trim() || undefined,
         promptId: entree.promptId ?? undefined,
         orientation: entree.orientation === "paysage" ? "paysage" : undefined,
+        stand: auStand ? document.documentElement.dataset.standValeur || undefined : undefined,
       }),
     });
   } catch {
@@ -277,6 +292,12 @@ export async function genererAffiche(entree: {
     if (reponse.status === 402) {
       const corps = (await reponse.json().catch(() => null)) as { creditEpuise?: boolean } | null;
       if (corps?.creditEpuise) throw new ErreurIA("credit");
+    }
+    // Les essais du jour faits, sur le site (27/11) : pas la même phrase que
+    // l'anti-rafale (« patientez une minute »), qui partage le code 429.
+    if (reponse.status === 429) {
+      const corps = (await reponse.json().catch(() => null)) as { limiteDuJour?: boolean } | null;
+      if (corps?.limiteDuJour) throw new ErreurIA("quota");
     }
     throw new ErreurIA(causeDuStatut(reponse.status));
   }

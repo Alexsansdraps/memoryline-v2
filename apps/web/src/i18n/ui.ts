@@ -219,6 +219,8 @@ export const ui = {
       "Cette photo est trop lourde. Prenez-en une plus légère, ou réduisez-la avant de l'envoyer.",
     "ia.err.rafale":
       "Un peu trop de demandes coup sur coup. Patientez une minute, puis relancez.",
+    "ia.err.quota":
+      "Vous avez fait vos 3 essais du jour. Revenez demain pour créer d'autres affiches.",
     "ia.err.plafond":
       "La création d'affiches est momentanément suspendue. Réessayez plus tard, ou écrivez-nous.",
     "ia.err.credit":
@@ -1126,6 +1128,8 @@ export const ui = {
       "This photo is too heavy. Pick a lighter one, or resize it before uploading.",
     "ia.err.rafale":
       "That's a few too many requests in a row. Wait a minute, then try again.",
+    "ia.err.quota":
+      "You've used your 3 tries for today. Come back tomorrow to create more posters.",
     "ia.err.plafond":
       "Poster creation is paused for the moment. Try again later, or write to us.",
     "ia.err.credit":
@@ -1974,6 +1978,8 @@ export const ui = {
       "Dieses Foto ist zu groß. Nehmen Sie ein kleineres oder verkleinern Sie es vor dem Hochladen.",
     "ia.err.rafale":
       "Etwas zu viele Anfragen hintereinander. Warten Sie eine Minute und starten Sie dann erneut.",
+    "ia.err.quota":
+      "Sie haben Ihre 3 Versuche für heute aufgebraucht. Kommen Sie morgen wieder, um weitere Poster zu gestalten.",
     "ia.err.plafond":
       "Die Postererstellung ist vorübergehend ausgesetzt. Versuchen Sie es später erneut oder schreiben Sie uns.",
     "ia.err.credit":
@@ -2828,6 +2834,8 @@ export const ui = {
       "Questa foto è troppo pesante. Scegline una più leggera, o riducila prima di caricarla.",
     "ia.err.rafale":
       "Un po' troppe richieste una dopo l'altra. Aspetta un minuto, poi rilancia.",
+    "ia.err.quota":
+      "Hai usato i tuoi 3 tentativi di oggi. Torna domani per creare altri poster.",
     "ia.err.plafond":
       "La creazione dei poster è sospesa per il momento. Riprova più tardi, oppure scrivici.",
     "ia.err.credit":
@@ -3674,6 +3682,8 @@ export const ui = {
       "Esta foto pesa demasiado. Elige una más ligera, o redúcela antes de enviarla.",
     "ia.err.rafale":
       "Demasiadas peticiones seguidas. Espera un minuto y vuelve a lanzarlo.",
+    "ia.err.quota":
+      "Ya has usado tus 3 intentos de hoy. Vuelve mañana para crear más láminas.",
     "ia.err.plafond":
       "La creación de láminas está suspendida por el momento. Inténtalo más tarde, o escríbenos.",
     "ia.err.credit":
@@ -4497,6 +4507,7 @@ export const ui = {
     "ia.err.format": "このファイルは対応する写真ではありません。JPEG、PNG、またはWebPを選んでください。",
     "ia.err.trop_lourde": "この写真はサイズが大きすぎます。軽い写真を選ぶか、縮小してから送信してください。",
     "ia.err.rafale": "短時間にリクエストが集中しています。1分ほど待ってから、もう一度お試しください。",
+    "ia.err.quota": "本日の3回の作成回数を使い切りました。明日また新しいポスターを作成してください。",
     "ia.err.plafond": "ポスターの作成を一時的に停止しています。しばらくしてからもう一度お試しいただくか、お問い合わせください。",
     "ia.err.credit":
       "現在、ポスターを作成できません。しばらくしてからもう一度お試しいただくか、お問い合わせください。",
@@ -5204,6 +5215,7 @@ export const ui = {
     "ia.err.format": "无法识别此文件为照片。请选择 JPEG、PNG 或 WebP 格式。",
     "ia.err.trop_lourde": "此照片文件过大。请换一张较小的，或压缩后再上传。",
     "ia.err.rafale": "请求过于频繁。请等待一分钟后重试。",
+    "ia.err.quota": "您今天的3次尝试已用完。请明天再来制作更多海报。",
     "ia.err.plafond": "海报制作功能暂时暂停。请稍后重试，或给我们留言。",
     "ia.err.credit":
       "海报制作暂时无法使用。请稍后再试，或给我们留言。",
