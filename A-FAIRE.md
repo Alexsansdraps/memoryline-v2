@@ -564,6 +564,16 @@ Tout est commité et poussé sur `main`. MIS EN LIGNE le 27/11 vers 17 h 15 (`35
 
 
 
+### 00.D Nouvelles ombres chinoises à découper (Alexandra, 27/11 vers 20 h 45 : « tiens les nouveaux trucs à découper, reconnais les et classe les »)
+- Image envoyée dans la conversation, PAS encore sur le disque : lui demander de l'enregistrer dans `Documents/memory-line/protos/ombres-2.png`, puis la vectoriser comme la première (voir l'en-tête de `apps/api/src/ciel-ombres.ts` : masque, marching squares, RDP 0,8 px, Catmull-Rom ; 90 cm pour un adulte assis ; base sur y = 0). Image 1536 × 1024 environ, 4 rangées, silhouettes noires sur damier, herbe au pied (à retirer du masque : couper sous la ligne d'assise).
+- Classement reconnu (ids proposés) :
+  - Rangée 1, seuls (10) : `femme-ondulee`, `femme-bouclee-courte`, `femme-carre`, `femme-tres-longs-boucles`, `femme-chignon-haut`, `enfant-boucle`, `homme-boucle`, `homme-capuche`, `homme-court`, `homme-casquette`.
+  - Rangée 2, couples (6) : `couple-homme-femme`, `couple-femmes-queue`, `couple-hommes-epaule`, `couple-hommes-front`, `couple-femmes-chignon`, `couple-frises`.
+  - Rangée 3, familles (6) : `famille-epaules-bebe` (enfant sur les épaules qui montre le ciel + bébé), `famille-femme-enfant`, `famille-homme-deux-bebes`, `famille-homme-bebe-femme`, `famille-deux-hommes-enfant`, `enfant-chien` (chien un peu plus petit → « petit chien »).
+  - Rangée 4, animaux (6) : `femme-chien` (chien plus grand → « grand chien »), `homme-chat`, `femme-lapin`, `homme-cheval` (cheval DEBOUT, tête penchée), `femme-longs` (seule), `homme-deux-lapins`.
+- À décider avec elle : les groupes (couples, familles, personne + animal) se proposent-ils comme des silhouettes toutes faites, à côté des personnes seules ? Recommandé : oui, une rangée « Couples et familles » à part dans l'étape Personnages, chacun compte pour sa largeur (le maximum de 8 se compte en places).
+- Les animaux seuls (petit chien, grand chien, chat, lapin, cheval) : les détacher de leur groupe si la découpe le permet (chien de `enfant-chien` et de `femme-chien`, chat, lapin, cheval) — c'est la réponse au « petit et grand chien » (00.A point 1).
+
 ### 00.A Ciel étoilé — ce qui RESTE (état à 17 h 15, en ligne)
 
 
