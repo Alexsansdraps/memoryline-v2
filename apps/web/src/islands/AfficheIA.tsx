@@ -2075,7 +2075,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * se posent de gauche à droite dans l'ordre choisi. Les groupes restent : on
    * ne voit que ceux d'un onglet à la fois.
    */
-  const SCENES_MAX = 4;
+  // 8 scènes au plus (27/11 au soir, Alexandra : « 8 pas 4 ombres max stp ») :
+  // le même maximum que l'API (SILHOUETTES_MAX) ; un groupe trop large
+  // rapetisse pour tenir dans la largeur.
+  const SCENES_MAX = 8;
   const sansMiroir = (x: string) => x.split(":")[0]!;
   const estChoisie = (id: SceneSilhouette) => choixSilhouettes().some((x) => sansMiroir(x) === id);
   const basculerScene = (id: SceneSilhouette) =>
