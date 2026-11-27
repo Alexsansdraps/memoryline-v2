@@ -235,7 +235,16 @@ export interface ThemeCiel {
   dorures: string;
   /** Proposé aux clientes ; un thème décoché reste au BO. */
   actif?: boolean;
+  /**
+   * La couleur des ombres chinoises (27/11, Alexandra : « dans le réglage
+   * thème on doit pouvoir régler la couleur des persos »). Absente : celle
+   * de la colline du premier plan, comme avant.
+   */
+  personnages?: string;
 }
+
+/** Les couleurs d'un thème dont le dessin a besoin. */
+export type CouleursTheme = Pick<ThemeCiel, "fond" | "etoiles" | "dorures" | "personnages">;
 
 export const REGLAGE_THEMES_CIEL = "ciel.themes";
 
@@ -279,6 +288,7 @@ export function themeSur(brut: unknown, rang = 0): ThemeCiel | null {
     etoiles: couleurSure(b.etoiles, base.etoiles),
     dorures: couleurSure(b.dorures, base.dorures),
     actif: b.actif !== false,
+    ...(HEX.test(String(b.personnages ?? "").trim()) ? { personnages: String(b.personnages).trim().toLowerCase() } : {}),
   };
 }
 
@@ -326,7 +336,7 @@ function clarte(hex: string): number {
  * #16243d, #1f3050 à l'horizon…). Sur un fond clair (« Crème »), le haut
  * fonce à peine : un ciel crème qui vire au gris en haut serait sale.
  */
-export function teintesDuTheme(t: Pick<ThemeCiel, "fond" | "etoiles" | "dorures">) {
+export function teintesDuTheme(t: CouleursTheme) {
   const clair = clarte(t.fond) > 0.55;
   const noir = "#000000";
   const blanc = "#ffffff";
@@ -338,6 +348,8 @@ export function teintesDuTheme(t: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"
     domeBord: melange(t.fond, noir, clair ? 0.04 : 0.18),
     collineLoin: melange(t.fond, noir, clair ? 0.12 : 0.3),
     collinePres: melange(t.fond, noir, clair ? 0.22 : 0.55),
+    /** Les ombres chinoises : la couleur du thème, sinon la colline. */
+    personnages: t.personnages && HEX.test(t.personnages) ? t.personnages : melange(t.fond, noir, clair ? 0.22 : 0.55),
     constellations: melange(t.etoiles, t.fond, 0.2),
     /** Le halo des plus brillantes : discret sur fond clair, sinon des taches. */
     halo: clair ? 0.1 : 0.35,
@@ -621,9 +633,8 @@ function silhouettesDuCiel(
   },
 ): string {
   if (!ids.length) return "";
-  // 27/11, Alexandra : « supp ça » — pas de teinte automatique, les
-  // personnages gardent la couleur de la colline (une couleur réglable par
-  // thème est à faire : A-FAIRE §00).
+  // 27/11, Alexandra : « supp ça » — pas de teinte automatique : la couleur
+  // du thème (`personnages`), sinon celle de la colline (teintesDuTheme).
   // La feuille du style : couchée pour le couple (27/11).
   const { W, H } = dimensionsDuCiel(m.style);
   let plafond: { y: number; x0?: number; x1?: number } | undefined;
@@ -694,7 +705,7 @@ function collines(W: number, H: number) {
  */
 export function svgDuSigne(
   reglages: Pick<ReglagesCiel, "style" | "texte" | "signes" | "dates" | "silhouettes" | "langue" | "hauteurTexte" | "tailleSilhouettes">,
-  theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
+  theme: CouleursTheme = THEMES_CIEL_DE_BASE[0]!,
 ): string {
   const c = teintesDuTheme(theme);
   // Couchée pour le couple (27/11).
@@ -742,7 +753,7 @@ export function svgDuSigne(
   <rect width="${W}" height="${H}" fill="url(#nuit)"/>
   ${dessin}
   <path d="${loin}" fill="${c.collineLoin}"/>
-  <path d="${pres}" fill="${c.collinePres}"/>${silhouettesDuCiel(reglages.silhouettes, c.collinePres, { style: reglages.style, texte: reglages.texte, date: !!reglages.dates[0], hauteurTexte: reglages.hauteurTexte, tailleSilhouettes: reglages.tailleSilhouettes })}
+  <path d="${pres}" fill="${c.collinePres}"/>${silhouettesDuCiel(reglages.silhouettes, c.personnages, { style: reglages.style, texte: reglages.texte, date: !!reglages.dates[0], hauteurTexte: reglages.hauteurTexte, tailleSilhouettes: reglages.tailleSilhouettes })}
 </svg>`;
 }
 
@@ -751,7 +762,7 @@ export function svgDuCiel(
   lat: number,
   lon: number,
   instant: Date,
-  theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
+  theme: CouleursTheme = THEMES_CIEL_DE_BASE[0]!,
   options: {
     ville?: string | null;
     texte?: PlaceTexte;
@@ -841,7 +852,7 @@ export function svgDuCiel(
   </g>
   ${legendeDuLieu(options.ville ?? null, cx, cy + R, c.dorures, coordonnees(lat, lon))}
   <path d="${collineLoin}" fill="${c.collineLoin}"/>
-  <path d="${collinePres}" fill="${c.collinePres}"/>${silhouettesDuCiel(options.silhouettes ?? [], c.collinePres, { style: "nuit", texte, ville: !!(options.ville ?? "").trim(), hauteurTexte: options.hauteurTexte, tailleSilhouettes: options.tailleSilhouettes })}
+  <path d="${collinePres}" fill="${c.collinePres}"/>${silhouettesDuCiel(options.silhouettes ?? [], c.personnages, { style: "nuit", texte, ville: !!(options.ville ?? "").trim(), hauteurTexte: options.hauteurTexte, tailleSilhouettes: options.tailleSilhouettes })}
 </svg>`;
 }
 
@@ -850,7 +861,7 @@ export async function rendreCiel(
   lat: number,
   lon: number,
   instant: Date,
-  theme?: Pick<ThemeCiel, "fond" | "etoiles" | "dorures">,
+  theme?: CouleursTheme,
   options: {
     ville?: string | null;
     texte?: PlaceTexte;
@@ -1069,14 +1080,24 @@ export function mountCielRoutes(app: Hono): void {
   app.get("/ia/ciel/apercu-theme", async (c: Context) => {
     const base = THEMES_CIEL_DE_BASE[0]!;
     const theme = themeSur(
-      { nom: "apercu", fond: c.req.query("fond"), etoiles: c.req.query("etoiles"), dorures: c.req.query("dorures") },
+      {
+        nom: "apercu",
+        fond: c.req.query("fond"),
+        etoiles: c.req.query("etoiles"),
+        dorures: c.req.query("dorures"),
+        personnages: c.req.query("personnages"),
+      },
       0,
     ) ?? base;
-    const cle = `${theme.fond}${theme.etoiles}${theme.dorures}`;
+    const cle = `${theme.fond}${theme.etoiles}${theme.dorures}${theme.personnages ?? ""}`;
     let png = apercusThemes.get(cle);
     if (!png) {
       if (tropDApercusDeThemes(ipDeLaRequete(c))) return c.json({ error: "Trop de demandes" }, 429);
-      const svg = svgDuCiel(47.75, 7.34, new Date(Date.UTC(2025, 5, 14, 21, 10)), theme).replace(
+      // Une famille assise, pour voir la couleur des personnages (27/11).
+      const svg = svgDuCiel(47.75, 7.34, new Date(Date.UTC(2025, 5, 14, 21, 10)), theme, {
+        silhouettes: ["famille-quatre"],
+        hauteurTexte: 0.1,
+      }).replace(
         `width="${LARGEUR_CIEL}" height="${HAUTEUR_CIEL}"`,
         `width="600" height="${Math.round((600 * HAUTEUR_CIEL) / LARGEUR_CIEL)}"`,
       );
