@@ -2,7 +2,13 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 000. ÉTAT AU 27/11, 21 H 45 — tout `main` est EN LIGNE (`e45fbac`, sur « hop mets en prod »)
+## 000. ÉTAT AU 27/11, 21 H 40 — tout `main` est EN LIGNE (`8037862`)
+
+- **Règle d'Alexandra (27/11 au soir)** : hors des heures d'ouverture du marché (avant 11 h, après 20 h), mise en ligne directe « en mode hotfix » après chaque correction vérifiée ; pendant l'ouverture, seulement sur son « met en prod ».
+- Depuis 21 h 45 : jusqu'à 8 scènes d'ombres (`93da69a`) ; cercle posé juste au-dessus de la bande des personnages, tout le vide au-dessus (`7f8e1a0`) ; calage du texte dans sa place, en haut / au milieu / en bas (`8037862`) ; personnages sur tous les styles, signe, couple (paysage) et signe sans cercle compris (`8037862`).
+- Pas essayé dans un navigateur : frappe → redessin, calage, 8 scènes, personnages sur un couple jusqu'au panier.
+
+### 21 h 45
 
 - Depuis 21 h 25 : la constellation ne bouge plus quand on ajoute un personnage (bas de la place fixe à 0,72, `21e111f`) ; enfant seul à 70 % d'un adulte ; 15 scènes de la 4e planche (`protos/ombres-4.png`, `ee42ad0`) ; chevaux proposés : la femme et son cheval couché, l'homme et son cheval seulement (`e45fbac`). Catalogue de l'API : 59 tracés (10 anciens + 49) ; la fiche en propose 46 (seul·e 17, couple 6, famille 9, animal 14). Liste des tracés en `?v=ombres-groupes-3` : la changer à chaque nouveau catalogue.
 
