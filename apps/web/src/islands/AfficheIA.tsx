@@ -957,9 +957,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       "famille-homme-deux-bebes",
       "famille-deux-hommes-enfant",
     ],
-    // Une seule femme avec un cheval (27/11 au soir, Alexandra : « je parle
-    // surtout de la femme avec les chevaux, ça sert à rien d'en avoir plein ») :
-    // « femme-cheval-couche » n'est plus proposée (l'API la connaît encore).
+    // Deux chevaux seulement (27/11 au soir, Alexandra : « ça sert à rien d'en
+    // avoir plein », puis « non c bien une femme avec un cheval couché et un
+    // homme ») : la femme et son cheval couché, l'homme et son cheval. Les
+    // autres chevaux ne sont plus proposés (l'API les connaît encore).
     animal: [
       "femme-chien",
       "homme-chien",
@@ -973,10 +974,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       "femme-chat-chien",
       "femme-lapin",
       "homme-deux-lapins",
-      "femme-cheval-debout",
+      "femme-cheval-couche",
       "homme-cheval",
-      "fillette-cheval",
-      "chien-et-cheval",
     ],
   } as const;
   type GroupeSilhouettes = keyof typeof GROUPES_SILHOUETTES;
