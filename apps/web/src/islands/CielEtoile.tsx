@@ -113,7 +113,14 @@ export interface MiseDuCiel {
  */
 export const MARGE_HAUT_CIEL = 0.035;
 export const ECART_TEXTE_CIEL = 0.03;
-export const basDeLaPlace = (personnages: boolean): number => (personnages ? 0.7 : 0.85);
+/**
+ * Le bas de la place du dessin et du texte : FIXE, avec ou sans personnages
+ * (27/11 au soir, Alexandra : « quand j'ajoute un perso ça décale la
+ * constellation ça devrait pas »). La bande des personnages, dessous, est
+ * toujours gardée ; seul le texte pousse le dessin. 0,72 : un cheval debout,
+ * la plus haute scène, tient dessous.
+ */
+export const basDeLaPlace = (_personnages?: boolean): number => 0.72;
 function dispositionCentree(
   m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages" | "paysage">,
   hauteurTexte: number,
