@@ -2,7 +2,18 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 27/11, 10 h 10 : tout `main` est en ligne (`aa5ec18`)
+## 0. État au 27/11, 11 h 50 : tout `main` est en ligne (`0a01048`) ; les étapes à onglets de la fenêtre IA sont en construction (pas commitées)
+
+### 0.00000000000 EN LIGNE DEPUIS LE 27/11 À 11 H 49 (`0a01048`, avec `8f166ac` et `591ee54`)
+- Sur « met en prod » d'Alexandra. Avant : tsc de l'API, 601 tests de l'API (599 réussis, 2 sautés, 0 échec), 82 tests du BO, astro check et tsc du site sans erreur nouvelle. Pas de migration.
+- `8f166ac` : à la tablette du stand, plus de zone « Déposez votre photo ici, ou cliquez pour la choisir / JPEG, PNG ou WebP » (« enlève ça pour les stands ») ; la photo arrive du téléphone, « Choisir une photo » reste.
+- `591ee54` : plus de phrase « Votre photo est dans votre téléphone ? Scannez un code : elle arrive ici. » sous « Envoyer la photo depuis votre téléphone », au stand comme sur le site.
+- `0a01048`, relecture indépendante de `aa5ec18` (2 relecteurs, constats contre-vérifiés) :
+  - la limite de 3 essais tient aussi contre des demandes lancées ensemble : compte et écriture sous un verrou (`pg_advisory_xact_lock`), comme le relais photo. Essai : 6 demandes ensemble, exactement 3 passent ;
+  - sur le site, les créations restent dans le NAVIGATEUR (localStorage, 7 jours), plus seulement dans l'onglet : limite atteinte, une cliente qui avait fermé l'onglet n'avait plus rien à mettre au panier. Au stand, toujours dans l'onglet ;
+  - BO › Affiches IA : le nom du stand passe à la ligne au lieu d'être coupé.
+  - Écartés par la relecture, voulus : le mode stand sans code vaut pendant l'ouverture d'un stand (sinon la tablette risquerait d'être bloquée) ; plusieurs personnes derrière la même box partagent leurs 3 essais.
+- Après : site, fiche photo (site et ?stand=1) 200, API (base comprise) 200, BO 302 ; code servi sans « Scannez un code » ; fenêtre ouverte dans un Chrome sans écran sur le vrai site : au stand, pas de zone de dépôt, « Choisir une photo » et le relais présents ; sur le site, la zone reste.
 
 ### 0.0000000000 EN LIGNE DEPUIS LE 27/11 À 10 H 08 (`aa5ec18`) : affiches IA — ciels hors de la galerie, stand ou site, 3 essais par jour sur le site
 - Demandes d'Alexandra (27/11) : « corrige on ne garde pas les affiches étoile ! », « c'est généré et pas gardé dans le bo sur la partie "affiches" », « enfin je veux dire pas dans affiche IA » ; « faut qu'on puisse identifier si la photo vient du stand ou site et si possible quel stand... sur https://memoryline.fr/bo/ia » ; « bloquer à 3 essais par jour uniquement en mode site pas en mode stand » (« je parle de vos photos en affiche, le truc ia pour les clients ») ; « et met en prod ».
