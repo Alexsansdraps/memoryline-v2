@@ -46,7 +46,7 @@ import {
   type PosterConfig,
   type TextBlock,
 } from "@memoryline/types";
-import { createReductionDesLignes } from "@memoryline/configurator";
+import { createReductionDesLignes, ZoneDefilante } from "@memoryline/configurator";
 import { assetUrl, browserApi, formatPrice, getCartId, versLePanier } from "../lib/api.ts";
 import {
   apercuAbsolu,
@@ -267,26 +267,6 @@ const TRAITS_PERSONNAGES: Record<"back" | "front", () => JSX.Element> = {
     </>
   ),
 };
-
-/**
- * Le nombre de colonnes d'une grille de `n` cartes : `max` ou `max - 1`,
- * celui qui laisse le moins de cases vides sur la dernière ligne, le plus
- * large à égalité. Grand écran (4) : 4 → 4, 5 → 3 + 2, 6 → 3 + 3, 7 → 4 + 3 ;
- * téléphone (3) : 4 → 2 × 2. Jamais moins de `max - 1` : une ou deux cartes
- * gardent leur taille au lieu de remplir toute la largeur.
- */
-function colonnesDesStyles(n: number, max: number): number {
-  let meilleur = max;
-  let vides = Infinity;
-  for (let c = max; c >= max - 1; c--) {
-    const v = (c - (n % c)) % c;
-    if (v < vides) {
-      vides = v;
-      meilleur = c;
-    }
-  }
-  return meilleur;
-}
 
 /** La case d'un style qui n'a pas encore d'image d'exemple. */
 function AttenteStyle(props: { titre: string }): JSX.Element {
@@ -1789,16 +1769,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   {tr("ia.style_manquant")}
                 </p>
               </Show>
-              {/* Autant de colonnes qu'il faut pour remplir les lignes
-                  (22/11, Alexandra : « si elle en rajoute, que ça fasse pas
-                  moche ») : quatre styles en ligne, ou deux par deux sur
-                  téléphone, plutôt que trois et un tout seul dessous. */}
-              <div
-                class="mt-3 grid grid-cols-[repeat(var(--colonnes-tel),minmax(0,1fr))] gap-3 sm:grid-cols-[repeat(var(--colonnes),minmax(0,1fr))]"
-                style={{
-                  "--colonnes": String(colonnesDesStyles(styles().length, 4)),
-                  "--colonnes-tel": String(colonnesDesStyles(styles().length, 3)),
-                }}
+              {/* TOUJOURS une rangée qui défile de côté (27/11, Alexandra :
+                  « ça doit tjs rester scroll horizontal ») : autant de styles
+                  qu'elle en ajoute, la fenêtre ne s'allonge plus. Les flèches
+                  et la barre sont celles de toutes les listes du site
+                  (ZoneDefilante). Un peu de marge en haut et à droite : la
+                  coche du style choisi déborde du coin de sa carte. */}
+              <ZoneDefilante
+                sens="horizontal"
+                versDebut={tr("cfg.precedent")}
+                versFin={tr("cfg.suivant")}
+                class="mt-1 flex snap-x gap-3 overflow-x-auto pb-1 pr-2 pt-2"
               >
                 <For each={styles()}>
                   {(st) => {
@@ -1820,7 +1801,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                         // comme tous les choix du site : cadre et coche
                         // rouges. Rien n'est rogné : la coche déborde du coin
                         // de la carte.
-                        class="ml-choix flex flex-col border border-ink/15 text-left hover:border-ink/45 disabled:opacity-60"
+                        class="ml-choix flex w-[8.5rem] shrink-0 snap-start flex-col border border-ink/15 text-left hover:border-ink/45 disabled:opacity-60 sm:w-[9.5rem]"
                       >
                         <Show when={image} fallback={<AttenteStyle titre={st.titre} />}>
                           <img
@@ -1842,7 +1823,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                     );
                   }}
                 </For>
-              </div>
+              </ZoneDefilante>
             </div>
 
             <p class="mt-6 flex items-center gap-2 font-medium">
