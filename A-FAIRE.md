@@ -8,13 +8,11 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 - Marché de Noël de Mulhouse : du 20/11 au 27/12, 11 h – 20 h (le calendrier du stand ferme à 21 h ; le stand se ferme seul 1 h après la fin du dernier créneau).
 - Réglés par Alexandra le 27/11 à 22 h 30, à ne plus proposer : le message rouge « crédit » ; les lectures de contrôle des ventes du stand du 26/11.
 
-## 0.1 Ce qui RESTE (dans cet ordre)
+## 0.1 Ce qui RESTE
 
-1. **Couleur des ombres dans les thèmes du ciel** : couleur optionnelle `personnages` dans `teintesDuTheme` / `THEMES_CIEL_DE_BASE` + champ dans BO › Ciel (`apps/admin/src/pages/ciel.astro`) ; absente = couleur de la colline (comme aujourd'hui).
-2. **Ménage** : clés `ciel.silh.*` des anciennes ombres inutilisées (ui.ts, 7 langues), code mort des silhouettes debout / dessinées (`ciel-silhouettes.ts`, `ciel-silhouettes-assises.ts`).
-3. **Tailles de texte** : la réduction des lignes trop longues de l'aperçu (`reductionDeLigne`) doit tenir compte du multiplicateur de taille ; essai automatique « ligne sans taille = même empreinte d'impression ».
-4. **Essais de bout en bout en local** : couple en paysage jusqu'au fichier d'impression, 8 scènes, frappe du texte → redessin.
-5. **Personnages unifiés des affiches classiques** (gros chantier, en dernier) : voir 0.4.
+Faits le 27/11 au soir et EN LIGNE (`e4bb63c`) : couleur des ombres par thème (BO › Ciel étoilé, « Couleur propre ») ; ménage des anciennes silhouettes (rendu identique à l'octet près) ; l'aperçu remesure une ligne quand sa taille change, et un essai automatique garde l'empreinte d'une ligne sans taille. Essayé en local : couple en paysage avec 8 scènes jusqu'au fichier d'impression (3508 × 2480) : les 8 tiennent dans la largeur.
+
+1. **Personnages unifiés des affiches classiques** (voir 0.4) : planche du 27/11 au soir refaite (`travaux/personnages-unifies/gabarits-final/planche-gabarits.jpg`, copie dans `Documents/memory-line/planche-personnages-27-11-soir.jpg`) : âgés au dos rond et aux épaules tombantes, ado aux épaules souples, cheval DEBOUT de dos (lui donner un facteur de taille d'environ 2 à la création), chat dont la queue s'enroule au sol. **Attend l'avis d'Alexandra sur la planche**, puis : garde-robe (hauts, bas, coiffures, accessoires) dessinée SUR les gabarits, NAC, puis les lots du plan (`travaux/personnages-unifies/plan.md`). Relancer la planche : `bash travaux/personnages-unifies/gabarits-final/run.sh` (conteneur `memoryline-api` local).
 
 ## 0.2 Règles
 
