@@ -144,7 +144,7 @@ test("réglages du ciel : par défaut comme avant ; un champ faux est refusé (2
   assert.deepEqual(ok({ silhouettes: ["couple", "chien"] }).silhouettes, ["couple", "chien"]);
   refus({ silhouettes: ["licorne"] });
   refus({ silhouettes: "couple" });
-  refus({ silhouettes: ["enfant", "enfant", "chien", "couple", "homme-manteau"] });
+  refus({ silhouettes: ["enfant", "enfant", "chien", "couple", "homme-manteau", "chat", "enfant", "chien", "couple"] }); // 9 > 8
 });
 
 test("signe de la date : les bornes habituelles du zodiaque", async () => {
@@ -196,12 +196,14 @@ test("un signe, un couple : leurs constellations dans le SVG, sans coordonnées 
 test("silhouettes posées : 0, 1, 4 ; sur le ciel de cette nuit comme sur un signe", async () => {
   const { svgDuCiel, svgDuSigne, lireReglagesCiel, teintesDuTheme, THEMES_CIEL_DE_BASE } = await import("../src/ciel.ts");
   const t = new Date(Date.UTC(2025, 5, 14, 21, 10));
-  const nb = (svg: string) => (svg.match(/<path transform="translate\(/g) ?? []).length;
+  // Seulement le groupe des silhouettes : le plaid et le pique-nique autour (27/11) ont aussi des translate.
+  const groupe = (svg: string) => svg.match(/<g fill="[^"]*" data-silhouettes="1">(.*?)<\/g>/)?.[1] ?? "";
+  const nb = (svg: string) => (groupe(svg).match(/<path transform="translate\(/g) ?? []).length;
   assert.equal(nb(svgDuCiel(47.75, 7.34, t)), 0);
   const un = svgDuCiel(47.75, 7.34, t, undefined, { silhouettes: ["chien"] });
   assert.equal(nb(un), 1);
-  // De la couleur de la colline la plus sombre du thème.
-  assert.ok(un.includes(`<g fill="${teintesDuTheme(THEMES_CIEL_DE_BASE[0]!).collinePres}"><path transform`));
+  // La couleur de la colline (27/11, Alexandra : « supp ça » pour la teinte automatique).
+  assert.ok(un.includes(`<g fill="${teintesDuTheme(THEMES_CIEL_DE_BASE[0]!).collinePres}" data-silhouettes`));
   assert.equal(nb(svgDuCiel(47.75, 7.34, t, undefined, { texte: "bas", silhouettes: ["couple", "enfant", "chien", "montre-le-ciel"] })), 4);
   const r = lireReglagesCiel({ style: "couple", dates: ["1995-02-26", "1998-09-11"], silhouettes: ["couple", "enfant"] });
   assert.ok(r.ok);
@@ -217,10 +219,11 @@ test("silhouettes posées : 0, 1, 4 ; sur le ciel de cette nuit comme sur un sig
 test("silhouettes : sous la date du signe (texte en haut), sous la place des lignes (texte en bas)", async () => {
   const { svgDuSigne, svgDuCiel, lireReglagesCiel, dispositionDuCiel, plafondDesSilhouettes, HAUTEUR_CIEL, LARGEUR_CIEL } =
     await import("../src/ciel.ts");
-  const { SILHOUETTES_PAR_ID } = await import("../src/ciel-silhouettes.ts");
+  // Assises depuis le 27/11 (Alexandra : « je les veux assis les personnages !!! »).
+  const { SILHOUETTES_ASSISES_PAR_ID: SILHOUETTES_PAR_ID } = await import("../src/ciel-silhouettes-assises.ts");
   const quatre = ["couple", "enfant-sur-epaules", "chien", "montre-le-ciel"];
   const sommets = (svg: string, ids: string[]) =>
-    [...svg.matchAll(/<path transform="translate\(([\d.]+) ([\d.]+)\) scale\(([\d.]+)\)"/g)].map((m, i) => {
+    [...(svg.match(/<g fill="[^"]*" data-silhouettes="1">(.*?)<\/g>/)?.[1] ?? "").matchAll(/<path transform="translate\(([\d.]+) ([\d.]+)\) scale\(([\d.]+)\)"/g)].map((m, i) => {
       const s = SILHOUETTES_PAR_ID.get(ids[i]!)!;
       const [x, y, k] = [Number(m[1]), Number(m[2]), Number(m[3])];
       return { g: x + s.gauche * k, d: x + s.droite * k, haut: y + s.haut * k };
@@ -248,7 +251,7 @@ test("silhouettes : sous la date du signe (texte en haut), sous la place des lig
   }
   const nuit = svgDuCiel(47.75, 7.34, new Date(Date.UTC(2025, 5, 14, 21, 10)), undefined, { texte: "bas", ville: "Mulhouse", silhouettes: quatre });
   for (const t of sommets(nuit, quatre)) assert.ok(t.haut >= plafondDesSilhouettes("nuit", true) * HAUTEUR_CIEL - 0.5);
-  // Le couple texte en bas : la place ne manque pas, la taille d'avant (0,125 de la hauteur pour 175 cm).
+  // La même taille partout, texte en haut ou en bas (27/11, Alexandra : « les persos doivent pas changer de taille ») : 0,145 de la hauteur pour 175 cm.
   const couple = svgDuSigne(regl({ style: "couple", dates: ["1990-11-02", "1988-04-25"], silhouettes: ["couple"] }));
-  assert.match(couple, new RegExp(`scale\\(${((HAUTEUR_CIEL * 0.125) / 175).toFixed(4)}\\)`));
+  assert.match(couple, new RegExp(`scale\\(${((HAUTEUR_CIEL * 0.145) / 175).toFixed(4)}\\)`));
 });

@@ -18,6 +18,7 @@ import {
   Index,
   Show,
   Suspense,
+  untrack,
   type JSX,
 } from "solid-js";
 import {
@@ -762,6 +763,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   const [texteCiel, setTexteCiel] = createSignal<PlaceTexte>("haut");
   /** Le style du formulaire, pour la place du texte par défaut. */
   let styleCielVu: StyleCiel | null = null;
+  /** Le même, à suivre : l'étape Personnages n'existe que pour « nuit » (27/11). */
+  const [styleCiel, setStyleCiel] = createSignal<StyleCiel | null>(null);
   /** Les qualités posées d'office sur la dernière ligne, tant qu'on n'y touche pas. */
   let qualitesPosees = "";
   /**
@@ -775,7 +778,16 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   function reglageCiel(r: { style: StyleCiel; signes: IdSigne[] }) {
     if (r.style !== styleCielVu) {
       styleCielVu = r.style;
+      setStyleCiel(r.style);
       setTexteCiel(r.style === "nuit" ? "haut" : "bas");
+      // Les personnages ne vont que sur le ciel de cette nuit (27/11,
+      // Alexandra : « et si on modifie le style ça doit les supp ») : un
+      // autre style les retire, et le ciel se redessine sans eux.
+      if (r.style !== "nuit") {
+        clearTimeout(minuteurSilhouettes);
+        setChoixSilhouettes([]);
+        setSilhouettesCiel([]);
+      }
     }
     const derniere = NB_LIGNES_AFFICHE - 1;
     const actuelle = lignes()[derniere]?.value ?? "";
@@ -873,10 +885,25 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     "adulte-bebe",
     "montre-le-ciel",
     "chien",
+    // 27/11, Alexandra : « et le chat en ombre ? »
+    "chat",
     "couple",
   ] as const;
   const [choixSilhouettes, setChoixSilhouettes] = createSignal<string[]>([]);
   const [silhouettesCiel, setSilhouettesCiel] = createSignal<string[]>([]);
+  /*
+   * Plus de bouton « Mettre sur mon ciel » (27/11, Alexandra : « pas de
+   * bouton mettre sur mon ciel ça doit agir direct ») : chaque ajout, retrait
+   * ou déplacement redessine, après 400 ms pour regrouper les clics.
+   */
+  let minuteurSilhouettes: ReturnType<typeof setTimeout> | undefined;
+  createEffect(() => {
+    const choix = [...choixSilhouettes()];
+    clearTimeout(minuteurSilhouettes);
+    if (choix.join(",") === untrack(silhouettesCiel).join(",")) return;
+    minuteurSilhouettes = setTimeout(() => setSilhouettesCiel(choix), 400);
+  });
+  onCleanup(() => clearTimeout(minuteurSilhouettes));
   function basculerAjout(id: string) {
     setAAjouter((liste) =>
       liste.includes(id) ? liste.filter((x) => x !== id) : [...liste, id],
@@ -1520,7 +1547,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * rien de ce qui est tapé ne se perd d'une étape à l'autre.
    * ---------------------------------------------------------------------- */
   type Onglet = "source" | "texte" | "personnages" | "format";
-  const ONGLETS: Onglet[] = ["source", "texte", "personnages", "format"];
+  const TOUS_LES_ONGLETS: Onglet[] = ["source", "texte", "personnages", "format"];
+  /*
+   * Les étapes montrées : sur un ciel, Personnages seulement pour « Ciel de
+   * cette nuit » (27/11, Alexandra : « donc tu mets pas l'étape 3 pour les
+   * autres styles ») ; les pastilles se renumérotent.
+   */
+  const ongletsVisibles = createMemo<Onglet[]>(() =>
+    modeCiel() && styleCiel() !== null && styleCiel() !== "nuit"
+      ? TOUS_LES_ONGLETS.filter((o) => o !== "personnages")
+      : TOUS_LES_ONGLETS,
+  );
   /** Le nom d'une étape : la première est la Photo, ou le Ciel. */
   const nomOnglet = (o: Onglet): string =>
     tr(
@@ -1607,9 +1644,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * qu'un contour : l'action principale y reste « Créer mon affiche ».
    */
   const barreDesEtapes = () => {
-    const rang = () => ONGLETS.indexOf(volet());
-    const precedente = () => ONGLETS[rang() - 1];
-    const suivante = () => ONGLETS[rang() + 1];
+    const rang = () => ongletsVisibles().indexOf(volet());
+    const precedente = () => ongletsVisibles()[rang() - 1];
+    const suivante = () => ongletsVisibles()[rang() + 1];
     const enContour = () => volet() === "source" && !apercu();
     return (
       <div
@@ -1885,7 +1922,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   >({});
   createEffect(() => {
     if (!modeCiel() || volet() !== "personnages" || Object.keys(formesSilhouettes()).length) return;
-    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes`)
+    // `?v=assises` (27/11, Alexandra : les vignettes montraient encore les
+    // silhouettes debout) : la réponse reste une heure en cache, l'adresse
+    // neuve passe outre l'ancienne liste.
+    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=assises`)
       .then((r) => r.json())
       .then((data: { silhouettes?: { id: string; d: string; gauche: number; droite: number; haut: number }[] }) =>
         setFormesSilhouettes(Object.fromEntries((data.silhouettes ?? []).map((s) => [s.id, s]))),
@@ -1912,28 +1952,108 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     );
   };
   const nomSilhouette = (id: (typeof SILHOUETTES_CIEL)[number]) => tr(`ciel.silh.${id}`);
+  /*
+   * Le glisser-déposer des personnages choisis (27/11, Alexandra : « on peut
+   * les intervertir », « non on interverti au drag and drop ») : pendant le
+   * geste, l'ordre montré change sous le doigt (`ordreGlisse`) ; au dépôt, il
+   * devient le choix, et le ciel se redessine aussitôt.
+   */
+  let rangeeSilhouettes: HTMLDivElement | undefined;
+  const [glisseSilhouette, setGlisseSilhouette] = createSignal<number | null>(null);
+  const [ordreGlisse, setOrdreGlisse] = createSignal<string[] | null>(null);
+  const ordreAffiche = () => ordreGlisse() ?? choixSilhouettes();
+  function attraperSilhouette(e: PointerEvent, depart: number) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const cible = e.currentTarget as HTMLElement;
+    try {
+      cible.setPointerCapture(e.pointerId);
+    } catch {
+      /* sans capture, le geste suit quand même la fenêtre */
+    }
+    let rang = depart;
+    setOrdreGlisse([...choixSilhouettes()]);
+    setGlisseSilhouette(rang);
+    const bouger = (ev: PointerEvent) => {
+      const cases = Array.from(rangeeSilhouettes?.querySelectorAll<HTMLElement>("[data-rang-silhouette]") ?? []);
+      // La case la plus proche du doigt, au centre.
+      let proche = rang;
+      let meilleure = Infinity;
+      cases.forEach((c, k) => {
+        const b = c.getBoundingClientRect();
+        const d = Math.hypot(ev.clientX - (b.left + b.width / 2), ev.clientY - (b.top + b.height / 2));
+        if (d < meilleure) {
+          meilleure = d;
+          proche = k;
+        }
+      });
+      if (proche === rang) return;
+      setOrdreGlisse((l) => {
+        if (!l) return l;
+        const copie = [...l];
+        const [pris] = copie.splice(rang, 1);
+        copie.splice(proche, 0, pris!);
+        return copie;
+      });
+      rang = proche;
+      setGlisseSilhouette(rang);
+    };
+    const lacher = () => {
+      window.removeEventListener("pointermove", bouger);
+      window.removeEventListener("pointerup", lacher);
+      window.removeEventListener("pointercancel", lacher);
+      const ordre = ordreGlisse();
+      setOrdreGlisse(null);
+      setGlisseSilhouette(null);
+      if (ordre && ordre.join(",") !== choixSilhouettes().join(",")) {
+        setChoixSilhouettes(ordre);
+        // Le dépôt redessine sans attendre le délai anti-rafale.
+        clearTimeout(minuteurSilhouettes);
+        setSilhouettesCiel([...ordre]);
+      }
+    };
+    window.addEventListener("pointermove", bouger);
+    window.addEventListener("pointerup", lacher);
+    window.addEventListener("pointercancel", lacher);
+  }
   const blocSilhouettes = () => (
     <div class="mt-5">
       <p class="flex items-baseline justify-between text-sm font-medium">
         <span>{tr("ia.perso.titre")}</span>
-        <span class="text-xs tabular-nums text-ink-soft">{choixSilhouettes().length}/4</span>
+        <span class="text-xs tabular-nums text-ink-soft">{choixSilhouettes().length}/8</span>
       </p>
-      {/* Celles qui seront posées, dans l'ordre, de gauche à droite : un
-          toucher en retire une. */}
-      <div class="mt-2 flex min-h-[4.5rem] flex-wrap items-end gap-2 border border-dashed border-ink/20 p-2">
-        <For each={choixSilhouettes()}>
+      {/* Celles qui seront posées, dans l'ordre, de gauche à droite : la
+          croix en retire une ; on les intervertit en les faisant glisser
+          (27/11, Alexandra : « non on interverti au drag and drop »), à la
+          souris comme au doigt (événements pointer). */}
+      <div
+        ref={rangeeSilhouettes}
+        class="mt-2 flex min-h-[4.5rem] touch-none flex-wrap items-end gap-2 border border-dashed border-ink/20 p-2"
+      >
+        <For each={ordreAffiche()}>
           {(id, i) => (
-            <button
-              type="button"
-              aria-label={`${tr("ciel.silh.retirer")} : ${nomSilhouette(id as (typeof SILHOUETTES_CIEL)[number])}`}
-              onClick={() => setChoixSilhouettes((l) => l.filter((_, k) => k !== i()))}
-              class="relative flex h-16 w-12 items-end justify-center text-ink hover:text-terracotta"
+            <div
+              data-rang-silhouette={i()}
+              onPointerDown={(e) => attraperSilhouette(e, i())}
+              title={tr("ciel.silh.glisser")}
+              class={`relative flex h-16 w-12 cursor-grab select-none items-end justify-center text-ink ${
+                glisseSilhouette() === i() ? "opacity-50" : ""
+              }`}
             >
-              {dessinSilhouette(id, "h-full w-full")}
-              <span aria-hidden="true" class="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-ink text-[10px] leading-none text-paper">
-                ✕
+              {dessinSilhouette(id, "pointer-events-none h-full w-full")}
+              <span aria-hidden="true" class="pointer-events-none absolute -left-1 -top-1 text-[11px] leading-none text-ink-soft">
+                ⠿
               </span>
-            </button>
+              <button
+                type="button"
+                aria-label={`${tr("ciel.silh.retirer")} : ${nomSilhouette(id as (typeof SILHOUETTES_CIEL)[number])}`}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => setChoixSilhouettes((l) => l.filter((_, k) => k !== i()))}
+                class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink text-[10px] leading-none text-paper hover:bg-terracotta"
+              >
+                ✕
+              </button>
+            </div>
           )}
         </For>
       </div>
@@ -1942,8 +2062,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           {(id) => (
             <button
               type="button"
-              disabled={choixSilhouettes().length >= 4}
-              onClick={() => setChoixSilhouettes((l) => (l.length < 4 ? [...l, id] : l))}
+              disabled={choixSilhouettes().length >= 8}
+              onClick={() => setChoixSilhouettes((l) => (l.length < 8 ? [...l, id] : l))}
               class="flex min-w-0 flex-col items-center gap-1 border border-ink/15 px-1 pb-1.5 pt-2 text-center text-[11px] leading-tight transition-colors hover:border-ink/45 disabled:opacity-50"
             >
               {dessinSilhouette(id, "h-14 w-full text-ink/80")}
@@ -1952,14 +2072,6 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           )}
         </For>
       </div>
-      <button
-        type="button"
-        disabled={occupe() || choixSilhouettes().join(",") === silhouettesCiel().join(",")}
-        onClick={() => setSilhouettesCiel([...choixSilhouettes()])}
-        class="mt-4 rounded-full bg-ink px-8 py-3 font-medium text-paper transition-colors hover:bg-ink/85 disabled:opacity-60"
-      >
-        {tr("ciel.silh.mettre")}
-      </button>
       {/* Le ciel ne peut pas se redessiner (un couple à une seule date) :
           on le dit ici aussi (27/11, relecture). */}
       <Show when={cielIncomplet()}>
@@ -2462,7 +2574,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             role="group"
             aria-label={tr("ia.etapes")}
           >
-            <For each={ONGLETS}>
+            <For each={ongletsVisibles()}>
               {(o, i) => {
                 const vu = () => volet() === o;
                 return (

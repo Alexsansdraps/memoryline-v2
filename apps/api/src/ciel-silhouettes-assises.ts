@@ -857,22 +857,23 @@ function montreLeCiel(): Silhouette {
   ];
   // Appuyée sur la main gauche.
   const brasPose = miroirAxe(brasAppui(15.2, -54, 27));
-  // Le bras droit tendu vers le ciel, l'index pointé.
+  // Le bras droit tendu vers le ciel, l'index pointé ; raccourci de 20 % autour
+  // de l'épaule (27/11, Alexandra : « montre le ciel le bras semble un peu long quand même »).
   const brasLeve: A[] = [
     [14.4, -56, 4.6],
-    [19.4, -62, 4.2],
-    [25, -69.4, 3.7],
-    [30, -76.6, 3.4], // coude
-    [35.4, -84.8, 3.0],
-    [40.4, -93, 2.5], // poignet
-    [42.6, -96.6, 2.9], // poing
-    [44.4, -99.6, 2.4],
-    [45.8, -102, 1.0], // index
-    [48.6, -107, 0.85],
+    [18.4, -60.8, 4.2],
+    [22.9, -66.7, 3.7],
+    [26.9, -72.5, 3.4], // coude
+    [31.2, -79, 3.0],
+    [35.2, -85.6, 2.5], // poignet
+    [37, -88.5, 2.9], // poing
+    [38.4, -90.9, 2.4],
+    [39.5, -92.8, 1.0], // index
+    [41.8, -96.8, 0.85],
   ];
   const pouce = membre([
-    [41.8, -98, 1.0],
-    [42.4, -100.8, 0.85],
+    [36.3, -89.6, 1.0],
+    [36.8, -91.8, 0.85],
   ]);
   return forme(
     "montre-le-ciel",
@@ -893,7 +894,7 @@ function montreLeCiel(): Silhouette {
   );
 }
 
-/** Le chien assis, de dos, museau levé (le même que debout : il était déjà assis). */
+/** Le chien assis, strictement de dos, tête levée (27/11). */
 function chien(): Silhouette {
   const corps: P[] = [
     [-12, 0, 1],
@@ -917,15 +918,11 @@ function chien(): Silhouette {
   ];
   const pattes = [ovale(-14.4, -1.8, 5, 2, 0, 12), ovale(14.4, -1.8, 5, 2, 0, 12)];
   const cou = ovale(0, -53.4, 8.4, 6);
-  const tete = ovale(-0.4, -60.4, 8, 7, 0, 16);
-  // Le museau un peu plus levé que debout : il regarde les étoiles avec eux.
-  const museau = membre([
-    [2.6, -62, 4.2],
-    [5.4, -66.4, 3.4],
-    [7.8, -70.4, 3.0],
-    [8.8, -72.2, 2.9],
-  ]);
-  const oreilleD = ovale(9.2, -56.8, 3.2, 6, -24, 12);
+  // Strictement de dos (27/11, Alexandra : « le chien a une bite sur le nez »,
+  // « le chien on doit pas voir sa truffe en fait ») : aucun museau, juste
+  // l'arrière de la tête arrondie, les deux oreilles, le cou, le dos, la queue.
+  const tete = ovale(0, -60.6, 8, 7.4, 0, 16);
+  const oreilleD = ovale(7.6, -63.4, 3.2, 6, 28, 12);
   const queue: A[] = [
     [10, -3, 3.0],
     [16, -2.2, 2.6],
@@ -933,7 +930,7 @@ function chien(): Silhouette {
     [26, -5.6, 1.5],
     [27.6, -8.8, 0.8],
   ];
-  return forme("chien", "Chien assis", corps, ...pattes, cou, tete, museau, oreilleD, miroir(oreilleD), membre(queue));
+  return forme("chien", "Chien assis", corps, ...pattes, cou, tete, oreilleD, miroir(oreilleD), membre(queue));
 }
 
 /** Un couple assis épaule contre épaule ; elle penche la tête vers lui, il passe un bras autour d'elle. */
@@ -1034,7 +1031,48 @@ function couple(): Silhouette {
   );
 }
 
-/** Toutes les silhouettes assises, mêmes ids et même ordre que SILHOUETTES. */
+/**
+ * Le chat assis, de dos, tête levée (27/11, demandé avec les personnages
+ * assis : « je les veux assis les personnages !!! qui regardent bien ») : corps
+ * en poire, deux oreilles pointues, la queue posée au sol à côté de lui et
+ * relevée au bout. Rien sous la ligne de sol (y ≤ 0).
+ */
+function chat(): Silhouette {
+  const corps: P[] = [
+    [-8, 0, 1],
+    [-10.4, -2.4],
+    [-11, -7.6],
+    [-9.6, -14],
+    [-7, -20.4],
+    [-5.6, -25.6],
+    [-6, -29],
+    [6, -29],
+    [5.6, -25.6],
+    [7, -20.4],
+    [9.6, -14],
+    [11, -7.6],
+    [10.4, -2.4],
+    [8, 0, 1],
+  ];
+  const tete = ovale(0, -32.6, 6.2, 5.4, 0, 16);
+  // Les oreilles : deux triangles, un peu écartés.
+  const oreilleD: P[] = [
+    [1.6, -36, 1],
+    [5.6, -41.4, 1],
+    [6, -33.6, 1],
+  ];
+  const oreilleG: P[] = oreilleD.map(([x, y]) => [-x, y, 1] as P);
+  const queue: A[] = [
+    [8, -1.4, 2.2],
+    [13, -1.2, 2.0],
+    [17, -1.6, 1.8],
+    [19.4, -3.6, 1.6],
+    [19.6, -6.4, 1.3],
+  ];
+  return forme("chat", "Chat assis", corps, tete, oreilleD, oreilleG, membre(queue));
+}
+
+/** Toutes les silhouettes assises, mêmes ids et même ordre que SILHOUETTES ; plus le chat (27/11). */
 export const SILHOUETTES_ASSISES: readonly Silhouette[] = [
   femmeCheveuxLongs(),
   femmeChignon(),
@@ -1046,6 +1084,7 @@ export const SILHOUETTES_ASSISES: readonly Silhouette[] = [
   montreLeCiel(),
   chien(),
   couple(),
+  chat(),
 ];
 
 export const SILHOUETTES_ASSISES_PAR_ID: ReadonlyMap<string, Silhouette> = new Map(SILHOUETTES_ASSISES.map((s) => [s.id, s]));
@@ -1345,5 +1384,5 @@ export function detailsAutour(o: DetailsAutour): string {
   return `<g fill="${o.couleur}">${plaid}${frangesG}${frangesD}${motte}${herbes.join("")}${pose(
     o.gauche - 50 * e,
     lanterne(),
-  )}${pose(o.droite + 4 * e, pique())}${pose(o.droite + 104 * e, lunette(), 0.6)}</g>`;
+  )}${pose(o.droite + 4 * e, pique())}${pose(o.droite + 104 * e, lunette(), 0.5)}</g>`;
 }

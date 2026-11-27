@@ -988,6 +988,14 @@ export interface PoseSilhouettes {
    * « les silhouettes coupent Passion • Détermination • Magnétisme »).
    */
   plafond?: { y: number; x0?: number; x1?: number };
+  /**
+   * Le catalogue où chercher les ids (27/11, Alexandra : « je les veux assis les
+   * personnages !!! qui regardent bien ») : SILHOUETTES_ASSISES_PAR_ID pour le
+   * ciel. Par défaut, les silhouettes debout. Un id absent est ignoré.
+   */
+  catalogue?: ReadonlyMap<string, Silhouette>;
+  /** Ce qui se dessine autour du groupe (detailsAutour), rendu avant lui. */
+  autour?: (g: { gauche: number; droite: number; echelle: number }) => string;
 }
 
 /**
@@ -997,7 +1005,7 @@ export interface PoseSilhouettes {
  * Rend un <g> à glisser à la fin du SVG du ciel ; "" si rien n'est choisi.
  */
 export function poserSilhouettes(choix: readonly string[], o: PoseSilhouettes): string {
-  const liste = choix.map((id) => SILHOUETTES_PAR_ID.get(id)).filter((s): s is Silhouette => !!s);
+  const liste = choix.map((id) => (o.catalogue ?? SILHOUETTES_PAR_ID).get(id)).filter((s): s is Silhouette => !!s);
   if (!liste.length) return "";
   // 0,145 de la hauteur (au lieu de 0,125) : un peu plus grandes, les
   // silhouettes se lisent mieux sur le tirage (27/11).
@@ -1035,9 +1043,16 @@ export function poserSilhouettes(choix: readonly string[], o: PoseSilhouettes): 
       s = permise;
     }
   }
-  const chemins = places(s).map(({ x, tx, sol }) => {
+  const posees = places(s);
+  const chemins = posees.map(({ x, tx, sol }) => {
     const ty = sol + 3 * s;
     return `<path transform="translate(${tx.toFixed(1)} ${ty.toFixed(1)}) scale(${s.toFixed(4)})" d="${x.d}"/>`;
   });
-  return `<g fill="${o.couleur}">${chemins.join("")}</g>`;
+  // Les détails autour (27/11), du bord gauche du premier au bord droit du dernier.
+  const premier = posees[0]!;
+  const dernier = posees[posees.length - 1]!;
+  const autour = o.autour
+    ? o.autour({ gauche: premier.tx + premier.x.gauche * s, droite: dernier.tx + dernier.x.droite * s, echelle: s })
+    : "";
+  return `${autour}<g fill="${o.couleur}" data-silhouettes="1">${chemins.join("")}</g>`;
 }

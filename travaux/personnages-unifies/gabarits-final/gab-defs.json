@@ -1,0 +1,245 @@
+[
+  {
+    "source": "Female_2.svg",
+    "groupeSource": "Female_Base_2",
+    "famille": "femme",
+    "reference": true,
+    "nom": "Femme",
+    "morpho": "standard",
+    "fichier": "gabarit-dos-femme-standard.svg",
+    "idSvg": "Gabarit_Dos_Femme_Standard",
+    "idGroupe": "Female_Base_1001",
+    "entete": "femme, corps de Female_2 tel quel",
+    "zones": {
+      "st0": "#F8AA4C"
+    }
+  },
+  {
+    "source": "Female_2.svg",
+    "groupeSource": "Female_Base_2",
+    "famille": "femme",
+    "nom": "Femme fine",
+    "morpho": "fine",
+    "fichier": "gabarit-dos-femme-fine.svg",
+    "idSvg": "Gabarit_Dos_Femme_Fine",
+    "idGroupe": "Female_Base_1002",
+    "couleurs": {
+      "#F8AA4C": "#E38242"
+    },
+    "entete": "femme fine : taille et hanches resserrees, tete, cou et assise inchanges",
+    "zones": {
+      "st0": "#E38242"
+    }
+  },
+  {
+    "source": "Female_2.svg",
+    "groupeSource": "Female_Base_2",
+    "famille": "femme",
+    "nom": "Femme ronde",
+    "morpho": "ronde",
+    "fichier": "gabarit-dos-femme-ronde.svg",
+    "idSvg": "Gabarit_Dos_Femme_Ronde",
+    "idGroupe": "Female_Base_1003",
+    "couleurs": {
+      "#F8AA4C": "#C87446"
+    },
+    "entete": "femme ronde : dos, bras et hanches elargis, tete, cou et assise inchanges",
+    "zones": {
+      "st0": "#C87446"
+    }
+  },
+  {
+    "source": "Female_2.svg",
+    "groupeSource": "Female_Base_2",
+    "famille": "femme",
+    "nom": "Femme âgée",
+    "morpho": "agee",
+    "fichier": "gabarit-dos-femme-agee.svg",
+    "idSvg": "Gabarit_Dos_Femme_Agee",
+    "idGroupe": "Female_Base_1004",
+    "couleurs": {
+      "#F8AA4C": "#E7965A"
+    },
+    "entete": "femme agee : dos un peu voute, cou rentre, epaules tombantes",
+    "zones": {
+      "st0": "#E7965A"
+    }
+  },
+  {
+    "source": "Male_2.svg",
+    "groupeSource": "Male_Base_2",
+    "famille": "homme",
+    "reference": true,
+    "nom": "Homme",
+    "morpho": "standard",
+    "fichier": "gabarit-dos-homme-standard.svg",
+    "idSvg": "Gabarit_Dos_Homme_Standard",
+    "idGroupe": "Male_Base_1001",
+    "entete": "homme, corps de Male_2 tel quel",
+    "zones": {
+      "st0": "#F8AA4C"
+    }
+  },
+  {
+    "source": "Male_2.svg",
+    "groupeSource": "Male_Base_2",
+    "famille": "homme",
+    "nom": "Homme mince",
+    "morpho": "mince",
+    "fichier": "gabarit-dos-homme-mince.svg",
+    "idSvg": "Gabarit_Dos_Homme_Mince",
+    "idGroupe": "Male_Base_1002",
+    "couleurs": {
+      "#F8AA4C": "#C87446"
+    },
+    "entete": "homme mince : taille resserree, tete, cou et assise inchanges",
+    "zones": {
+      "st0": "#C87446"
+    }
+  },
+  {
+    "source": "Male_2.svg",
+    "groupeSource": "Male_Base_2",
+    "famille": "homme",
+    "nom": "Homme rond",
+    "morpho": "rond",
+    "fichier": "gabarit-dos-homme-rond.svg",
+    "idSvg": "Gabarit_Dos_Homme_Rond",
+    "idGroupe": "Male_Base_1003",
+    "couleurs": {
+      "#F8AA4C": "#E38242"
+    },
+    "entete": "homme rond : ventre et bras elargis, tete, cou et assise inchanges",
+    "zones": {
+      "st0": "#E38242"
+    }
+  },
+  {
+    "source": "Male_2.svg",
+    "groupeSource": "Male_Base_2",
+    "famille": "homme",
+    "nom": "Homme âgé",
+    "morpho": "age",
+    "fichier": "gabarit-dos-homme-age.svg",
+    "idSvg": "Gabarit_Dos_Homme_Age",
+    "idGroupe": "Male_Base_1004",
+    "couleurs": {
+      "#F8AA4C": "#E7965A"
+    },
+    "entete": "homme age : dos un peu voute, cou rentre, epaules tombantes, petit ventre",
+    "zones": {
+      "st0": "#E7965A"
+    }
+  },
+  {
+    "source": "Boys_2.svg",
+    "groupeSource": "Boy_Base_2",
+    "famille": "enfant",
+    "reference": true,
+    "nom": "Enfant",
+    "morpho": "standard",
+    "fichier": "gabarit-dos-enfant-standard.svg",
+    "idSvg": "Gabarit_Dos_Enfant_Standard",
+    "idGroupe": "Boy_Base_1001",
+    "couleurs": {
+      "#F09A2C": "#F2A346"
+    },
+    "entete": "enfant (6-9 ans), corps de Boys_2 tel quel",
+    "zones": {
+      "st0": "#F2A346"
+    }
+  },
+  {
+    "source": "Boys_2.svg",
+    "groupeSource": "Boy_Base_2",
+    "famille": "enfant",
+    "nom": "Enfant fin",
+    "morpho": "fin",
+    "fichier": "gabarit-dos-enfant-fin.svg",
+    "idSvg": "Gabarit_Dos_Enfant_Fin",
+    "idGroupe": "Boy_Base_1002",
+    "couleurs": {
+      "#F09A2C": "#C87446"
+    },
+    "entete": "enfant fin : taille resserree",
+    "zones": {
+      "st0": "#C87446"
+    }
+  },
+  {
+    "source": "Boys_2.svg",
+    "groupeSource": "Boy_Base_2",
+    "famille": "enfant",
+    "nom": "Enfant rond",
+    "morpho": "rond",
+    "fichier": "gabarit-dos-enfant-rond.svg",
+    "idSvg": "Gabarit_Dos_Enfant_Rond",
+    "idGroupe": "Boy_Base_1003",
+    "couleurs": {
+      "#F09A2C": "#EF9F56"
+    },
+    "entete": "enfant rond : ventre et bras elargis",
+    "zones": {
+      "st0": "#EF9F56"
+    }
+  },
+  {
+    "source": "Teenage_Boys_1.svg",
+    "groupeSource": "Teenage_Boy_Base_1",
+    "famille": "ado",
+    "reference": true,
+    "nom": "Ado",
+    "morpho": "standard",
+    "fichier": "gabarit-dos-ado-standard.svg",
+    "idSvg": "Gabarit_Dos_Ado_Standard",
+    "idGroupe": "Teenage_Boy_Base_1001",
+    "entete": "ado (12-16 ans), corps de Teenage_Boys_1 tel quel",
+    "zones": {
+      "st0": "#F8AA4C"
+    }
+  },
+  {
+    "source": "Teenage_Boys_1.svg",
+    "groupeSource": "Teenage_Boy_Base_1",
+    "famille": "ado",
+    "nom": "Ado fin",
+    "morpho": "fin",
+    "fichier": "gabarit-dos-ado-fin.svg",
+    "idSvg": "Gabarit_Dos_Ado_Fin",
+    "idGroupe": "Teenage_Boy_Base_1002",
+    "couleurs": {
+      "#F8AA4C": "#E38242"
+    },
+    "entete": "ado fin : taille resserree",
+    "zones": {
+      "st0": "#E38242"
+    }
+  },
+  {
+    "famille": "cheval",
+    "nom": "Cheval couché",
+    "morpho": "couche",
+    "fichier": "gabarit-dos-cheval.svg",
+    "idSvg": "Gabarit_Dos_Cheval",
+    "idGroupe": "Horse_Base_1001",
+    "entete": "cheval couche de dos, pattes repliees (un cheval ne s'assoit pas)",
+    "zones": {
+      "st0": "#C57745",
+      "st2": "#865F4A",
+      "st3": "#5B392E"
+    }
+  },
+  {
+    "famille": "lapin",
+    "nom": "Lapin",
+    "morpho": "standard",
+    "fichier": "gabarit-dos-lapin.svg",
+    "idSvg": "Gabarit_Dos_Lapin",
+    "idGroupe": "Rabbit_Base_1001",
+    "entete": "lapin assis de dos, a l'echelle du chat",
+    "zones": {
+      "st0": "#C9B39A",
+      "st2": "#F4F3F2"
+    }
+  }
+]

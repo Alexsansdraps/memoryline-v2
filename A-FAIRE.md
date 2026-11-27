@@ -2,6 +2,48 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
+## 00. POUR LE CLAUDE DE CHEZ ALEXANDRA — reprise du 27/11 au soir (écrit à 17 h)
+
+Tout est commité et poussé sur `main`. RIEN de ce qui suit n'est en ligne : la prod est à `c75d866`. Mise en ligne SEULEMENT sur un « met en prod » d'Alexandra, en listant ce qui part (§5 pour la marche à suivre).
+
+Ordre voulu par Alexandra (27/11, 16 h 30 : « J'aimerais au moins que tous les chantiers sauf les personnages classiques soient finis ») :
+1. finir le Ciel étoilé (00.A) ;
+2. les trois tailles de texte (00.B) ;
+3. les personnages unifiés des affiches classiques en dernier (00.C).
+
+### 00.0 Déjà commité ce soir, à mettre en ligne ensemble
+- Lots du GO (§0.GO) : étapes de la fenêtre IA, limite des ciels à 120/min, « Nuit de Noël » + thème Noël (migration 0120), « Voir sur un mur » corrigé, fenêtre plein écran sur la tablette du stand.
+- Police des chiffres « Manuscrite » : Kaushan Script à la place de l'ancienne (Caveat garde seulement le « ₤ »). Polices dans `apps/api/fonts/` et `apps/web/public/fonts/` ; le Dockerfile de l'API vérifie qu'elle est installée → l'image API doit être RECONSTRUITE à la mise en ligne. Attention : ça change l'empreinte d'impression, tous les fichiers d'impression et vignettes concernés se régénèrent une fois.
+- Textes du site « moins IA » (ui.ts 7 langues, compte, contact, configurateur). Alexandra : on n'y touche plus.
+- Ciel étoilé : voir 00.A (styles, signes, qualités, texte en haut/bas, personnages assis, glisser-déposer…).
+
+### 00.A Ciel étoilé — ce qui RESTE de la passe finale (état à 16 h 50, commité)
+FAIT à 16 h 50 (dernier commit du jour) : personnages ASSIS sur le ciel et dans les vignettes (ciel-silhouettes-assises.ts, sans plaid/lanterne/lunette : « c'est quoi ce bordel au niveau du rendu ? ») ; chien sans museau ni truffe ; CHAT ajouté ; bras de « montre le ciel » raccourci de 20 % ; même taille de personnages en texte en haut et en bas (0,145 H) ; personnages centrés (« les personnages doivent être centrés au milieu ») ; jusqu'à 8 personnages (« maximum 8, pas 4 ») ; étape « Personnages » seulement pour « Ciel de cette nuit », changer de style les retire ; plus de bouton « Mettre sur mon ciel » (redessin 400 ms après chaque clic) ; réordonner par glisser-déposer (souris et doigt) ; ligne 3 des qualités vidée en revenant à la nuit (vérifié). Pas de teinte automatique des personnages (Alexandra : « supp ça »).
+RESTE, dans cet ordre :
+1. Un PETIT chien et un GRAND chien (« faut un petit et un grand chien ») : deux silhouettes assises distinctes (ids "petit-chien" / "grand-chien" ; garder "chien" = grand pour les anciens réglages), vignettes + 7 langues.
+2. Pouvoir INVERSER le sens des personnages (« pouvoir inverser le sens des personnages ») : sur chaque personnage choisi, un petit bouton ⇄ qui le retourne en miroir (scale(-1,1) autour de son axe) ; à envoyer à l'API dans la liste (ex. "chien:m") et à valider dans lireReglagesCiel.
+3. 8 personnages : vérifier au rendu que 8 tiennent dans la largeur une fois centrés (sinon réduire l'écart, puis l'échelle) — non vérifié à 16 h 50.
+4. « Texte en haut » : les têtes touchent la ligne des coordonnées → réduire et remonter le cercle SEULEMENT quand il y a des personnages (l'essai « ciel de cette nuit sans rien de nouveau : le SVG d'avant au caractère près » doit rester vrai). Piste de l'agent : cy = H×(CENTRE_Y_CIEL−0,035), R = W×0,315, et le centreY du filigrane suit cy.
+5. Couleur des personnages réglable dans les thèmes (« dans le réglage thème on doit pouvoir régler la couleur des persos ») : couleur optionnelle `personnages` dans teintesDuTheme / THEMES_CIEL_DE_BASE + champ dans l'écran des thèmes du ciel au BO ; absente = couleur de la colline (comme aujourd'hui).
+6. Couple en PAYSAGE obligatoire (« pour les couples il faut impérativement avoir le format paysage sinon c'est laid ») : l'API ne dessine le ciel qu'en portrait. Il faut : API → accepter `orientation` et dessiner en paysage (A3/A4) ; CielEtoile.tsx → envoyer paysage pour Couple ; AfficheIA.tsx → dans `cielCree`, `sens: "paysage"` et setOrientationApercu("paysage") quand styleCiel() === "couple", masquer le portrait à l'étape Format ; vérifier panier + impression.
+7. Bras levé de l'enfant sur les épaules : mesurer, raccourcir si trop long.
+8. BO : une case par silhouette pour l'activer/désactiver (toutes visibles par défaut).
+9. Retirer la clé inutilisée `ciel.silh.mettre` de ui.ts.
+Vérifier en local (Chrome sans écran + CDP), captures à montrer à Alexandra.
+
+### 00.B Trois tailles de texte par ligne — FAIT pour les affiches personnalisables, RESTE la photo IA et le ciel
+Fait (commité) : trois boutons « A » petit/moyen/grand sous chaque ligne du configurateur ; champ optionnel `taille: "s"|"m"|"l"` du bloc de texte (packages/types config.ts) ; `facteurTailleLigne` (mise-en-page-texte.ts : 0,8 / 1 / 1,25) appliqué à l'aperçu (PosterPreview) ET au PDF (pdf.ts) ; « moyen » n'écrit rien → une ligne d'avant garde exactement son empreinte d'impression.
+Reste : 1) AfficheIA.tsx (affiche photo IA et ciel étoilé) : boutons sur chaque ligne + envoyer `taille` + appliquer facteurTailleLigne là où ces textes sont dessinés pour l'impression ; 2) la réduction des lignes trop longues de l'aperçu (reductionDeLigne) ne tient pas compte du multiplicateur (écart possible aux limites avec le PDF) ; 3) ajouter un essai automatique (ligne sans taille = même empreinte) ; 4) essai visuel dans le navigateur (pas fait).
+
+### 00.C Personnages unifiés des affiches classiques (en dernier)
+Travail en cours copié dans `travaux/personnages-unifies/` (gabarits SVG, gabarits.json, relevé, plan, planches). Décisions d'Alexandra : tous ASSIS et DE DOS (plus jamais debout), même style que les actuels, très variés (plusieurs femmes, hommes, enfants, des PERSONNES ÂGÉES, et animaux : chiens, chats, chevaux, et TOUS les NAC — lapin, cochon d'Inde, hamster, oiseau, tortue, furet…), accessoires très variés, AUCUN calage sur les nouveaux. Ajouter sans supprimer ; quand un nouveau remplace un ancien équivalent, ARCHIVER l'ancien (jamais de suppression), et retirer l'écran de calage du BO (garder les données). Bascule préparée en local, en prod seulement sur son OK.
+À reprendre sur la planche du 27/11 :
+- corps âgés pas assez différents (dos plus voûté, épaules tombantes) ; épaules de l'ado trop raides ;
+- le CHEVAL fait peur (« il fait peur là ») : à redessiner, DEBOUT (pas assis) et DE DOS (« le cheval il faut le faire debout pas assis et de dos ») — seule exception à la règle « tous assis » ;
+- la queue du chat (dos) pend sous la ligne d'assise : tous les personnages doivent être posés sur la même ligne, rien ne dépasse dessous (« je parle des personnages pas alignés », « regarde la queue ») — la queue s'enroule sur le côté, au niveau de l'assise ;
+- puis la garde-robe (hauts, bas, coiffures, accessoires) et les NAC.
+
+
 ## 0. État au 27/11, 16 h : en ligne jusqu'à `c75d866` ; le « GO » est FAIT, commité et poussé, PAS en ligne (attend le « met en prod » d'Alexandra)
 
 ### 0.GO — FAIT (lots 1, 2, 3), plus « Voir sur un mur » ; reste le lot 4 (mise en ligne)

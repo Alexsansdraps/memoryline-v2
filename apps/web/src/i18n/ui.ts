@@ -496,6 +496,14 @@ export const ui = {
     "cfg.etape.personnages": "Personnages",
     "cfg.etape.format": "Format",
     "cfg.ligne1_champ": "Ligne 1",
+
+    "cfg.taille_ligne": "Taille du texte",
+
+    "cfg.taille_s": "Petit",
+
+    "cfg.taille_m": "Moyen",
+
+    "cfg.taille_l": "Grand",
     "cfg.ligne2_champ": "Ligne 2",
     "cfg.ligne3_champ": "Ligne 3",
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
@@ -915,6 +923,8 @@ export const ui = {
     "ciel.texte_bas": "Texte en bas",
     "ciel.silh.mettre": "Mettre sur mon ciel",
     "ciel.silh.retirer": "Retirer",
+    // 27/11, Alexandra : « non on interverti au drag and drop »
+    "ciel.silh.glisser": "Glissez pour changer l'ordre",
     "ciel.silh.femme-cheveux-longs": "Femme, cheveux longs",
     "ciel.silh.femme-chignon": "Femme au chignon",
     "ciel.silh.homme-manteau": "Homme en manteau",
@@ -924,6 +934,8 @@ export const ui = {
     "ciel.silh.adulte-bebe": "Adulte et bébé",
     "ciel.silh.montre-le-ciel": "Montre le ciel",
     "ciel.silh.chien": "Chien",
+
+    "ciel.silh.chat": "Chat",
     "ciel.silh.couple": "Couple",
     "ciel.signe.Ari": "Bélier",
     "ciel.signe.Tau": "Taureau",
@@ -1398,6 +1410,14 @@ export const ui = {
     "cfg.etape.personnages": "Characters",
     "cfg.etape.format": "Size",
     "cfg.ligne1_champ": "Line 1",
+
+    "cfg.taille_ligne": "Text size",
+
+    "cfg.taille_s": "Small",
+
+    "cfg.taille_m": "Medium",
+
+    "cfg.taille_l": "Large",
     "cfg.ligne2_champ": "Line 2",
     "cfg.ligne3_champ": "Line 3",
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
@@ -1786,6 +1806,8 @@ export const ui = {
     "ciel.texte_bas": "Text at bottom",
     "ciel.silh.mettre": "Add to my sky",
     "ciel.silh.retirer": "Remove",
+    // 27/11, Alexandra : « non on interverti au drag and drop »
+    "ciel.silh.glisser": "Drag to change the order",
     "ciel.silh.femme-cheveux-longs": "Woman, long hair",
     "ciel.silh.femme-chignon": "Woman with a bun",
     "ciel.silh.homme-manteau": "Man in a coat",
@@ -1795,6 +1817,8 @@ export const ui = {
     "ciel.silh.adulte-bebe": "Adult with baby",
     "ciel.silh.montre-le-ciel": "Pointing at the sky",
     "ciel.silh.chien": "Dog",
+
+    "ciel.silh.chat": "Cat",
     "ciel.silh.couple": "Couple",
     "ciel.signe.Ari": "Aries",
     "ciel.signe.Tau": "Taurus",
@@ -2278,6 +2302,14 @@ export const ui = {
     "cfg.etape.personnages": "Figuren",
     "cfg.etape.format": "Format",
     "cfg.ligne1_champ": "Zeile 1",
+
+    "cfg.taille_ligne": "Textgröße",
+
+    "cfg.taille_s": "Klein",
+
+    "cfg.taille_m": "Mittel",
+
+    "cfg.taille_l": "Groß",
     "cfg.ligne2_champ": "Zeile 2",
     "cfg.ligne3_champ": "Zeile 3",
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
@@ -2673,6 +2705,8 @@ export const ui = {
     "ciel.texte_bas": "Text unten",
     "ciel.silh.mettre": "Auf meinen Himmel setzen",
     "ciel.silh.retirer": "Entfernen",
+    // 27/11, Alexandra : « non on interverti au drag and drop »
+    "ciel.silh.glisser": "Ziehen, um die Reihenfolge zu ändern",
     "ciel.silh.femme-cheveux-longs": "Frau, lange Haare",
     "ciel.silh.femme-chignon": "Frau mit Dutt",
     "ciel.silh.homme-manteau": "Mann im Mantel",
@@ -2682,6 +2716,8 @@ export const ui = {
     "ciel.silh.adulte-bebe": "Erwachsener mit Baby",
     "ciel.silh.montre-le-ciel": "Zeigt zum Himmel",
     "ciel.silh.chien": "Hund",
+
+    "ciel.silh.chat": "Katze",
     "ciel.silh.couple": "Paar",
     "ciel.signe.Ari": "Widder",
     "ciel.signe.Tau": "Stier",
@@ -3155,6 +3191,14 @@ export const ui = {
     "cfg.etape.personnages": "Personaggi",
     "cfg.etape.format": "Formato",
     "cfg.ligne1_champ": "Riga 1",
+
+    "cfg.taille_ligne": "Dimensione del testo",
+
+    "cfg.taille_s": "Piccolo",
+
+    "cfg.taille_m": "Medio",
+
+    "cfg.taille_l": "Grande",
     "cfg.ligne2_champ": "Riga 2",
     "cfg.ligne3_champ": "Riga 3",
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
@@ -3541,6 +3585,8 @@ export const ui = {
     "ciel.texte_bas": "Testo in basso",
     "ciel.silh.mettre": "Metti sul mio cielo",
     "ciel.silh.retirer": "Rimuovi",
+    // 27/11, Alexandra : « non on interverti au drag and drop »
+    "ciel.silh.glisser": "Trascinate per cambiare l'ordine",
     "ciel.silh.femme-cheveux-longs": "Donna, capelli lunghi",
     "ciel.silh.femme-chignon": "Donna con chignon",
     "ciel.silh.homme-manteau": "Uomo con cappotto",
@@ -3550,6 +3596,8 @@ export const ui = {
     "ciel.silh.adulte-bebe": "Adulto con neonato",
     "ciel.silh.montre-le-ciel": "Indica il cielo",
     "ciel.silh.chien": "Cane",
+
+    "ciel.silh.chat": "Gatto",
     "ciel.silh.couple": "Coppia",
     "ciel.signe.Ari": "Ariete",
     "ciel.signe.Tau": "Toro",
@@ -4020,6 +4068,14 @@ export const ui = {
     "cfg.etape.personnages": "Personajes",
     "cfg.etape.format": "Formato",
     "cfg.ligne1_champ": "Línea 1",
+
+    "cfg.taille_ligne": "Tamaño del texto",
+
+    "cfg.taille_s": "Pequeño",
+
+    "cfg.taille_m": "Mediano",
+
+    "cfg.taille_l": "Grande",
     "cfg.ligne2_champ": "Línea 2",
     "cfg.ligne3_champ": "Línea 3",
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
@@ -4408,6 +4464,8 @@ export const ui = {
     "ciel.texte_bas": "Texto abajo",
     "ciel.silh.mettre": "Poner en mi cielo",
     "ciel.silh.retirer": "Quitar",
+    // 27/11, Alexandra : « non on interverti au drag and drop »
+    "ciel.silh.glisser": "Arrastre para cambiar el orden",
     "ciel.silh.femme-cheveux-longs": "Mujer, pelo largo",
     "ciel.silh.femme-chignon": "Mujer con moño",
     "ciel.silh.homme-manteau": "Hombre con abrigo",
@@ -4417,6 +4475,8 @@ export const ui = {
     "ciel.silh.adulte-bebe": "Adulto con bebé",
     "ciel.silh.montre-le-ciel": "Señala el cielo",
     "ciel.silh.chien": "Perro",
+
+    "ciel.silh.chat": "Gato",
     "ciel.silh.couple": "Pareja",
     "ciel.signe.Ari": "Aries",
     "ciel.signe.Tau": "Tauro",
@@ -4839,6 +4899,14 @@ export const ui = {
     "cfg.etape.personnages": "キャラクター",
     "cfg.etape.format": "サイズ",
     "cfg.ligne1_champ": "1行目",
+
+    "cfg.taille_ligne": "文字サイズ",
+
+    "cfg.taille_s": "小",
+
+    "cfg.taille_m": "中",
+
+    "cfg.taille_l": "大",
     "cfg.ligne2_champ": "2行目",
     "cfg.ligne3_champ": "3行目",
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
@@ -5164,6 +5232,8 @@ export const ui = {
     "ciel.texte_bas": "文字を下に",
     "ciel.silh.mettre": "星空に配置する",
     "ciel.silh.retirer": "外す",
+    // 27/11, Alexandra : « non on interverti au drag and drop »
+    "ciel.silh.glisser": "ドラッグで順番を変更",
     "ciel.silh.femme-cheveux-longs": "ロングヘアの女性",
     "ciel.silh.femme-chignon": "おだんごヘアの女性",
     "ciel.silh.homme-manteau": "コートの男性",
@@ -5173,6 +5243,8 @@ export const ui = {
     "ciel.silh.adulte-bebe": "赤ちゃんを抱く人",
     "ciel.silh.montre-le-ciel": "空を指さす人",
     "ciel.silh.chien": "犬",
+
+    "ciel.silh.chat": "猫",
     "ciel.silh.couple": "カップル",
     "ciel.signe.Ari": "おひつじ座",
     "ciel.signe.Tau": "おうし座",
@@ -5595,6 +5667,14 @@ export const ui = {
     "cfg.etape.personnages": "人物",
     "cfg.etape.format": "尺寸",
     "cfg.ligne1_champ": "第1行",
+
+    "cfg.taille_ligne": "文字大小",
+
+    "cfg.taille_s": "小",
+
+    "cfg.taille_m": "中",
+
+    "cfg.taille_l": "大",
     "cfg.ligne2_champ": "第2行",
     "cfg.ligne3_champ": "第3行",
     "cfg.ligne1_exemple": "MERS-LES-BAINS",
@@ -5920,6 +6000,8 @@ export const ui = {
     "ciel.texte_bas": "文字在下",
     "ciel.silh.mettre": "放到我的星空上",
     "ciel.silh.retirer": "移除",
+    // 27/11, Alexandra : « non on interverti au drag and drop »
+    "ciel.silh.glisser": "拖动以调整顺序",
     "ciel.silh.femme-cheveux-longs": "长发女子",
     "ciel.silh.femme-chignon": "盘发女子",
     "ciel.silh.homme-manteau": "穿大衣的男子",
@@ -5929,6 +6011,8 @@ export const ui = {
     "ciel.silh.adulte-bebe": "抱婴儿的大人",
     "ciel.silh.montre-le-ciel": "指向天空",
     "ciel.silh.chien": "狗",
+
+    "ciel.silh.chat": "猫",
     "ciel.silh.couple": "情侣",
     "ciel.signe.Ari": "白羊座",
     "ciel.signe.Tau": "金牛座",

@@ -1,0 +1,201 @@
+== 1. personnages par vue, categorie, etat
+orientation | cat | category_id | active | archive | n
+back | - | 4 | t | f | 4
+back | Ados | 1 | t | f | 5
+back | Animaux | 2 | t | f | 15
+back | Bébés | 3 | t | f | 2
+back | Femmes | 4 | t | f | 5
+back | Filles | 5 | t | f | 2
+back | Garçons | 6 | t | f | 3
+back | Hommes | 7 | t | f | 5
+front | - | 10 | t | f | 2
+front | Ados | 1 | t | f | 4
+front | Animaux | 2 | t | f | 6
+front | Bébés | 3 | t | f | 2
+front | Femmes | 10 | t | f | 1
+front | Femmes | 4 | t | f | 5
+front | Filles | 5 | t | f | 2
+front | Garçons | 6 | t | f | 1
+front | Hommes | 7 | t | f | 4
+(17 rows)
+== 2. categories de personnages
+id | slug | name | position | archive
+4 | femmes | Femmes | 0 | f
+7 | hommes | Hommes | 1 | f
+1 | ados | Ados | 2 | f
+5 | filles | Filles | 3 | f
+6 | gar-ons | Garçons | 4 | f
+3 | b-b-s | Bébés | 5 | f
+2 | animaux | Animaux | 6 | f
+10 | fauteuil-roulant | Fauteuil roulant | 7 | f
+(8 rows)
+== 3. pieces par emplacement et vue
+slot | vue | archive | liee | n | pmin | pmax
+accessory | back | f | f | 15 | 1 | 15
+accessory | front | f | f | 17 | 1 | 17
+clothes | back | f | f | 23 | 0 | 22
+clothes | front | f | f | 19 | 1 | 20
+hair | back | f | f | 31 | 0 | 503
+hair | back | t | f | 3 | 28 | 500
+hair | front | f | f | 26 | 1 | 27
+pants | back | f | f | 21 | 0 | 20
+pants | front | f | f | 18 | 1 | 18
+(9 rows)
+== 4. plus grand numero par emplacement (toutes vues, archives compris) + max id
+slot | pmax | ndistinct | n
+accessory | 17 | 17 | 32
+clothes | 22 | 23 | 42
+hair | 503 | 34 | 60
+pants | 20 | 21 | 39
+(4 rows)
+k | v
+max asset.id | 93006
+max character_type.id | 74
+max character_category.id | 10
+max piece_category.id | 4
+(4 rows)
+== 5. numeros en doublon (meme emplacement, meme vue)
+slot | view | position | count | string_agg
+(0 rows)
+== 6. tous les numeros par emplacement et vue
+slot | vue | nums
+accessory | back | 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+accessory | front | 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+clothes | back | 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22
+clothes | front | 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,17,18,19,20
+hair | back | 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,500,501,502,503
+hair | front | 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,24,25,26,27
+pants | back | 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+pants | front | 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18
+(8 rows)
+== 7. calages existants
+id | slug | orientation | k
+42 | female_1_1f3dbbab-ab1b-4159-9795-d1efc208db42 | back | hair
+42 | female_1_1f3dbbab-ab1b-4159-9795-d1efc208db42 | back | accessory:14
+45 | female_4_afe4c383-c0e0-4193-9a43-fc6e01ed55a4 | back | hair:0
+45 | female_4_afe4c383-c0e0-4193-9a43-fc6e01ed55a4 | back | hair:501
+45 | female_4_afe4c383-c0e0-4193-9a43-fc6e01ed55a4 | back | hair:502
+70 | ddd | front | clothes:1
+73 | femme-test-3 | back | clothes:2
+74 | femme-6-essai | back | hair:0
+74 | femme-6-essai | back | hair:2
+74 | femme-6-essai | back | hair:10
+74 | femme-6-essai | back | hair:11
+74 | femme-6-essai | back | hair:16
+74 | femme-6-essai | back | hair:23
+74 | femme-6-essai | back | pants:0
+74 | femme-6-essai | back | hair:501
+74 | femme-6-essai | back | hair:502
+74 | femme-6-essai | back | hair:503
+74 | femme-6-essai | back | clothes:0
+74 | femme-6-essai | back | clothes:16
+74 | femme-6-essai | back | accessory:1
+74 | femme-6-essai | back | accessory:3
+74 | femme-6-essai | back | accessory:4
+74 | femme-6-essai | back | accessory:6
+74 | femme-6-essai | back | accessory:9
+74 | femme-6-essai | back | accessory:10
+74 | femme-6-essai | back | accessory:12
+74 | femme-6-essai | back | accessory:14
+74 | femme-6-essai | back | accessory:15
+(28 rows)
+id | slug | slot_adjust
+42 | female_1_1f3dbbab-ab1b-4159-9795-d1efc208db42 | {"hair": {"dx": 4.35, "dy": -54.73, "scale": 0.432}, "accessory:14": {"dx": 11.4, "dy": 19.87, "scale": 1}}
+45 | female_4_afe4c383-c0e0-4193-9a43-fc6e01ed55a4 | {"hair:0": {"dx": -0.48, "dy": -20.23, "scale": 0.743}, "hair:501": {"dx": -0.48, "dy": -20.23, "scale": 0.743}, "hair:502": {"dx": -0.48, "dy": -20.23, "scale": 0.743}}
+70 | ddd | {"clothes:1": {"dx": 9.29, "dy": -11.05, "scale": 0.524}}
+73 | femme-test-3 | {"clothes:2": {"dx": -0.18, "dy": -2.91, "scale": 0.959}}
+74 | femme-6-essai | {"hair:0": {"dx": -0.81, "dy": 0.04, "scale": 1.004}, "hair:2": {"dx": -0.39, "dy": -21.74, "scale": 0.635}, "hair:10": {"dx": -0.51, "dy": -15.71, "scale": 0.723}, "hair:11": {"dx": 0.33, "dy": -21.64, "scale": 0.63}, "hair:16": {"dx": -2.15, "dy": -25.66, "scale": 0.579}, "hair:23": {"dx": -0.03, "dy": -19.16, "scale": 0.678}, "pants:0": {"dx": 0.69, "dy": 0.3, "scale": 1.021}, "hair:501": {"dx": -0.81, "dy": 0.04, "scale": 1.004}, "hair:502": {"dx": -0.81, "dy": 0.04, "scale": 1.004}, "hair:503": {"dx": -0.39, "dy": -21.74, "scale": 0.635}, "clothes:0": {"dx": 0.14, "dy": 1.94, "scale": 1.066}, "clothes:16": {"dx": 0.2, "dy": -21.99, "scale": 0.631}, "accessory:1": {"dx": -2.75, "dy": -35.73, "scale": 0.531}, "accessory:3": {"dx": -1.2, "dy": -15.08, "scale": 0.763}, "accessory:4": {"dx": 7.8, "dy": -12.91, "scale": 0.784}, "accessory:6": {"dx": -5.32, "dy": -18.55, "scale": 0.667}, "accessory:9": {"dx": -0.18, "dy": -14.61, "scale": 0.721}, "accessory:10": {"dx": 1.05, "dy": -16.3, "scale": 0.702}, "accessory:12": {"dx": -0.07, "dy": -28.98, "scale": 0.548}, "accessory:14": {"dx": 4.93, "dy": -23.26, "scale": 0.65}, "accessory:15": {"dx": -1.9, "dy": -22.7, "scale": 0.633}}
+(5 rows)
+== 8. personnages de dos
+id | slug | name | category | active | arch | position | bottom_pct | facteur_taille | decalage_x | base_svg_url | sv | da
+13 | teenages_girl_1 | Ado fille 1 | Ados | t | f | 29 | 0.82 | 1 | 0 | /assets/Teenages_Girl_1.svg | {"hair": [9], "pants": [9], "clothes": [9], "accessory": [4]} | 
+14 | teenage_girl_2 | Ado fille 2 | Ados | t | f | 30 | 0.8225 | 1 | 0 | /assets/Teenage_Girl_2.svg | {"hair": [4, 12, 11, 10], "pants": [4], "clothes": [4], "accessory": []} | 
+16 | teenage_boys_1 | Ado garçon 1 | Ados | t | f | 34 | 0.82 | 1 | 0 | /assets/Teenage_Boys_1.svg | {"hair": [7], "pants": [7], "clothes": [7], "accessory": [2]} | 
+18 | teenages_boy_2 | Ado garçon 2 | Ados | t | f | 36 | 0.83 | 1 | 0 | /assets/Teenages_Boy_2.svg | {"hair": [8], "pants": [8], "clothes": [8], "accessory": [3]} | 
+55 | teenage_girl_2_4803dcfa-19ef-4874-9af7-dd4bb3f0056d | Ado fille 2 (manches longues) | Ados | t | f | 32 | 0.8225 | 1 | 0 | /assets/Teenage_Girl_2_4803dcfa-19ef-4874-9af7-dd4bb3f0056d.svg | {"hair": [26], "pants": [17], "clothes": [17], "accessory": [14]} | 
+21 | chat_dos_2 | Chat (dos) | Animaux | t | f | 43 | 0.6175 | 1 | 0 | /assets/chat_dos_2.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+22 | cat_1 | Chat 1 | Animaux | t | f | 44 | 0.5925 | 1 | 0 | /assets/Cat_1.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+23 | cat_2 | Chat 2 | Animaux | t | f | 45 | 0.6175 | 1 | 0 | /assets/Cat_2.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+24 | chats_2 | Chat 2 | Animaux | t | f | 46 | 0.7075 | 1 | 0 | /assets/chats_2.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+28 | big_dog | Grand chien | Animaux | t | f | 55 | 0.7425 | 1 | 0 | /assets/Big_Dog.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+29 | big_dog_blanc | Grand chien (blanc) | Animaux | t | f | 56 | 0.7425 | 1 | 0 | /assets/big_dog_blanc.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+30 | big_dog_gris | Grand chien (gris) | Animaux | t | f | 57 | 0.7425 | 1 | 0 | /assets/big_dog_gris.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+31 | big_dog_noir | Grand chien (noir) | Animaux | t | f | 58 | 0.7425 | 1 | 0 | /assets/big_dog_noir.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+32 | small_dog | Petit chien | Animaux | t | f | 59 | 0.6125 | 1 | 0 | /assets/Small_Dog.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+58 | chien_berger_allemand | Berger allemand | Animaux | t | f | 41 | 1 | 1.4319727810524272 | 0 | /assets/Chien_Berger_Allemand.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+59 | chien_berger_australien | Berger australien | Animaux | t | f | 42 | 0.69 | 1.01 | 0 | /assets/Chien_Berger_Australien.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+60 | chats_gris_dos_7f7e834c-4c06-4680-93cc-52505d3b8041 | Chat gris | Animaux | t | f | 47 | 0.6175 | 1 | 0 | /assets/chats_gris_dos_7f7e834c-4c06-4680-93cc-52505d3b8041.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+63 | chien_york-chuihuahua | Chien york | Animaux | t | f | 53 | 0.7575 | 1 | 0 | /assets/Chien_York-Chuihuahua.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+64 | chien_chihuahua | Chihuahua | Animaux | t | f | 54 | 0.7525 | 1 | 0 | /assets/Chien_Chihuahua.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+65 | chien_saint-bernard | Saint-bernard | Animaux | t | f | 61 | 0.8125 | 1 | 0 | /assets/Chien_Saint-bernard.svg | {"hair": [], "pants": [], "clothes": [], "accessory": []} | 
+19 | baby_girl | Bébé fille | Bébés | t | f | 37 | 0.6775 | 1 | 0 | /assets/Baby_Girl.svg | {"hair": [5], "pants": [5], "clothes": [5], "accessory": []} | 
+20 | baby_boy | Bébé garçon | Bébés | t | f | 39 | 0.675 | 1 | 0 | /assets/Baby_Boy.svg | {"hair": [3], "pants": [3], "clothes": [3], "accessory": []} | 
+6 | female_2 | Femme 2 | Femmes | t | f | 11 | 0.8725 | 1 | 0 | /assets/Female_2.svg | {"hair": [2, 23, 24, 25, 503], "pants": [2], "clothes": [2], "accessory": [13]} | 
+42 | female_1_1f3dbbab-ab1b-4159-9795-d1efc208db42 | Femme 1 | Femmes | t | f | 10 | 0.855 | 1 | 0 | /assets/Female_1_1f3dbbab-ab1b-4159-9795-d1efc208db42.svg | {"hair": [0, 2, 501, 502, 503], "pants": [10], "clothes": [10], "accessory": [14]} | {"hair": 2, "pants": 10, "clothes": 10}
+44 | female_2_9ea54a3e-287c-4c44-b415-5128c8344bff | Femme 2 (manches longues) | Femmes | t | f | 13 | 0.8725 | 1 | 0 | /assets/Female_2_9ea54a3e-287c-4c44-b415-5128c8344bff.svg | {"hair": [22, 23, 24, 25], "pants": [16], "clothes": [16], "accessory": [12]} | 
+45 | female_4_afe4c383-c0e0-4193-9a43-fc6e01ed55a4 | Femme 4 | Femmes | t | f | 16 | 0.8725 | 1 | 0 | /assets/Female_4_afe4c383-c0e0-4193-9a43-fc6e01ed55a4.svg | {"hair": [0, 2, 22, 23, 24, 25, 501, 502], "pants": [18], "clothes": [20], "accessory": [13]} | {"hair": 501, "pants": 18, "clothes": 20}
+48 | female_3_24f00ce2-5da5-476e-b59a-191a959cbd75 | Femme marin | Femmes | t | f | 19 | 0.8725 | 1 | 0 | /assets/Female_3_24f00ce2-5da5-476e-b59a-191a959cbd75.svg | {"hair": [23, 27, 22, 25, 24], "pants": [20], "clothes": [22], "accessory": [15, 13]} | 
+11 | girl_1 | Fille 1 | Filles | t | f | 24 | 0.77 | 1 | 0 | /assets/Girl_1.svg | {"hair": [6], "pants": [6], "clothes": [6], "accessory": [1]} | 
+52 | girl_1_4291bb7f-54b0-4f31-b488-a10111b83366 | Fille 1 (manches longues) | Filles | t | f | 26 | 0.77 | 1 | 0 | /assets/Girl_1_4291bb7f-54b0-4f31-b488-a10111b83366.svg | {"hair": [6], "pants": [6], "clothes": [19], "accessory": [1]} | 
+9 | boys_1 | Garçon 1 | Garçons | t | f | 20 | 0.77 | 1 | 0 | /assets/Boys_1.svg | {"hair": [18], "pants": [12], "clothes": [12], "accessory": [7]} | 
+10 | boys_2 | Garçon 2 | Garçons | t | f | 22 | 0.7775 | 1 | 0 | /assets/Boys_2.svg | {"hair": [19], "pants": [13], "clothes": [13], "accessory": [8]} | 
+50 | boys_2_f87884c7-c880-43ec-888d-d575309e8f2d | Garçon 2 (manches longues) | Garçons | t | f | 23 | 0.7775 | 1 | 0 | /assets/Boys_2_f87884c7-c880-43ec-888d-d575309e8f2d.svg | {"hair": [21], "pants": [15], "clothes": [15], "accessory": [11]} | 
+2 | male_2 | Homme 2 | Hommes | t | f | 2 | 0.865 | 1 | 0 | /assets/Male_2.svg | {"hair": [1, 15, 14, 13], "pants": [1], "clothes": [1], "accessory": [9]} | 
+4 | male_4 | Homme 4 | Hommes | t | f | 7 | 0.8625 | 1 | 0 | /assets/Male_4.svg | {"hair": [1, 13, 14, 15], "pants": [19], "clothes": [21], "accessory": [9]} | 
+37 | male_1_6574ee92-f12b-41e6-8de1-84120fe58e2a | Homme 1 | Hommes | t | f | 1 | 0.8625 | 1 | 0 | /assets/Male_1_6574ee92-f12b-41e6-8de1-84120fe58e2a.svg | {"hair": [20], "pants": [14], "clothes": [14], "accessory": [10]} | 
+39 | male_2_dc713bc7-037d-414b-b669-6e7d6f3d8f04 | Homme 2 (manches longues) | Hommes | t | f | 4 | 0.8625 | 1 | 0 | /assets/Male_2_dc713bc7-037d-414b-b669-6e7d6f3d8f04.svg | {"hair": [1, 13, 14, 15], "pants": [1], "clothes": [18], "accessory": [9]} | 
+40 | male_3_ceb7dd5e-e6c4-4acd-b55f-a8a873039272 | Homme 3 | Hommes | t | f | 6 | 0.8725 | 1 | 0 | /assets/Male_3_ceb7dd5e-e6c4-4acd-b55f-a8a873039272.svg | {"hair": [17], "pants": [11], "clothes": [11], "accessory": [6]} | 
+71 | femme-test | Femme test |  | t | f | 0 | 0.8725 | 1 | 0 | /assets/base-2-83f01e9a.svg |  | 
+72 | femme-test-2 | Femme test |  | t | f | 0 | 0.8725 | 1 | 0 | /assets/base-2-83f01e9a.svg |  | 
+73 | femme-test-3 | Femme test |  | t | f | 0 | 0.8725 | 1 | 0 | /assets/base-2-83f01e9a.svg | {"hair": [2, 10, 11, 503], "pants": [2], "clothes": [2], "accessory": [13]} | {"hair": 2, "pants": 2, "clothes": 2}
+74 | femme-6-essai | Femme 6 |  | t | f | 0 | 0.8264 | 1.2499162946428568 | 0 | /assets/base-4-4f276ada.svg | {"hair": [0, 2, 11, 16, 23, 501, 502, 503], "pants": [0], "clothes": [0, 16], "accessory": [1, 3, 4, 6, 9, 10, 11, 12, 14, 15]} | {"hair": 0, "pants": 0, "clothes": 0}
+(41 rows)
+== 9. personnages de face
+id | slug | category | active | base_svg_url
+12 | teenage_girl_1 | Ados | t | /assets/Teenage_Girl_1.svg
+15 | teenage_boy_1 | Ados | t | /assets/Teenage_Boy_1.svg
+17 | teenage_boy_2 | Ados | t | /assets/Teenage_Boy_2.svg
+54 | teenage_girl_2_f60c741f-68b0-4600-849b-93dd4cf67be4 | Ados | t | /assets/Teenage_Girl_2_f60c741f-68b0-4600-849b-93dd4cf67be4.svg
+25 | horse_1 | Animaux | t | /assets/Horse_1.svg
+26 | dog_1 | Animaux | t | /assets/Dog_1.svg
+27 | dog_2 | Animaux | t | /assets/Dog_2.svg
+33 | pony_1 | Animaux | t | /assets/Pony_1.svg
+61 | 3 | Animaux | t | /assets/3.svg
+62 | 4 | Animaux | t | /assets/4.svg
+56 | baby_girl_1 | Bébés | t | /assets/Baby_Girl_1.svg
+57 | baby_boy_1 | Bébés | t | /assets/Baby_Boy_1.svg
+5 | female_1 | Femmes | t | /assets/Female_1.svg
+7 | female_3 | Femmes | t | /assets/Female_3.svg
+8 | female_4 | Femmes | t | /assets/Female_4.svg
+43 | female_2_de64ddc7-ce5a-47ee-8978-baee1f262f65 | Femmes | t | /assets/Female_2_de64ddc7-ce5a-47ee-8978-baee1f262f65.svg
+46 | old_lady_1 | Femmes | t | /assets/Old_Lady_1.svg
+47 | female_1_6007b8b7-dfe3-4b6b-9ffa-fea83cfe22c4 | Femmes | t | /assets/Female_1_6007b8b7-dfe3-4b6b-9ffa-fea83cfe22c4.svg
+51 | little_girl_1 | Filles | t | /assets/Little_Girl_1.svg
+53 | little_girl_1_d422e835-77df-4d41-be86-4b4bb569e68a | Filles | t | /assets/Little_Girl_1_d422e835-77df-4d41-be86-4b4bb569e68a.svg
+49 | little_boy_1 | Garçons | t | /assets/Little_Boy_1.svg
+1 | male_1 | Hommes | t | /assets/Male_1.svg
+3 | male_3 | Hommes | t | /assets/Male_3.svg
+38 | male_2_e6babd1b-3a35-4097-a250-3bdeb33595b5 | Hommes | t | /assets/Male_2_e6babd1b-3a35-4097-a250-3bdeb33595b5.svg
+41 | old_man_1 | Hommes | t | /assets/Old_Man_1.svg
+69 | emond |  | t | /assets/capture-d-ecran-2026-05-21-220900-4be464e5.png
+70 | ddd |  | t | /assets/capture-d-ecran-2026-05-27-215246-59381d42.png
+(27 rows)
+== 10. categories de pieces
+id | slug | name | slot | active | position | couleurs_proposees | colors
+1 | vetements | Vêtements | clothes | t | 0 | toutes | ["#FFFFFF", "#F1CB9E", "#E7B033", "#9EDFBF", "#C8E4D6", "#BD1212", "#0056AF", "#B8551D", "#000000"]
+2 | pantalons | Pantalons | pants | t | 1 | toutes | ["#EDD7C6", "#B8551D", "#5E9ABF", "#165176", "#545454", "#000000"]
+3 | coupes | Coupes | hair | t | 2 | toutes | ["#E8E8E8", "#F1CB9E", "#E7B033", "#B8551D", "#D6B695", "#BF8158", "#6B3E1E", "#541507", "#24222C"]
+4 | accessoires | Accessoires | accessory | t | 3 | toutes | ["#FFFFFF", "#E7B033", "#BD1212", "#0056AF", "#B8551D", "#000000"]
+(4 rows)
+== 11. slugs existants commencant par gabarit/senior/old/vieux/nouveau
+id | slug
+41 | old_man_1
+46 | old_lady_1
+(2 rows)
+== 12. types dont slot_variants est NULL (= toutes les pieces proposees)
+id | slug | orientation | active
+69 | emond | front | t
+70 | ddd | front | t
+71 | femme-test | back | t
+72 | femme-test-2 | back | t
+(4 rows)

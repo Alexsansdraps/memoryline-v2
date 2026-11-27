@@ -43,7 +43,21 @@ import {
   type IdSigne,
   type LangueCiel,
 } from "./ciel-signes.js";
-import { SILHOUETTES, SILHOUETTES_PAR_ID, poserSilhouettes } from "./ciel-silhouettes.js";
+import { poserSilhouettes } from "./ciel-silhouettes.js";
+import { SILHOUETTES_ASSISES, SILHOUETTES_ASSISES_PAR_ID } from "./ciel-silhouettes-assises.js";
+
+/**
+ * La vignette d'une silhouette assise seule, par id (27/11, pour les boutons du
+ * site) : un <svg> complet, cadré sur elle, de la couleur demandée. null si
+ * l'id est inconnu.
+ */
+export function svgDeLaSilhouette(id: string, couleur = "#2b2b2b"): string | null {
+  const s = SILHOUETTES_ASSISES_PAR_ID.get(id);
+  if (!s) return null;
+  const l = s.droite - s.gauche;
+  const h = -s.haut + 4;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${s.gauche - 2} ${s.haut - 2} ${l + 4} ${h}"><path fill="${couleur}" d="${s.d}"/></svg>`;
+}
 import { IA_DIR, MODELE_CIEL, fabriquerApercu, ipDeLaRequete } from "./ia.js";
 import { clientDeLaRequete } from "./comptes.js";
 
@@ -388,7 +402,7 @@ export interface ReglagesCiel {
 }
 
 /** Au plus quatre personnages sur un ciel (27/11). */
-export const SILHOUETTES_MAX = 4;
+export const SILHOUETTES_MAX = 8;
 
 /**
  * Lit les nouveaux champs de POST /ia/ciel. Rien d'envoyé : le ciel de cette
@@ -408,7 +422,7 @@ export function lireReglagesCiel(
   if (
     !Array.isArray(silhouettes) ||
     silhouettes.length > SILHOUETTES_MAX ||
-    !silhouettes.every((id) => typeof id === "string" && SILHOUETTES_PAR_ID.has(id))
+    !silhouettes.every((id) => typeof id === "string" && SILHOUETTES_ASSISES_PAR_ID.has(id))
   )
     return { ok: false, error: "Personnages invalides" };
   const langue = (LANGUES_CIEL as readonly string[]).includes(String(b.langue)) ? (b.langue as LangueCiel) : "fr";
@@ -465,6 +479,9 @@ function silhouettesDuCiel(
   m: { style: StyleCiel; texte: PlaceTexte; ville?: boolean; date?: boolean },
 ): string {
   if (!ids.length) return "";
+  // 27/11, Alexandra : « supp ça » — pas de teinte automatique, les
+  // personnages gardent la couleur de la colline (une couleur réglable par
+  // thème est à faire : A-FAIRE §00).
   const W = LARGEUR_CIEL;
   const H = HAUTEUR_CIEL;
   let plafond: { y: number; x0?: number; x1?: number } | undefined;
@@ -480,8 +497,16 @@ function silhouettesDuCiel(
     couleur,
     largeur: W,
     hauteur: H,
-    ...(m.texte === "bas" ? { taillePx: H * 0.125 } : {}),
-    centre: ids.length <= 2 ? 0.7 : ids.length === 3 ? 0.62 : 0.55,
+    // Assises (27/11, Alexandra : « je les veux assis les personnages !!! qui
+    // regardent bien », « et ils sont debout mdr »), nettement espacées et sans
+    // accessoires autour (27/11, Alexandra : « c'est quoi ce bordel au niveau du
+    // rendu ? ») : le groupe seul se lit mieux. Même taille texte en haut et en
+    // bas (« les persos doivent pas changer de taille »).
+    catalogue: SILHOUETTES_ASSISES_PAR_ID,
+    ecart: 22,
+    // Centrés au milieu (27/11, Alexandra : « les personnages doivent être
+    // centrés au milieu »).
+    centre: 0.5,
     ...(plafond ? { plafond } : {}),
   });
 }
@@ -811,7 +836,7 @@ export function mountCielRoutes(app: Hono): void {
    */
   app.get("/ia/ciel/silhouettes", (c: Context) =>
     c.json(
-      { silhouettes: SILHOUETTES.map(({ id, d, gauche, droite, haut }) => ({ id, d, gauche, droite, haut })) },
+      { silhouettes: SILHOUETTES_ASSISES.map(({ id, d, gauche, droite, haut }) => ({ id, d, gauche, droite, haut })) },
       200,
       { "Cache-Control": "public, max-age=3600" },
     ),
