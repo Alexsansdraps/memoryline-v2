@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { createSignal, For, onCleanup, Show, type JSX } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { LOCALE_COMPLETE, t, type Langue } from "../i18n/utils.ts";
 import { PUBLIC_API_URL, getCartId } from "../lib/api.ts";
 import { apercuAbsolu } from "../lib/ia.ts";
@@ -13,6 +13,17 @@ import { apercuAbsolu } from "../lib/ia.ts";
  * « Personnaliser » ouvre l'écran de l'affiche photo sur cette création —
  * textes, personnages, format et panier y sont déjà.
  */
+
+/** Un thème de couleurs du ciel (API /ia/ciel/themes). */
+interface ThemeCiel {
+  id: string;
+  nom: string;
+  fond: string;
+  etoiles: string;
+  dorures: string;
+  haut: string;
+  horizon: string;
+}
 
 /** Une ville trouvée par l'API (GeoNames, apps/api/src/ciel.ts). */
 interface Ville {
@@ -134,6 +145,24 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
     }
   }
   const [occupe, setOccupe] = createSignal(false);
+
+  /**
+   * Les couleurs du ciel (27/11) : les thèmes réglés au BO › Ciel étoilé.
+   * Chaque pastille montre le dégradé du fond, une étoile et l'anneau doré.
+   */
+  const [themes, setThemes] = createSignal<ThemeCiel[]>([]);
+  const [theme, setTheme] = createSignal<string | null>(null);
+  onMount(async () => {
+    try {
+      const r = await fetch(`${PUBLIC_API_URL}/ia/ciel/themes`);
+      const data = (await r.json()) as { themes?: ThemeCiel[] };
+      const liste = Array.isArray(data.themes) ? data.themes : [];
+      setThemes(liste);
+      if (liste[0]) setTheme(liste[0].id);
+    } catch {
+      /* sans la liste, le serveur prend le premier thème */
+    }
+  });
   const [erreur, setErreur] = createSignal(false);
   const [creation, setCreation] = createSignal<{ publicId: string; apercuChemin: string; apercu: string } | null>(null);
 
@@ -160,6 +189,7 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
           lat: v.lat,
           lon: v.lon,
           lieu: [v.nom, v.region, v.pays].filter(Boolean).join(", "),
+          theme: theme() ?? undefined,
         }),
       });
       const data = (await r.json().catch(() => null)) as { publicId?: string; apercu?: string } | null;
@@ -261,6 +291,44 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
             <span role="status" class="mt-1 block text-sm text-terracotta-deep">{tr("ciel.ville_choisir")}</span>
           </Show>
         </div>
+        <Show when={themes().length > 1}>
+          <div>
+            <span class="block text-sm font-medium" id="ciel-theme-titre">
+              {tr("ciel.theme")}
+            </span>
+            <div role="radiogroup" aria-labelledby="ciel-theme-titre" class="mt-2 flex flex-wrap gap-3">
+              <For each={themes()}>
+                {(th) => (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={theme() === th.id}
+                    onClick={() => setTheme(th.id)}
+                    class={`ml-choix flex w-[4.75rem] flex-col items-center gap-1.5 border px-1 pb-1.5 pt-1 text-xs ${
+                      theme() === th.id ? "border-ink font-semibold" : "border-ink/15 hover:border-ink/45"
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      class="relative block aspect-[1/1.4142] w-full"
+                      style={{ background: `linear-gradient(${th.haut}, ${th.fond} 75%, ${th.horizon})` }}
+                    >
+                      <span
+                        class="absolute left-1/2 top-[55%] block h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border"
+                        style={{ "border-color": th.dorures }}
+                      >
+                        <span class="absolute left-[30%] top-[35%] block h-1 w-1 rounded-full" style={{ background: th.etoiles }} />
+                        <span class="absolute left-[60%] top-[55%] block h-1.5 w-1.5 rounded-full" style={{ background: th.etoiles }} />
+                        <span class="absolute left-[45%] top-[70%] block h-0.5 w-0.5 rounded-full" style={{ background: th.etoiles }} />
+                      </span>
+                    </span>
+                    <span class="leading-tight">{th.nom}</span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
         <button
           type="submit"
           disabled={occupe() || !!props.occupe}

@@ -1,0 +1,285 @@
+---
+/**
+ * Ciel étoilé › Couleurs (27/11, Alexandra : « pouvoir modifier les couleurs
+ * du fond !!! créer des thèmes et margaux pourra en créer aussi (ça modifie
+ * chaque couleur avec le dégradé comme il faut) »).
+ *
+ * Un thème = un nom et trois couleurs : le fond, les étoiles, les dorures
+ * (anneau, points cardinaux, coordonnées). Le dégradé du ciel, le dôme de la
+ * carte, les collines et le trait des constellations en découlent tout seuls
+ * (apps/api/src/ciel.ts, teintesDuTheme). Chaque thème montre son aperçu, sur
+ * un même ciel d'exemple.
+ *
+ * Rangés dans le réglage `ciel.themes`. Tant que la boutique n'y a pas touché,
+ * ce sont les six thèmes de base. Un thème décoché n'est plus proposé aux
+ * clientes ; les affiches déjà créées gardent leurs couleurs (elles sont dans
+ * l'image).
+ */
+import Admin from "../layouts/Admin.astro";
+import { adminApi } from "../lib/api.ts";
+import { apiUrl } from "../lib/url.ts";
+
+const api = adminApi(Astro.request);
+const REGLAGE = "ciel.themes";
+
+interface Theme {
+  id: string;
+  nom: string;
+  fond: string;
+  etoiles: string;
+  dorures: string;
+  actif: boolean;
+}
+
+/** Les six thèmes de base : les mêmes que l'API (ciel.ts, THEMES_CIEL_DE_BASE). */
+const DE_BASE: Theme[] = [
+  { id: "nuit", nom: "Nuit", fond: "#16243d", etoiles: "#fbf7ec", dorures: "#d9c38f", actif: true },
+  { id: "encre", nom: "Encre", fond: "#101114", etoiles: "#f5f2ea", dorures: "#c9b48a", actif: true },
+  { id: "sapin", nom: "Sapin", fond: "#1d3a33", etoiles: "#f6f1e4", dorures: "#d6b97c", actif: true },
+  { id: "bordeaux", nom: "Bordeaux", fond: "#4a1f2a", etoiles: "#fbefe6", dorures: "#e0b98a", actif: true },
+  { id: "rose", nom: "Rose poudré", fond: "#9e6871", etoiles: "#fffaf5", dorures: "#fff1dc", actif: true },
+  { id: "creme", nom: "Crème", fond: "#efe6d6", etoiles: "#22304a", dorures: "#a8834a", actif: true },
+];
+
+const HEX = /^#[0-9a-f]{6}$/i;
+const couleur = (v: unknown, repli: string) =>
+  HEX.test(String(v ?? "").trim()) ? String(v).trim().toLowerCase() : repli;
+
+function lire(valeur: unknown): Theme[] {
+  if (!Array.isArray(valeur) || !valeur.length) return DE_BASE;
+  return valeur
+    .filter((t): t is Record<string, unknown> => !!t && typeof t === "object")
+    .map((t, i) => ({
+      id: String(t.id ?? `theme-${i + 1}`),
+      nom: String(t.nom ?? "").trim() || `Thème ${i + 1}`,
+      fond: couleur(t.fond, DE_BASE[0]!.fond),
+      etoiles: couleur(t.etoiles, DE_BASE[0]!.etoiles),
+      dorures: couleur(t.dorures, DE_BASE[0]!.dorures),
+      actif: t.actif !== false,
+    }));
+}
+
+/** Un identifiant stable tiré du nom : « Bleu nuit » → « bleu-nuit ». */
+function identifiant(nom: string, pris: Set<string>): string {
+  const base =
+    nom
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/\p{M}/gu, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 30) || "theme";
+  let id = base;
+  for (let n = 2; pris.has(id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+let themes: Theme[] = DE_BASE;
+
+try {
+  themes = lire((await api.settings())[REGLAGE]);
+} catch (e) {
+  flash = "Les thèmes n'ont pas pu être relus : " + String(e);
+  flashErreur = true;
+}
+
+if (Astro.request.method === "POST" && !flashErreur) {
+  const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  try {
+    if (action === "enregistrer") {
+      const ids = f.getAll("id").map(String);
+      const suivants: Theme[] = ids.map((id, i) => ({
+        id,
+        nom: String(f.getAll("nom")[i] ?? "").trim().slice(0, 40) || `Thème ${i + 1}`,
+        fond: couleur(f.getAll("fond")[i], DE_BASE[0]!.fond),
+        etoiles: couleur(f.getAll("etoiles")[i], DE_BASE[0]!.etoiles),
+        dorures: couleur(f.getAll("dorures")[i], DE_BASE[0]!.dorures),
+        actif: f.getAll("actif").map(String).includes(id),
+      }));
+      if (!suivants.some((t) => t.actif)) {
+        flash = "Gardez au moins un thème proposé : sans thème, la fiche n'aurait plus de couleurs à offrir. Rien n'a été enregistré.";
+        flashErreur = true;
+      } else {
+        await api.setSetting(REGLAGE, suivants);
+        themes = suivants;
+        flash = "Thèmes enregistrés. Les prochains ciels créés les utilisent.";
+      }
+    } else if (action === "ajouter") {
+      const nom = String(f.get("nom") ?? "").trim().slice(0, 40);
+      if (!nom) {
+        flash = "Donnez un nom au thème.";
+        flashErreur = true;
+      } else {
+        const nouveau: Theme = {
+          id: identifiant(nom, new Set(themes.map((t) => t.id))),
+          nom,
+          fond: couleur(f.get("fond"), DE_BASE[0]!.fond),
+          etoiles: couleur(f.get("etoiles"), DE_BASE[0]!.etoiles),
+          dorures: couleur(f.get("dorures"), DE_BASE[0]!.dorures),
+          actif: true,
+        };
+        themes = [...themes, nouveau];
+        await api.setSetting(REGLAGE, themes);
+        flash = `Thème « ${nom} » ajouté et proposé sur la fiche.`;
+      }
+    } else if (action === "supprimer") {
+      const id = String(f.get("id") ?? "");
+      const reste = themes.filter((t) => t.id !== id);
+      if (!reste.some((t) => t.actif)) {
+        flash = "C'est le dernier thème proposé : il ne peut pas être supprimé.";
+        flashErreur = true;
+      } else {
+        const nom = themes.find((t) => t.id === id)?.nom ?? "Ce thème";
+        themes = reste;
+        await api.setSetting(REGLAGE, themes);
+        flash = `Thème « ${nom} » supprimé. Les affiches déjà créées gardent leurs couleurs.`;
+      }
+    }
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+    flashErreur = true;
+  }
+}
+
+const apercu = (t: Pick<Theme, "fond" | "etoiles" | "dorures">) =>
+  apiUrl(
+    `/ia/ciel/apercu-theme?fond=${encodeURIComponent(t.fond)}&etoiles=${encodeURIComponent(t.etoiles)}&dorures=${encodeURIComponent(t.dorures)}`,
+  );
+const urlApercu = apiUrl("/ia/ciel/apercu-theme");
+---
+
+<Admin title="Ciel étoilé">
+  <h1 class="mb-2 text-2xl font-semibold">Ciel étoilé : les couleurs</h1>
+  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
+    Les thèmes proposés sur la fiche « Ciel étoilé ». Chacun se règle avec
+    trois couleurs : le <strong>fond</strong>, les <strong>étoiles</strong> et
+    les <strong>dorures</strong> (anneau, N S E O, coordonnées). Le dégradé du
+    ciel, le cercle, les collines et les traits des constellations suivent
+    tout seuls. L'aperçu se met à jour quand vous changez une couleur.
+  </p>
+
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "border-red-200 bg-red-50 text-red-800" : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+
+  <form method="POST" class="mb-10">
+    <input type="hidden" name="_action" value="enregistrer" />
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-4">
+      {themes.map((t) => (
+        <div class="rounded-lg border border-bo-border bg-bo-surface p-3" data-theme>
+          <input type="hidden" name="id" value={t.id} />
+          <img
+            src={apercu(t)}
+            alt={`Aperçu du thème ${t.nom}`}
+            width="600"
+            height="849"
+            loading="lazy"
+            class="mb-3 aspect-[1/1.4142] w-full rounded border border-bo-border object-cover"
+            data-apercu
+          />
+          <label class="block text-sm">
+            <span class="text-bo-muted">Nom</span>
+            <input name="nom" value={t.nom} maxlength="40" class="mt-1 w-full rounded border border-bo-border px-2 py-1" />
+          </label>
+          <div class="mt-3 grid grid-cols-3 gap-2 text-xs">
+            <label class="block">
+              <span class="text-bo-muted">Fond</span>
+              <input type="color" name="fond" value={t.fond} class="mt-1 block h-9 w-full cursor-pointer" data-couleur="fond" />
+            </label>
+            <label class="block">
+              <span class="text-bo-muted">Étoiles</span>
+              <input type="color" name="etoiles" value={t.etoiles} class="mt-1 block h-9 w-full cursor-pointer" data-couleur="etoiles" />
+            </label>
+            <label class="block">
+              <span class="text-bo-muted">Dorures</span>
+              <input type="color" name="dorures" value={t.dorures} class="mt-1 block h-9 w-full cursor-pointer" data-couleur="dorures" />
+            </label>
+          </div>
+          <div class="mt-3 flex items-center justify-between gap-2">
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="actif" value={t.id} checked={t.actif} />
+              Proposé
+            </label>
+            <button
+              type="submit"
+              form={`suppr-${t.id}`}
+              class="text-xs text-red-700 underline underline-offset-2"
+              onclick={`return confirm(${JSON.stringify(`Supprimer le thème « ${t.nom} » ? Les affiches déjà créées gardent leurs couleurs.`)})`}
+            >
+              Supprimer
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+    <button class="mt-4 rounded bg-bo-accent px-4 py-2 text-sm text-white">Enregistrer les thèmes</button>
+  </form>
+
+  {themes.map((t) => (
+    <form method="POST" id={`suppr-${t.id}`} class="hidden">
+      <input type="hidden" name="_action" value="supprimer" />
+      <input type="hidden" name="id" value={t.id} />
+    </form>
+  ))}
+
+  <section class="max-w-md rounded-lg border border-bo-border bg-bo-surface p-4" data-theme>
+    <h2 class="mb-3 text-lg font-semibold">Créer un thème</h2>
+    <form method="POST" class="space-y-3">
+      <input type="hidden" name="_action" value="ajouter" />
+      <img
+        src={apercu(DE_BASE[0]!)}
+        alt="Aperçu du nouveau thème"
+        width="600"
+        height="849"
+        class="aspect-[1/1.4142] w-48 rounded border border-bo-border object-cover"
+        data-apercu
+      />
+      <label class="block text-sm">
+        <span class="text-bo-muted">Nom</span>
+        <input name="nom" required maxlength="40" placeholder="Bleu lavande" class="mt-1 w-full rounded border border-bo-border px-2 py-1" />
+      </label>
+      <div class="grid grid-cols-3 gap-2 text-xs">
+        <label class="block">
+          <span class="text-bo-muted">Fond</span>
+          <input type="color" name="fond" value={DE_BASE[0]!.fond} class="mt-1 block h-9 w-full cursor-pointer" data-couleur="fond" />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted">Étoiles</span>
+          <input type="color" name="etoiles" value={DE_BASE[0]!.etoiles} class="mt-1 block h-9 w-full cursor-pointer" data-couleur="etoiles" />
+        </label>
+        <label class="block">
+          <span class="text-bo-muted">Dorures</span>
+          <input type="color" name="dorures" value={DE_BASE[0]!.dorures} class="mt-1 block h-9 w-full cursor-pointer" data-couleur="dorures" />
+        </label>
+      </div>
+      <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">Ajouter ce thème</button>
+    </form>
+  </section>
+
+  <script is:inline define:vars={{ urlApercu }}>
+    // L'aperçu suit les couleurs : à chaque couleur lâchée, l'image du bloc
+    // est redemandée à l'API avec les trois couleurs du moment.
+    document.querySelectorAll("[data-theme]").forEach(function (bloc) {
+      var img = bloc.querySelector("[data-apercu]");
+      if (!img) return;
+      bloc.querySelectorAll("[data-couleur]").forEach(function (champ) {
+        champ.addEventListener("change", function () {
+          var v = function (n) {
+            var c = bloc.querySelector('[data-couleur="' + n + '"]');
+            return encodeURIComponent(c ? c.value : "");
+          };
+          img.src = urlApercu + "?fond=" + v("fond") + "&etoiles=" + v("etoiles") + "&dorures=" + v("dorures");
+        });
+      });
+    });
+  </script>
+</Admin>

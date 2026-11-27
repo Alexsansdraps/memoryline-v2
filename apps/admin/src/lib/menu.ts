@@ -161,6 +161,8 @@ export const MENU: GroupeNav[] = [
         // on n'y va qu'après avoir ouvert celles-ci.
         children: [
           { href: "/ia/styles", label: "Styles proposés", icon: "🎨", owner: true },
+          // Les couleurs des ciels étoilés (27/11) : des thèmes que Margaux crée.
+          { href: "/ciel", label: "Ciel étoilé : couleurs", icon: "🌌", owner: true },
         ],
       },
       // Des affiches tirées au hasard, à imprimer d'avance pour un marché ou

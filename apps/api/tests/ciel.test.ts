@@ -67,3 +67,19 @@ test("villes : les villages aussi, avec leur département, et vite", async () =>
   for (const q of ["sa", "saint louis", "ungers", "lyon"]) chercherVilles(q);
   assert.ok(performance.now() - t0 < 1000);
 });
+
+test("thèmes : trois couleurs donnent tout le dégradé, « Nuit » retrouve les teintes d'origine", async () => {
+  const { teintesDuTheme, themesDuReglage, THEMES_CIEL_DE_BASE, svgDuCiel } = await import("../src/ciel.ts");
+  const nuit = teintesDuTheme(THEMES_CIEL_DE_BASE[0]!);
+  // Le haut d'origine était #0b1424 : à deux unités près par canal.
+  const proche = (a: string, b: string) =>
+    [1, 3, 5].every((i) => Math.abs(parseInt(a.slice(i, i + 2), 16) - parseInt(b.slice(i, i + 2), 16)) <= 3);
+  assert.ok(proche(nuit.haut, "#0b1424"), nuit.haut);
+  assert.ok(proche(nuit.collinePres, "#0a111e"), nuit.collinePres);
+  // Réglage illisible ou vide : les thèmes de base ; couleurs invalides corrigées.
+  assert.equal(themesDuReglage(null).length, THEMES_CIEL_DE_BASE.length);
+  const lus = themesDuReglage([{ id: "x", nom: "Lavande", fond: "#8877aa", etoiles: "pas une couleur", dorures: "#ffffff" }]);
+  assert.equal(lus[0]?.etoiles, THEMES_CIEL_DE_BASE[0]!.etoiles);
+  // Le rendu porte bien la couleur choisie.
+  assert.ok(svgDuCiel(47.75, 7.34, new Date(), lus[0]).includes("#8877aa"));
+});

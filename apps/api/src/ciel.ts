@@ -145,8 +145,146 @@ function coordonnees(lat: number, lon: number): string {
   return `${f(lat)}° ${lat >= 0 ? "N" : "S"}   ·   ${f(lon)}° ${lon >= 0 ? "E" : "O"}`;
 }
 
+/* ------------------------------------------------------------------------ *
+ * Les thèmes de couleur (27/11, Alexandra : « pouvoir modifier les couleurs
+ * du fond !!! créer des thèmes et margaux pourra en créer aussi (ça modifie
+ * chaque couleur avec le dégradé comme il faut) »).
+ *
+ * Un thème, c'est TROIS couleurs choisies : le fond, les étoiles, les
+ * dorures (anneau, points cardinaux, coordonnées). Tout le reste en découle,
+ * toujours dans les mêmes proportions que le thème « Nuit » d'origine : le
+ * dégradé du ciel (plus sombre en haut, un peu plus clair à l'horizon), le
+ * dôme de la carte, les deux collines, le trait des constellations. Changer
+ * le fond change donc chaque teinte « comme il faut », sans dix couleurs à
+ * accorder à la main.
+ *
+ * Rangés dans le réglage `ciel.themes` (BO › Ciel étoilé). Absent ou vide :
+ * les thèmes de base ci-dessous.
+ * ------------------------------------------------------------------------ */
+export interface ThemeCiel {
+  id: string;
+  nom: string;
+  fond: string;
+  etoiles: string;
+  dorures: string;
+  /** Proposé aux clientes ; un thème décoché reste au BO. */
+  actif?: boolean;
+}
+
+export const REGLAGE_THEMES_CIEL = "ciel.themes";
+
+export const THEMES_CIEL_DE_BASE: ThemeCiel[] = [
+  { id: "nuit", nom: "Nuit", fond: "#16243d", etoiles: "#fbf7ec", dorures: "#d9c38f", actif: true },
+  { id: "encre", nom: "Encre", fond: "#101114", etoiles: "#f5f2ea", dorures: "#c9b48a", actif: true },
+  { id: "sapin", nom: "Sapin", fond: "#1d3a33", etoiles: "#f6f1e4", dorures: "#d6b97c", actif: true },
+  { id: "bordeaux", nom: "Bordeaux", fond: "#4a1f2a", etoiles: "#fbefe6", dorures: "#e0b98a", actif: true },
+  { id: "rose", nom: "Rose poudré", fond: "#9e6871", etoiles: "#fffaf5", dorures: "#fff1dc", actif: true },
+  { id: "creme", nom: "Crème", fond: "#efe6d6", etoiles: "#22304a", dorures: "#a8834a", actif: true },
+];
+
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** Une couleur #rrggbb, ou le repli. */
+function couleurSure(v: unknown, repli: string): string {
+  const t = String(v ?? "").trim();
+  return HEX.test(t) ? t.toLowerCase() : repli;
+}
+
+/** Un thème lu au réglage, rendu sûr (couleurs valides, nom borné). */
+export function themeSur(brut: unknown, rang = 0): ThemeCiel | null {
+  if (!brut || typeof brut !== "object") return null;
+  const b = brut as Record<string, unknown>;
+  const nom = String(b.nom ?? "").trim().slice(0, 40);
+  if (!nom) return null;
+  const id =
+    String(b.id ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "")
+      .slice(0, 40) || `theme-${rang + 1}`;
+  const base = THEMES_CIEL_DE_BASE[0]!;
+  return {
+    id,
+    nom,
+    fond: couleurSure(b.fond, base.fond),
+    etoiles: couleurSure(b.etoiles, base.etoiles),
+    dorures: couleurSure(b.dorures, base.dorures),
+    actif: b.actif !== false,
+  };
+}
+
+/** Les thèmes tels que réglés (tous), ou ceux de base. */
+export function themesDuReglage(valeur: unknown): ThemeCiel[] {
+  if (!Array.isArray(valeur)) return THEMES_CIEL_DE_BASE;
+  const vus = new Set<string>();
+  const liste: ThemeCiel[] = [];
+  valeur.forEach((t, i) => {
+    const th = themeSur(t, i);
+    if (th && !vus.has(th.id)) {
+      vus.add(th.id);
+      liste.push(th);
+    }
+  });
+  return liste.length ? liste : THEMES_CIEL_DE_BASE;
+}
+
+/** Mélange deux couleurs #rrggbb : `part` de `vers` dans `de`. */
+export function melange(de: string, vers: string, part: number): string {
+  const a = [1, 3, 5].map((i) => parseInt(de.slice(i, i + 2), 16));
+  const b = [1, 3, 5].map((i) => parseInt(vers.slice(i, i + 2), 16));
+  return (
+    "#" +
+    a
+      .map((x, i) => Math.round(x + (b[i]! - x) * part))
+      .map((x) => Math.max(0, Math.min(255, x)).toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
+/** Clarté perçue (0 noir, 1 blanc). */
+function clarte(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [
+    number,
+    number,
+    number,
+  ];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * Toutes les teintes d'un thème, tirées de ses trois couleurs. Les parts de
+ * noir et de blanc reproduisent le thème « Nuit » d'origine (#0b1424 en haut,
+ * #16243d, #1f3050 à l'horizon…). Sur un fond clair (« Crème »), le haut
+ * fonce à peine : un ciel crème qui vire au gris en haut serait sale.
+ */
+export function teintesDuTheme(t: Pick<ThemeCiel, "fond" | "etoiles" | "dorures">) {
+  const clair = clarte(t.fond) > 0.55;
+  const noir = "#000000";
+  const blanc = "#ffffff";
+  return {
+    haut: melange(t.fond, noir, clair ? 0.06 : 0.45),
+    milieu: t.fond,
+    horizon: melange(t.fond, blanc, clair ? 0.25 : 0.1),
+    domeCentre: melange(t.fond, blanc, clair ? 0.2 : 0.07),
+    domeBord: melange(t.fond, noir, clair ? 0.04 : 0.18),
+    collineLoin: melange(t.fond, noir, clair ? 0.12 : 0.3),
+    collinePres: melange(t.fond, noir, clair ? 0.22 : 0.55),
+    constellations: melange(t.etoiles, t.fond, 0.2),
+    /** Le halo des plus brillantes : discret sur fond clair, sinon des taches. */
+    halo: clair ? 0.1 : 0.35,
+    etoiles: t.etoiles,
+    dorures: t.dorures,
+  };
+}
+
 /** Le SVG du fond, à la taille du fichier. */
-export function svgDuCiel(lat: number, lon: number, instant: Date): string {
+export function svgDuCiel(
+  lat: number,
+  lon: number,
+  instant: Date,
+  theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
+): string {
+  const c = teintesDuTheme(theme);
   const W = LARGEUR_CIEL;
   const H = HAUTEUR_CIEL;
   const cx = W / 2;
@@ -194,44 +332,58 @@ export function svgDuCiel(lat: number, lon: number, instant: Date): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
     <linearGradient id="nuit" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0b1424"/>
-      <stop offset="0.75" stop-color="#16243d"/>
-      <stop offset="1" stop-color="#1f3050"/>
+      <stop offset="0" stop-color="${c.haut}"/>
+      <stop offset="0.75" stop-color="${c.milieu}"/>
+      <stop offset="1" stop-color="${c.horizon}"/>
     </linearGradient>
     <radialGradient id="dome" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#1c2c4a"/>
-      <stop offset="1" stop-color="#121e35"/>
+      <stop offset="0" stop-color="${c.domeCentre}"/>
+      <stop offset="1" stop-color="${c.domeBord}"/>
     </radialGradient>
     <radialGradient id="halo">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0" stop-color="${c.etoiles}" stop-opacity="${c.halo}"/>
+      <stop offset="1" stop-color="${c.etoiles}" stop-opacity="0"/>
     </radialGradient>
     <clipPath id="cercle"><circle cx="${cx}" cy="${cy}" r="${R}"/></clipPath>
   </defs>
   <rect width="${W}" height="${H}" fill="url(#nuit)"/>
   <circle cx="${cx}" cy="${cy}" r="${R}" fill="url(#dome)"/>
   <g clip-path="url(#cercle)">
-    <path d="${traits.join("")}" stroke="#cdd8ec" stroke-opacity="0.35" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="${traits.join("")}" stroke="${c.constellations}" stroke-opacity="0.35" stroke-width="3" fill="none" stroke-linecap="round"/>
     <g fill="url(#halo)">${brillantes.join("")}</g>
-    <g fill="#fbf7ec">${etoiles.join("")}</g>
+    <g fill="${c.etoiles}">${etoiles.join("")}</g>
   </g>
-  <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="#d9c38f" stroke-width="5"/>
-  <circle cx="${cx}" cy="${cy}" r="${R + 22}" fill="none" stroke="#d9c38f" stroke-opacity="0.45" stroke-width="2"/>
-  <g font-family="League Spartan, DejaVu Sans, sans-serif" font-size="46" fill="#d9c38f" letter-spacing="4">
+  <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${c.dorures}" stroke-width="5"/>
+  <circle cx="${cx}" cy="${cy}" r="${R + 22}" fill="none" stroke="${c.dorures}" stroke-opacity="0.45" stroke-width="2"/>
+  <g font-family="League Spartan, DejaVu Sans, sans-serif" font-size="46" fill="${c.dorures}" letter-spacing="4">
     ${etiquette("N", cx, cy - R - 70)}
     ${etiquette("S", cx, cy + R + 70)}
     ${etiquette("E", cx - R - 70, cy)}
     ${etiquette("O", cx + R + 70, cy)}
   </g>
-  <text x="${cx}" y="${cy + R + 180}" text-anchor="middle" font-family="League Spartan, DejaVu Sans, sans-serif" font-size="44" fill="#d9c38f" fill-opacity="0.85" letter-spacing="3">${coordonnees(lat, lon)}</text>
-  <path d="${collineLoin}" fill="#101a2c"/>
-  <path d="${collinePres}" fill="#0a111e"/>
+  <text x="${cx}" y="${cy + R + 180}" text-anchor="middle" font-family="League Spartan, DejaVu Sans, sans-serif" font-size="44" fill="${c.dorures}" fill-opacity="0.85" letter-spacing="3">${coordonnees(lat, lon)}</text>
+  <path d="${collineLoin}" fill="${c.collineLoin}"/>
+  <path d="${collinePres}" fill="${c.collinePres}"/>
 </svg>`;
 }
 
 /** Le fond en PNG. */
-export async function rendreCiel(lat: number, lon: number, instant: Date): Promise<Buffer> {
-  return sharp(Buffer.from(svgDuCiel(lat, lon, instant))).png().toBuffer();
+export async function rendreCiel(
+  lat: number,
+  lon: number,
+  instant: Date,
+  theme?: Pick<ThemeCiel, "fond" | "etoiles" | "dorures">,
+): Promise<Buffer> {
+  return sharp(Buffer.from(svgDuCiel(lat, lon, instant, theme))).png().toBuffer();
+}
+
+/** Les thèmes réglés au BO (tous, actifs ou non). */
+export async function lireThemesCiel(): Promise<ThemeCiel[]> {
+  const [ligne] = await db
+    .select({ value: schema.settings.value })
+    .from(schema.settings)
+    .where(eq(schema.settings.key, REGLAGE_THEMES_CIEL));
+  return themesDuReglage(ligne?.value);
 }
 
 /**
@@ -341,8 +493,52 @@ export function mountCielRoutes(app: Hono): void {
   });
 
   /**
+   * GET /ia/ciel/themes → les thèmes proposés aux clientes (actifs), avec
+   * les teintes de leur dégradé pour dessiner la pastille de chacun.
+   */
+  app.get("/ia/ciel/themes", async (c: Context) => {
+    const themes = (await lireThemesCiel()).filter((t) => t.actif !== false);
+    return c.json({
+      themes: themes.map((t) => {
+        const tt = teintesDuTheme(t);
+        return { id: t.id, nom: t.nom, fond: t.fond, etoiles: t.etoiles, dorures: t.dorures, haut: tt.haut, horizon: tt.horizon };
+      }),
+    });
+  });
+
+  /**
+   * GET /ia/ciel/apercu-theme?fond=%23…&etoiles=%23…&dorures=%23… → une
+   * petite affiche (600 px) sur un ciel fixe : l'aperçu d'un thème au BO,
+   * pendant qu'on choisit ses couleurs. Gardée en mémoire par couleurs.
+   */
+  const apercusThemes = new Map<string, Buffer>();
+  app.get("/ia/ciel/apercu-theme", async (c: Context) => {
+    const base = THEMES_CIEL_DE_BASE[0]!;
+    const theme = themeSur(
+      { nom: "apercu", fond: c.req.query("fond"), etoiles: c.req.query("etoiles"), dorures: c.req.query("dorures") },
+      0,
+    ) ?? base;
+    const cle = `${theme.fond}${theme.etoiles}${theme.dorures}`;
+    let png = apercusThemes.get(cle);
+    if (!png) {
+      if (tropDAppels(ipDeLaRequete(c))) return c.json({ error: "Trop de demandes" }, 429);
+      const svg = svgDuCiel(47.75, 7.34, new Date(Date.UTC(2025, 5, 14, 21, 10)), theme).replace(
+        `width="${LARGEUR_CIEL}" height="${HAUTEUR_CIEL}"`,
+        `width="600" height="${Math.round((600 * HAUTEUR_CIEL) / LARGEUR_CIEL)}"`,
+      );
+      png = await sharp(Buffer.from(svg)).jpeg({ quality: 82 }).toBuffer();
+      if (apercusThemes.size > 300) apercusThemes.clear();
+      apercusThemes.set(cle, png);
+    }
+    return c.body(new Uint8Array(png), 200, {
+      "Content-Type": "image/jpeg",
+      "Cache-Control": "public, max-age=86400",
+    });
+  });
+
+  /**
    * POST /ia/ciel { productId, cartId, date: "AAAA-MM-JJ", heure: "HH:MM",
-   *                 fuseau: "Europe/Paris", lat, lon, lieu }
+   *                 fuseau: "Europe/Paris", lat, lon, lieu, theme }
    * → { publicId, status: "prete", apercu } — la même réponse que /ia/generer.
    */
   app.post("/ia/ciel", async (c: Context) => {
@@ -370,8 +566,12 @@ export function mountCielRoutes(app: Hono): void {
     const publicId = randomUUID();
     const lieu = String(b.lieu ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 80);
     const client = await clientDeLaRequete(c);
+    // Le thème choisi parmi ceux proposés ; à défaut, le premier.
+    const proposes = (await lireThemesCiel()).filter((t) => t.actif !== false);
+    const theme =
+      proposes.find((t) => t.id === String(b.theme ?? "")) ?? proposes[0] ?? THEMES_CIEL_DE_BASE[0]!;
     try {
-      const pleine = await rendreCiel(lat, lon, instant);
+      const pleine = await rendreCiel(lat, lon, instant, theme);
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
       const apercu = await fabriquerApercu(pleine, `${publicId}-apercu.jpg`, { x: 0.5, y: CENTRE_Y_CIEL });
@@ -391,6 +591,7 @@ export function mountCielRoutes(app: Hono): void {
           lat,
           lon,
           utc: instant.toISOString(),
+          theme: { id: theme.id, nom: theme.nom, fond: theme.fond, etoiles: theme.etoiles, dorures: theme.dorures },
         }),
         // Hors de BO › Affiches IA et du plafond (filtreDuPerimetre, ia.ts, 27/11).
         model: MODELE_CIEL,
