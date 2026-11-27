@@ -313,7 +313,7 @@ function AttenteStyle(props: { titre: string }): JSX.Element {
  * esquissée — dans le sens choisi — au-dessus de la phrase qui dit ce qui
  * viendra là.
  */
-function AttenteAffiche(props: { paysage: boolean; texte: string }): JSX.Element {
+function AttenteAffiche(props: { paysage: boolean; texte: string; ciel?: boolean }): JSX.Element {
   return (
     <div class="absolute inset-0 flex flex-col items-center justify-center gap-4 p-6 text-center text-sm text-ink-soft">
       <svg
@@ -329,6 +329,19 @@ function AttenteAffiche(props: { paysage: boolean; texte: string }): JSX.Element
         <Show
           when={props.paysage}
           fallback={
+            <Show
+              when={!props.ciel}
+              fallback={
+                // Le ciel étoilé (27/11) : une affiche, sa carte ronde, des étoiles.
+                <>
+                  <rect x="13" y="5" width="38" height="54" rx="1.5" />
+                  <path d="M24 12h16" />
+                  <circle cx="32" cy="35" r="12" />
+                  <path d="M28 31.5l.01 0M35 30l.01 0M31 38l.01 0M37 37l.01 0M26 37l.01 0" stroke-width="2.5" />
+                  <path d="M28 31.5L35 30 37 37" stroke-width="0.8" />
+                </>
+              }
+            >
             <>
               <rect x="13" y="5" width="38" height="54" rx="1.5" />
               <path d="M24 12h16" />
@@ -336,6 +349,7 @@ function AttenteAffiche(props: { paysage: boolean; texte: string }): JSX.Element
               <circle cx="37.5" cy="25" r="3.5" />
               <path d="M18 45l8-9 6 6 4-4 10 8" />
             </>
+            </Show>
           }
         >
           <rect x="5" y="13" width="54" height="38" rx="1.5" />
@@ -1375,7 +1389,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       class="ml-modal-overlay"
       role="dialog"
       aria-modal="true"
-      aria-label={tr("ia.titre")}
+      aria-label={modeCiel() ? tr("ciel.titre_fenetre") : tr("ia.titre")}
       onClick={(e) => {
         // Pendant la composition des personnages, un clic à côté ne ferme
         // rien (20/11) : un doigt qui glisse hors de la fenêtre, sur la
@@ -1385,7 +1399,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     >
     <div class="ml-modal-panel">
       <header class="ml-modal-head">
-        <h2 class="text-xl sm:text-2xl">{tr("ia.titre")}</h2>
+        <h2 class="text-xl sm:text-2xl">{modeCiel() ? tr("ciel.titre_fenetre") : tr("ia.titre")}</h2>
         {/* Pendant la composition, la croix vaut « Retour » : elle ramène à
             l'affiche, sans rien garder. */}
         <button
@@ -1482,7 +1496,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   fallback={
                     <AttenteAffiche
                       paysage={sensAffiche() === "paysage"}
-                      texte={tr("ia.apercu_vide")}
+                      ciel={modeCiel()}
+                      texte={modeCiel() ? tr("ciel.attente") : tr("ia.apercu_vide")}
                     />
                   }
                 >
