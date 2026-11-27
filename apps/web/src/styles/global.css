@@ -1804,3 +1804,70 @@ body:has(.ml-stand-fin) > footer {
     animation-duration: 2.4s;
   }
 }
+
+/* --------------------------------------------------------------------------
+ * L'étiquette « Nuit de Noël » de la fiche Ciel étoilé (27/11, Alexandra :
+ * « avec un btn original »), CielEtoile.tsx. Une étiquette de cadeau : rouge
+ * de la boutique, liseré or cousu, œillet et brin de ficelle, dessinés en SVG
+ * DERRIÈRE le texte — le bouton n'est pas découpé, son contour de focus reste
+ * entier. Penchée de 3°, comme si elle pendait à son œillet ; elle se
+ * redresse quand on l'effleure, avec un balancement, et reste droite une fois
+ * choisie (aria-pressed). Rien ne bouge si l'appareil demande moins
+ * d'animations.
+ * ------------------------------------------------------------------------ */
+.ml-etiquette-noel {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 15rem;
+  max-width: 100%;
+  min-height: 4rem;
+  padding: 0 1rem 0 2.75rem;
+  color: #fff6e5;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transform: rotate(-3deg);
+  transform-origin: 1.6rem 50%;
+  transition: transform 0.35s ease;
+}
+.ml-etiquette-noel:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 4px;
+}
+.ml-etiquette-noel[aria-pressed="true"] {
+  transform: rotate(0deg);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ml-etiquette-noel:hover,
+  .ml-etiquette-noel:focus-visible {
+    animation: ml-etiquette-balance 1s ease-out forwards;
+  }
+  .ml-etiquette-noel[aria-pressed="true"] {
+    animation: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ml-etiquette-noel {
+    transition: none;
+  }
+  .ml-etiquette-noel:hover,
+  .ml-etiquette-noel:focus-visible {
+    transform: rotate(0deg);
+  }
+}
+@keyframes ml-etiquette-balance {
+  0% {
+    transform: rotate(-3deg);
+  }
+  35% {
+    transform: rotate(2.5deg);
+  }
+  65% {
+    transform: rotate(-1.5deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}

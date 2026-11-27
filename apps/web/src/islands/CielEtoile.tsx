@@ -3,6 +3,7 @@ import { createSignal, For, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { LOCALE_COMPLETE, t, type Langue } from "../i18n/utils.ts";
 import { PUBLIC_API_URL, getCartId } from "../lib/api.ts";
 import { apercuAbsolu } from "../lib/ia.ts";
+import { saisonDeNoel } from "../lib/saison-noel.ts";
 
 /**
  * Le ciel étoilé d'un soir (26/11) — page cachée /ciel-etoile, à montrer à
@@ -65,6 +66,26 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
   const aujourdHui = new Date().toISOString().slice(0, 10);
   const [date, setDate] = createSignal(aujourdHui);
   const [heure, setHeure] = createSignal("21:00");
+  /*
+   * La nuit de Noël (27/11, Alexandra : « Le ciel de la nuit de Noël. Un
+   * bouton "Nuit de Noël 2026" sur la fiche Ciel étoilé règle la date sur le
+   * 24 décembre à minuit, dans la ville de la cliente. On y ajoute un thème
+   * rouge et or. C'est idéal pour "le premier Noël de…" », « avec un btn
+   * original »). De saison seulement, du 1er novembre au 31 janvier : en
+   * janvier, c'est le Noël de l'année d'avant. 23:59 plutôt que 00:00 : le
+   * champ garde le 24, et le ciel est le même à une minute près.
+   */
+  const { enSaison, annee: anneeDeNoel } = saisonDeNoel(new Date());
+  const DATE_NOEL = `${anneeDeNoel}-12-24`;
+  const HEURE_NOEL = "23:59";
+  const noelRegle = () => date() === DATE_NOEL && heure() === HEURE_NOEL;
+  const [annonceNoel, setAnnonceNoel] = createSignal("");
+  function reglerNoel() {
+    setDate(DATE_NOEL);
+    setHeure(HEURE_NOEL);
+    if (themes().some((t) => t.id === "noel")) setTheme("noel");
+    setAnnonceNoel(tr("ciel.noel.regle"));
+  }
   const [ville, setVille] = createSignal<Ville | null>(MULHOUSE);
   const [saisie, setSaisie] = createSignal(MULHOUSE.nom);
   const [proposees, setProposees] = createSignal<Ville[]>([]);
@@ -244,6 +265,47 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
           {tr("ciel.heure")}
           <input type="time" required value={heure()} onInput={(e) => setHeure(e.currentTarget.value)} class={champ} />
         </label>
+        {/* L'étiquette de cadeau de la nuit de Noël (27/11, voir
+            `reglerNoel`) : accrochée au formulaire, penchée comme si elle
+            pendait, elle se redresse quand on l'effleure, et reste droite
+            tant que la date et l'heure sont celles de la nuit de Noël. La
+            forme est un dessin posé DERRIÈRE le texte : le bouton n'est pas
+            découpé, son contour de focus reste entier. */}
+        <Show when={enSaison}>
+          <div class="pt-1">
+            <button
+              type="button"
+              class="ml-etiquette-noel"
+              aria-pressed={noelRegle()}
+              onClick={reglerNoel}
+            >
+              <svg aria-hidden="true" viewBox="0 0 240 64" preserveAspectRatio="none" class="absolute inset-0 h-full w-full overflow-visible">
+                <path d="M24 32 C 8 28, 6 10, 16 0" fill="none" stroke="#b08d57" stroke-width="2" stroke-linecap="round" />
+                <path d="M32 2 H234 a4 4 0 0 1 4 4 V58 a4 4 0 0 1 -4 4 H32 L8 32 Z" fill="#9c1616" />
+                <path d="M35 7 H231 V57 H35 L16 32 Z" fill="none" stroke="#e9c56b" stroke-width="1.2" stroke-dasharray="4 3" />
+                <circle cx="26" cy="32" r="4.5" fill="#fff" stroke="#e9c56b" stroke-width="1.5" />
+              </svg>
+              <svg aria-hidden="true" viewBox="0 0 24 24" class="relative h-5 w-5 shrink-0">
+                <path
+                  d="M12 2 13.8 10.2 22 12 13.8 13.8 12 22 10.2 13.8 2 12 10.2 10.2Z"
+                  fill={noelRegle() ? "#e9c56b" : "none"}
+                  stroke="#e9c56b"
+                  stroke-width="1.4"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span class="relative min-w-0 text-left leading-tight">
+                <span class="block truncate text-lg" style={{ "font-family": "'DM Serif Display', serif" }}>
+                  {tr("ciel.noel.bouton").replace("{annee}", String(anneeDeNoel))}
+                </span>
+                <span class="block text-xs opacity-90">{tr("ciel.noel.detail")}</span>
+              </span>
+            </button>
+            <span class="sr-only" aria-live="polite">
+              {annonceNoel()}
+            </span>
+          </div>
+        </Show>
         <div class="relative">
           <label for="ciel-ville" class="block text-sm font-medium">
             {tr("ciel.ville")}

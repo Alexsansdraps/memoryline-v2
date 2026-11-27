@@ -925,7 +925,12 @@ export const ui = {
     "ciel.titre_fenetre": "Votre ciel étoilé",
     "ciel.intro": "Une date, une heure, une ville : nous dessinons le ciel tel qu'il était au-dessus de vous ce soir-là. Vous y ajoutez ensuite vos textes et vos personnages.",
     "ciel.date": "Date",
-    "ciel.heure": "Heure",
+    "ciel.heure": "Heure",
+    // L'étiquette de la nuit de Noël (27/11, CielEtoile.tsx) : {annee} est remplacé par le code.
+    "ciel.noel.bouton": "Nuit de Noël {annee}",
+    "ciel.noel.detail": "24 décembre, minuit",
+    // Dit aux lecteurs d'écran quand l'étiquette a réglé la date.
+    "ciel.noel.regle": "Date réglée sur la nuit de Noël.",
     "ciel.ville": "Ville",
     "ciel.ville_aide": "Tapez le nom de la ville, puis choisissez-la dans la liste.",
     "ciel.ville_aucune": "Aucune ville trouvée. Essayez la grande ville la plus proche.",
@@ -1779,7 +1784,12 @@ export const ui = {
     "ciel.titre_fenetre": "Your starry sky",
     "ciel.intro": "A date, a time, a city: we draw the sky exactly as it was above you that night. Then you add your own text and characters.",
     "ciel.date": "Date",
-    "ciel.heure": "Time",
+    "ciel.heure": "Time",
+    // L'étiquette de la nuit de Noël (27/11, CielEtoile.tsx) : {annee} est remplacé par le code.
+    "ciel.noel.bouton": "Christmas night {annee}",
+    "ciel.noel.detail": "24 December, midnight",
+    // Dit aux lecteurs d'écran quand l'étiquette a réglé la date.
+    "ciel.noel.regle": "Date set to Christmas night.",
     "ciel.ville": "City",
     "ciel.ville_aide": "Type the name of the city, then pick it from the list.",
     "ciel.ville_aucune": "No city found. Try the nearest big city.",
@@ -2642,7 +2652,12 @@ export const ui = {
     "ciel.titre_fenetre": "Ihr Sternenhimmel",
     "ciel.intro": "Ein Datum, eine Uhrzeit, eine Stadt: Wir zeichnen den Himmel genau so, wie er an diesem Abend über Ihnen stand. Danach fügen Sie Ihre Texte und Figuren hinzu.",
     "ciel.date": "Datum",
-    "ciel.heure": "Uhrzeit",
+    "ciel.heure": "Uhrzeit",
+    // L'étiquette de la nuit de Noël (27/11, CielEtoile.tsx) : {annee} est remplacé par le code.
+    "ciel.noel.bouton": "Heiligabend {annee}",
+    "ciel.noel.detail": "24. Dezember, Mitternacht",
+    // Dit aux lecteurs d'écran quand l'étiquette a réglé la date.
+    "ciel.noel.regle": "Datum auf Heiligabend gestellt.",
     "ciel.ville": "Stadt",
     "ciel.ville_aide": "Geben Sie den Namen der Stadt ein und wählen Sie sie aus der Liste.",
     "ciel.ville_aucune": "Keine Stadt gefunden. Versuchen Sie die nächstgelegene Großstadt.",
@@ -3496,7 +3511,12 @@ export const ui = {
     "ciel.titre_fenetre": "Il tuo cielo stellato",
     "ciel.intro": "Una data, un'ora, una città: disegniamo il cielo esattamente com'era sopra di te quella sera. Poi aggiungi i tuoi testi e i tuoi personaggi.",
     "ciel.date": "Data",
-    "ciel.heure": "Ora",
+    "ciel.heure": "Ora",
+    // L'étiquette de la nuit de Noël (27/11, CielEtoile.tsx) : {annee} est remplacé par le code.
+    "ciel.noel.bouton": "Notte di Natale {annee}",
+    "ciel.noel.detail": "24 dicembre, mezzanotte",
+    // Dit aux lecteurs d'écran quand l'étiquette a réglé la date.
+    "ciel.noel.regle": "Data impostata sulla notte di Natale.",
     "ciel.ville": "Città",
     "ciel.ville_aide": "Scrivi il nome della città, poi sceglila dall'elenco.",
     "ciel.ville_aucune": "Nessuna città trovata. Prova la grande città più vicina.",
@@ -4350,7 +4370,12 @@ export const ui = {
     "ciel.titre_fenetre": "Tu cielo estrellado",
     "ciel.intro": "Una fecha, una hora, una ciudad: dibujamos el cielo tal como estaba sobre ti esa noche. Después añades tus textos y tus personajes.",
     "ciel.date": "Fecha",
-    "ciel.heure": "Hora",
+    "ciel.heure": "Hora",
+    // L'étiquette de la nuit de Noël (27/11, CielEtoile.tsx) : {annee} est remplacé par le code.
+    "ciel.noel.bouton": "Nochebuena {annee}",
+    "ciel.noel.detail": "24 de diciembre, medianoche",
+    // Dit aux lecteurs d'écran quand l'étiquette a réglé la date.
+    "ciel.noel.regle": "Fecha ajustada a la Nochebuena.",
     "ciel.ville": "Ciudad",
     "ciel.ville_aide": "Escribe el nombre de la ciudad y elígela en la lista.",
     "ciel.ville_aucune": "No se ha encontrado ninguna ciudad. Prueba con la gran ciudad más cercana.",
@@ -5065,7 +5090,12 @@ export const ui = {
     "ciel.titre_fenetre": "あなたの星空",
     "ciel.intro": "日付・時刻・都市を入力すると、その夜あなたの頭上に広がっていた星空を描きます。そのあと文字やキャラクターを加えられます。",
     "ciel.date": "日付",
-    "ciel.heure": "時刻",
+    "ciel.heure": "時刻",
+    // L'étiquette de la nuit de Noël (27/11, CielEtoile.tsx) : {annee} est remplacé par le code.
+    "ciel.noel.bouton": "{annee}年のクリスマスイブ",
+    "ciel.noel.detail": "12月24日 真夜中",
+    // Dit aux lecteurs d'écran quand l'étiquette a réglé la date.
+    "ciel.noel.regle": "日付をクリスマスイブに設定しました。",
     "ciel.ville": "都市",
     "ciel.ville_aide": "都市名を入力し、一覧から選んでください。",
     "ciel.ville_aucune": "都市が見つかりません。近くの大きな都市をお試しください。",
@@ -5780,7 +5810,12 @@ export const ui = {
     "ciel.titre_fenetre": "您的星空",
     "ciel.intro": "输入日期、时间和城市，我们会画出那一晚您头顶的星空。之后您可以添加文字和人物。",
     "ciel.date": "日期",
-    "ciel.heure": "时间",
+    "ciel.heure": "时间",
+    // L'étiquette de la nuit de Noël (27/11, CielEtoile.tsx) : {annee} est remplacé par le code.
+    "ciel.noel.bouton": "{annee}年平安夜",
+    "ciel.noel.detail": "12月24日午夜",
+    // Dit aux lecteurs d'écran quand l'étiquette a réglé la date.
+    "ciel.noel.regle": "日期已设为平安夜。",
     "ciel.ville": "城市",
     "ciel.ville_aide": "输入城市名称，然后从列表中选择。",
     "ciel.ville_aucune": "未找到城市。请尝试最近的大城市。",

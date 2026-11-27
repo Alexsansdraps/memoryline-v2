@@ -178,6 +178,9 @@ export const THEMES_CIEL_DE_BASE: ThemeCiel[] = [
   { id: "encre", nom: "Encre", fond: "#101114", etoiles: "#f5f2ea", dorures: "#c9b48a", actif: true },
   { id: "sapin", nom: "Sapin", fond: "#1d3a33", etoiles: "#f6f1e4", dorures: "#d6b97c", actif: true },
   { id: "bordeaux", nom: "Bordeaux", fond: "#4a1f2a", etoiles: "#fbefe6", dorures: "#e0b98a", actif: true },
+  // Le thème de la nuit de Noël (27/11, Alexandra : « On y ajoute un thème rouge et or. ») :
+  // rouge profond, anneau or — essayé sur le ciel du 24/12 à Mulhouse.
+  { id: "noel", nom: "Noël", fond: "#7c1420", etoiles: "#fff6e5", dorures: "#e9c56b", actif: true },
   { id: "rose", nom: "Rose poudré", fond: "#9e6871", etoiles: "#fffaf5", dorures: "#fff1dc", actif: true },
   { id: "creme", nom: "Crème", fond: "#efe6d6", etoiles: "#22304a", dorures: "#a8834a", actif: true },
 ];
