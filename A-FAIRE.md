@@ -541,3 +541,29 @@ ssh -n -i ~/.ssh/memoryline_deploiement debian@51.255.34.187 "tar -xzf ~/memoryl
 - Textes pour Margaux au tutoiement, BO au vouvoiement, textes du site dans `apps/web/src/i18n/ui.ts` en 5 langues.
 - Sous Windows, les antislashs sont mangés dans `node -e '…'` et dans certains heredocs : écrire le code dans un fichier.
 - Des commentaires du code citent `AUDIT-SEO.md` (repères CNT-3, VIT-2…) ou `MISE-EN-PROD.md`. Ces fichiers ont été supprimés le 18/11 ; on les relit dans l'historique : `git show 1fdff55:AUDIT-SEO.md`.
+
+
+## 00. POUR LE CLAUDE DE CHEZ ALEXANDRA — reprise du 27/11 au soir (écrit à 17 h 15)
+
+Tout est commité et poussé sur `main`. MIS EN LIGNE le 27/11 vers 17 h 15 (`3545237`, sur le « met direct en prod » d'Alexandra) : tout ce qui est listé en 00.0, plus les ombres chinoises tirées de son image. Si la mise en ligne a échoué, le journal est dans le scratchpad de la session du bureau : refaire §5 depuis `main`. Prochaine mise en ligne : SEULEMENT sur un nouveau « met en prod ».
+
+
+
+
+
+
+### 00.0 Mis en ligne le 27/11 vers 17 h 15
+
+
+
+
+
+
+
+### 00.A Ciel étoilé — ce qui RESTE (état à 17 h 15, en ligne)
+
+
+
+
+3. 8 personnages : vérifier au rendu que 8 tiennent dans la largeur une fois centrés (sinon réduire l'écart, puis l'échelle) — toujours pas vérifié.
+4. FAIT (`3545237`) : en « Texte en haut », la constellation remonte quand il y a des personnages (nuit : cy 0,49 H, R 0,31 W) et pour signe / sans cercle / couple ; le ciel de la nuit sans personnage est inchangé au caractère près. Ombres chinoises : remplacées par les 10 silhouettes vectorisées de l'image d'Alexandra (apps/api/src/ciel-ombres.ts, généré ; scripts de vectorisation non gardés dans le dépôt). « Montre le ciel » retiré (un ancien réglage qui l'envoie est ignoré). Restes : libellés du site à aligner (« Homme en manteau » → l'image montre un homme en sweat ; « Homme au bonnet »), clés ui.ts `ciel.silh.montre-le-ciel` et `ciel.silh.mettre` inutilisées à retirer, code mort des silhouettes debout et dessinées (ciel-silhouettes.ts, petites fonctions de ciel-silhouettes-assises.ts) à nettoyer. Le petit et le grand chien (point 1) : l'image d'Alexandra n'a qu'un chien → lui demander une image avec un petit chien, ou en tirer un en réduisant le chien actuel.
