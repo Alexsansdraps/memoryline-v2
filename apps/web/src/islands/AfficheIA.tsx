@@ -42,6 +42,7 @@ import {
   policesDeLaLigne,
   sousLignes,
   tailleDeLigneCqw,
+  facteurTailleLigne,
   type Character,
   type PoliceAffiche,
   type PosterConfig,
@@ -449,7 +450,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * compose par-dessus exactement comme sur un fond du catalogue, à l'écran
    * comme à l'impression.
    */
-  type Ligne = { value: string; font: string; x?: number; y?: number };
+  /**
+   * `taille` (27/11, Alexandra : « 3 tailles de texte à chaque fois sur chaque
+   * ligne […] pour toutes les affiches », puis devant le ciel : « la taille des
+   * textes sur les lignes ça se met où je vois rien ») : petit / moyen / grand.
+   * Absente = moyen = la taille d'avant ; « m » n'est jamais envoyé, une ligne
+   * d'avant garde donc son empreinte d'impression.
+   */
+  type Ligne = { value: string; font: string; x?: number; y?: number; taille?: "s" | "m" | "l" };
   const [lignes, setLignes] = createSignal<Ligne[]>(
     Array.from({ length: NB_LIGNES_AFFICHE }, (_, i) => ({
       value: "",
@@ -554,7 +562,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     () => [calqueEmpile, calquePose],
     () =>
       lignesRemplies()
-        .map((l) => `${l.font}\u0000${l.value}\u0000${typeof l.x === "number"}`)
+        .map((l) => `${l.font}\u0000${l.value}\u0000${typeof l.x === "number"}\u0000${l.taille ?? "m"}`)
         .join("\n") + sensAffiche(),
   );
   /** La police d'une ligne, par son rang parmi les lignes remplies. */
@@ -564,6 +572,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   // Les clés de traduction sont un type fermé : on les énumère au lieu de les
   // fabriquer par interpolation, sinon le compilateur ne peut plus garantir
   // qu'elles existent dans les cinq langues.
+  /** Les trois tailles d'une ligne, petite à grande (27/11). */
+  const TAILLES_LIGNE = [
+    { id: "s", cle: "cfg.taille_s", px: 12 },
+    { id: "m", cle: "cfg.taille_m", px: 15 },
+    { id: "l", cle: "cfg.taille_l", px: 19 },
+  ] as const;
   const CLES_LIGNES = [
     { champ: "cfg.ligne1_champ", exemple: "cfg.ligne1_exemple" },
     { champ: "cfg.ligne2_champ", exemple: "cfg.ligne2_exemple" },
@@ -834,7 +848,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     const taille = (rang: number) => ((tailleDeLigneCqw(rang) / 100) * (1 - 2 * MARGE_DU_TEXTE)) / Math.SQRT2;
     const boites = remplies.map((l, rang) => {
       const police = policeDeLigne(l.font, rang);
-      const t = taille(rang);
+      // × la taille choisie sur la ligne (27/11) : une grande ligne pousse
+      // les suivantes, comme à l'impression.
+      const t = taille(rang) * facteurTailleLigne(l.taille);
       const n = Math.max(1, sousLignes(l.value).length);
       // Ce qui dépasse de la boîte de ligne, en haut et en bas : les grandes
       // hampes de la Manuscrite (et de sa police de secours pour les chiffres).
@@ -1248,6 +1264,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
             value: l.value.trim(),
             font: l.font,
             color: couleur(),
+            // Petit ou grand seulement : « moyen » n'écrit rien (27/11).
+            ...(l.taille && l.taille !== "m" ? { taille: l.taille } : {}),
             ...(typeof l.x === "number" && typeof l.y === "number"
               ? { x: l.x, y: l.y }
               : {}),
@@ -1753,6 +1771,25 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                     style={{ "font-family": familleCss(police) }}
                   >
                     {nomTraduit(CLES_POLICES, police)}
+                  </button>
+                )}
+              </For>
+            </div>
+            {/* Trois « A » de tailles croissantes, comme sous les lignes des
+                affiches personnalisables (27/11) ; moyen = la taille d'avant. */}
+            <div role="group" aria-label={tr("cfg.taille_ligne")} class="mt-2.5 flex items-end gap-2.5">
+              <For each={TAILLES_LIGNE}>
+                {(t) => (
+                  <button
+                    type="button"
+                    aria-pressed={(ligne().taille ?? "m") === t.id}
+                    aria-label={tr(t.cle)}
+                    title={tr(t.cle)}
+                    onClick={() => modifierLigne(rang, { taille: t.id })}
+                    class="ml-choix min-w-[2.25rem] border border-ink/20 px-2 py-1 leading-none hover:border-ink/45"
+                    style={{ "font-size": `${t.px}px` }}
+                  >
+                    A
                   </button>
                 )}
               </For>
@@ -2412,7 +2449,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           "user-select": "none",
                           "font-family": familleCss(policeDeLigne(ligne().font, rang)),
                           color: couleur(),
-                          "font-size": `${tailleDeLigneCqw(rang) * echelleTexte() * reductionDeLigne(rang)}cqw`,
+                          "font-size": `${tailleDeLigneCqw(rang) * echelleTexte() * reductionDeLigne(rang) * facteurTailleLigne(ligne().taille)}cqw`,
                           "line-height": String(interligneDeLigne(rang)),
                           "letter-spacing": `${espacementDeLigne(rang)}em`,
                           "margin-top": `${espaceAvantLigne(rang)}em`,
@@ -2462,7 +2499,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                           "user-select": "none",
                           "font-family": familleCss(policeDeLigne(ligne().font, rang)),
                           color: couleur(),
-                          "font-size": `${tailleDeLigneCqw(rang) * echelleTexte() * reductionDeLigne(rang)}cqw`,
+                          "font-size": `${tailleDeLigneCqw(rang) * echelleTexte() * reductionDeLigne(rang) * facteurTailleLigne(ligne().taille)}cqw`,
                           "line-height": String(INTERLIGNE_LIGNE_POSEE),
                           "letter-spacing": `${espacementDeLigne(rang)}em`,
                         }}
