@@ -117,10 +117,10 @@ export const ECART_TEXTE_CIEL = 0.03;
  * Le bas de la place du dessin et du texte : FIXE, avec ou sans personnages
  * (27/11 au soir, Alexandra : « quand j'ajoute un perso ça décale la
  * constellation ça devrait pas »). La bande des personnages, dessous, est
- * toujours gardée ; seul le texte pousse le dessin. 0,72 : un cheval debout,
- * la plus haute scène, tient dessous.
+ * toujours gardée ; seul le texte pousse le dessin. 0,76 depuis que le cercle
+ * est au milieu de la page : il y tient plus grand.
  */
-export const basDeLaPlace = (_personnages?: boolean): number => 0.72;
+export const basDeLaPlace = (_personnages?: boolean): number => 0.76;
 function dispositionCentree(
   m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages" | "paysage">,
   hauteurTexte: number,
@@ -128,27 +128,43 @@ function dispositionCentree(
   const paysage = m.style === "couple" && !!m.paysage;
   const W = paysage ? 3508 : 2480;
   const H = paysage ? 2480 : 3508;
+  // Hauteur du dessin D = a R + b ; du haut au centre : c R + d (comme empriseDuDessin, API).
   const e =
     m.style === "nuit"
-      ? { a: 2, b: 93 + (m.ville ? 257 : 192) }
+      ? { a: 2, b: 93 + (m.ville ? 257 : 192), c: 1, d: 93 }
       : m.style === "couple"
-        ? { a: 2.14, b: 12 }
+        ? { a: 2.14, b: 12, c: 1.14, d: 0 }
         : m.style === "libre"
-          ? { a: 1.76, b: 0 }
-          : { a: 2, b: 48 };
+          ? { a: 1.76, b: 0, c: 0.78, d: 0 }
+          : { a: 2, b: 48, c: 1, d: 24 };
   const Rdefaut = m.style === "couple" ? W * 0.17 : W * 0.34;
   const A = MARGE_HAUT_CIEL * H;
   const B = basDeLaPlace(!!m.personnages && m.style === "nuit") * H;
   const h = Math.max(0, hauteurTexte) * H;
   const g = h > 0 ? ECART_TEXTE_CIEL * H : 0;
-  const dispo = B - A - h - g;
-  const R = Math.max(Rdefaut * 0.6, Math.min(Rdefaut, (dispo - e.b) / e.a));
+  // Le centre du cercle au MILIEU DE LA PAGE, quel que soit le style, avec ou
+  // sans personnages (27/11 au soir, Alexandra : « il faut vraiment que la
+  // constellation, peu importe le style d'affichage, soit au milieu de la
+  // page […] si on ajoute un texte, ça pousse un petit peu, soit vers le
+  // haut, soit vers le bas, la constellation »). Un texte la pousse du
+  // strict nécessaire pour ne pas le toucher (« un petit peu »).
+  // Sa taille : la plus grande qui tient CENTRÉE au milieu de la page, sans
+  // texte (entre la marge du haut et la bande des personnages). Elle ne
+  // change plus ensuite : un texte ne fait que pousser le cercle de ce qu'il
+  // faut pour ne pas le toucher ; s'il n'y a vraiment plus la place, alors
+  // seulement le rayon se réduit.
+  const hautMin = A + (m.texte === "haut" ? h + g : 0);
+  const basMax = B - (m.texte === "bas" ? h + g : 0);
+  let R = Math.min(Rdefaut, (H / 2 - e.d - A) / e.c, (B - H / 2 - (e.b - e.d)) / (e.a - e.c));
+  let cy = H / 2;
+  if (cy - e.c * R - e.d < hautMin) cy = hautMin + e.c * R + e.d;
+  if (cy + (e.a - e.c) * R + (e.b - e.d) > basMax) cy = basMax - (e.a - e.c) * R - (e.b - e.d);
+  if (cy - e.c * R - e.d < hautMin - 0.5) {
+    R = Math.max(Rdefaut * 0.5, (basMax - hautMin - e.b) / e.a);
+    cy = hautMin + e.c * R + e.d;
+  }
+  const haut = cy - e.c * R - e.d;
   const D = e.a * R + e.b;
-  // Le vide se partage 1.0 au-dessus, le reste dessous (27/11 au soir,
-  // Alexandra : « naturellement il est trop haut le cercle constellation ») :
-  // centré pile, le dessin paraissait flotter haut au-dessus des collines.
-  const debut = A + Math.max(0, dispo - D) * 1.0;
-  const haut = m.texte === "haut" ? debut + h + g : debut;
   return { haut: haut / H, bas: (haut + D) / H };
 }
 
