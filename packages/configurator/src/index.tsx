@@ -897,6 +897,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
                 cadre={cadreChoisi() ?? null}
                 messages={msg()}
                 filigrane={props.filigrane}
+                auMur
               />
             )}
           />

@@ -200,6 +200,75 @@ const PIECES: Piece[] = [
   },
 ];
 
+/**
+ * La largeur à laquelle l'affiche est DESSINÉE avant d'être réduite à sa
+ * place sur le mur (27/11, Alexandra : « ça s'affiche mal, c'est pas
+ * réaliste et l'affiche est tronquée »). Dessinée directement en 150 px, ses
+ * lignes tombaient à 7 ou 8 px : les navigateurs des tablettes Android
+ * imposent une taille de texte minimale, les lignes grossissaient et se
+ * faisaient couper (« Hôtel de vil… »). Dessinée comme dans la colonne, puis
+ * réduite d'un bloc, comme une image : le texte garde exactement sa mise en
+ * page.
+ */
+const LARGEUR_DESSIN_PX = 480;
+
+/**
+ * L'affiche à sa taille sur le mur : dessinée à LARGEUR_DESSIN_PX, réduite
+ * d'un bloc à la largeur de sa place. Un vrai papier accroché : coins droits
+ * (PosterPreview `auMur`), une ombre courte et une plus diffuse, venues de la
+ * lumière en haut à gauche, et un reflet à peine visible sur la feuille.
+ */
+function AfficheALEchelle(props: { format: PosterFormat; affiche: () => JSX.Element }) {
+  const [echelle, setEchelle] = createSignal(0);
+  let place: HTMLDivElement | undefined;
+  onMount(() => {
+    if (!place) return;
+    const mesurer = () => setEchelle((place?.getBoundingClientRect().width ?? 0) / LARGEUR_DESSIN_PX);
+    mesurer();
+    if (typeof ResizeObserver === "undefined") return;
+    const observateur = new ResizeObserver(mesurer);
+    observateur.observe(place);
+    onCleanup(() => observateur.disconnect());
+  });
+  const d = () => DIMENSIONS_FORMAT[props.format] ?? DIMENSIONS_FORMAT.A4;
+  return (
+    <div
+      ref={place}
+      style={{
+        position: "relative",
+        width: "100%",
+        "aspect-ratio": `${d().l} / ${d().h}`,
+        "box-shadow": "1px 2px 3px rgba(0,0,0,.28), 4px 10px 22px rgba(0,0,0,.18)",
+      }}
+    >
+      <div
+        class="ml-mur-affiche"
+        style={{
+          position: "absolute",
+          left: "0",
+          top: "0",
+          width: `${LARGEUR_DESSIN_PX}px`,
+          transform: `scale(${echelle()})`,
+          "transform-origin": "0 0",
+          visibility: echelle() ? "visible" : "hidden",
+        }}
+      >
+        {props.affiche()}
+      </div>
+      {/* Le reflet de la lumière sur le papier, par-dessus tout. */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          inset: "0",
+          "pointer-events": "none",
+          background: "linear-gradient(135deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 45%, rgba(0,0,0,.06) 100%)",
+        }}
+      />
+    </div>
+  );
+}
+
 export function ApercuAuMur(props: {
   format: PosterFormat;
   /** Un cadre est-il choisi ? Il ajoute sa baguette autour de l'affiche. */
@@ -448,10 +517,9 @@ export function ApercuAuMur(props: {
                         width: `${(tailleCm().l / p().l) * 100}%`,
                         left: `${((p().x - tailleCm().l / 2) / p().l) * 100}%`,
                         top: `${((p().bas - tailleCm().h) / p().h) * 100}%`,
-                        filter: "drop-shadow(0 1.5px 2px rgba(0,0,0,.25))",
                       }}
                     >
-                      {props.affiche()}
+                      <AfficheALEchelle format={props.format} affiche={props.affiche} />
                     </div>
                   </div>
                   <p style={{ "font-size": "13px", color: "#6b7280", margin: "10px 0 0", "text-align": "center" }}>
@@ -529,10 +597,9 @@ export function ApercuAuMur(props: {
                           transform: "translate(-50%, -50%)",
                           cursor: "grab",
                           "touch-action": "none",
-                          filter: "drop-shadow(0 2px 3px rgba(0,0,0,.3))",
                         }}
                       >
-                        {props.affiche()}
+                        <AfficheALEchelle format={props.format} affiche={props.affiche} />
                       </div>
                     </div>
                     <div style={{ display: "flex", "flex-wrap": "wrap", "align-items": "center", gap: "12px", "margin-top": "10px" }}>

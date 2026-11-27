@@ -25,7 +25,10 @@ export const SYNONYMES: Readonly<Record<string, readonly string[]>> = {
     "prix en masse", "modification groupée", "appliquer à tout",
     "modifier en masse", "changer les collections",
   ],
-  "/cadres": ["encadrement"],
+  // « Voir sur un mur » se coupe ici (27/11, Alexandra : « faut que margaux
+  // pour activer/désactiver "voir sur le mur" ») : on ne le cherche pas
+  // sous « Cadres ».
+  "/cadres": ["encadrement", "voir sur un mur", "voir sur le mur", "mur", "aperçu au mur"],
   "/personnages": ["silhouettes"],
   // La bibliothèque des pièces a son écran depuis octobre 2026 (elle vivait
   // en bas de Personnages) ; « clothes » : les noms de l'import, tels que la

@@ -1400,6 +1400,14 @@ body:has(.ml-stand-fin) > footer {
   height: auto !important;
   margin-inline: 0;
 }
+/* « Voir sur un mur » (27/11) : l'affiche y est dessinée à largeur fixe, puis
+   réduite d'un bloc (ApercuAuMur.tsx, AfficheALEchelle). Bridée ici par la
+   hauteur de l'écran, elle ne remplissait que le haut de sa place au mur. */
+.ml-mur-affiche .ml-cfg-poster {
+  width: 100% !important;
+  height: auto !important;
+  margin-inline: 0;
+}
 
 /* --------------------------------------------------------------------------
  * Sélecteur de langue (en-tête, à droite). Ouverture au survol ET au focus

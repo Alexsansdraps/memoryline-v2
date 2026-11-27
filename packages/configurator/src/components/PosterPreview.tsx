@@ -99,6 +99,12 @@ export function PosterPreview(props: {
    */
   filigrane?: boolean;
   /**
+   * L'affiche accrochée au mur (« Voir sur un mur », ApercuAuMur.tsx, 27/11) :
+   * coins droits — un papier n'a pas les coins arrondis d'une vignette — et
+   * pas d'ombre propre : c'est le mur qui la porte.
+   */
+  auMur?: boolean;
+  /**
    * Aperçu SANS texte : ni la couche des lignes, ni la roue qui attend leurs
    * polices, ni « Memory Line » à leur place (20/11). Absent : le texte, comme
    * toujours.
@@ -489,7 +495,7 @@ export function PosterPreview(props: {
         // Un vrai cadre n'a pas les coins arrondis, et la baguette mange sur
         // l'affiche au lieu de s'ajouter autour : c'est ce que fait une
         // bordure en « border-box », comme un passe-partout.
-        "border-radius": props.cadre ? "2px" : "8px",
+        "border-radius": props.auMur ? "0" : props.cadre ? "2px" : "8px",
         ...(couleurCadre()
           ? {
               border: `${epaisseurCadre()}px solid ${couleurCadre()}`,
@@ -499,7 +505,9 @@ export function PosterPreview(props: {
               "box-shadow":
                 "inset 0 0 0 1px rgba(0,0,0,.28), 0 0 0 1px rgba(0,0,0,.14), 0 6px 18px rgba(0,0,0,.22)",
             }
-          : { "box-shadow": "0 1px 4px rgba(0,0,0,.15)" }),
+          : props.auMur
+            ? {}
+            : { "box-shadow": "0 1px 4px rgba(0,0,0,.15)" }),
       }}
     >
       {/* Couche fond, en deux temps : la version légère d'abord, la nette
