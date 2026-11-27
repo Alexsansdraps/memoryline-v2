@@ -779,8 +779,11 @@ const derniere = premiere + lignes.length;
                     possible quel stand ») : la tablette d'un stand, ou le
                     site. Les plus anciennes ne le disent que si elles sont
                     passées par un panier. */}
+                {/* Sur plusieurs lignes s'il le faut (relecture du 27/11) : coupé,
+                    « Stand · Marché de Noël … » perdait justement la ville,
+                    ce qui distingue un stand d'un autre. */}
                 <div
-                  class={g.origine === "stand" ? "truncate font-medium" : "truncate text-bo-muted"}
+                  class={g.origine === "stand" ? "break-words font-medium" : "break-words text-bo-muted"}
                   title={g.origine === "stand" && g.stand ? `Stand : ${g.stand}` : undefined}
                 >
                   {g.origine === "stand"

@@ -631,11 +631,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * vignettes sous l'aperçu : on en revoit une d'un toucher, on coche celles
    * qu'on garde, et elles partent ensemble au panier.
    *
-   * Gardées aussi dans la mémoire de l'onglet (sessionStorage) : un
-   * rechargement par erreur sur la tablette ne doit pas les faire perdre.
-   * La clé porte le PANIER : au stand, « Terminé » repart d'un panier
-   * neuf, et le client suivant ne voit donc rien de celles du précédent.
-   * Chacune garde la photo dont elle vient, pour pouvoir la relancer.
+   * Gardées aussi en mémoire (memoireDesCreations : l'onglet au stand, le
+   * navigateur sur le site, depuis le 27/11) : un rechargement par erreur
+   * sur la tablette ne doit pas les faire perdre. La clé porte le PANIER :
+   * au stand, « Terminé » repart d'un panier neuf, et le client suivant ne
+   * voit donc rien de celles du précédent. Chacune garde la photo dont elle
+   * vient, pour pouvoir la relancer.
    */
   type Creation = {
     publicId: string;
@@ -653,17 +654,44 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
      * rechargement de la page.
      */
     compo?: CompositionIA;
+    /** Quand elle a été créée (ms) : au-delà de JOURS_DES_CREATIONS, elle n'est plus proposée. */
+    le?: number;
   };
   /** Lue dans le navigateur seulement : le panier n'existe pas au rendu serveur. */
   let cleCreations = "";
   const [creations, setCreations] = createSignal<Creation[]>([]);
   /** Les créations cochées pour le panier, par leur identifiant. */
   const [aAjouter, setAAjouter] = createSignal<string[]>([]);
+  /**
+   * Où vivent les créations (relecture du 27/11). Sur le site, dans le
+   * NAVIGATEUR (localStorage) : depuis la limite de trois essais par jour,
+   * une cliente qui fermait l'onglet, ou rouvrait la fiche dans un autre,
+   * perdait ses créations ET ne pouvait plus en refaire — plus rien à mettre
+   * au panier. Au stand, dans l'ONGLET, comme avant (sessionStorage) : la
+   * tablette passe d'un client à l'autre.
+   */
+  const memoireDesCreations = (): Storage => (props.stand ? sessionStorage : localStorage);
+  /** Une création plus vieille ne se propose plus : son image a pu être effacée du serveur. */
+  const JOURS_DES_CREATIONS = 7;
   onMount(() => {
     try {
       cleCreations = `ml_ia_creations_${getCartId()}_${props.product.id}`;
-      const lues = JSON.parse(sessionStorage.getItem(cleCreations) ?? "[]") as Creation[];
-      if (Array.isArray(lues)) setCreations(lues.filter((c) => c?.publicId && c?.apercu));
+      const lire = (m: Storage) => {
+        const l = JSON.parse(m.getItem(cleCreations) ?? "[]") as Creation[];
+        return Array.isArray(l) ? l : [];
+      };
+      // Sur le site, aussi celles qu'un onglet d'avant ce changement avait
+      // gardées pour lui seul.
+      const lues = props.stand ? lire(sessionStorage) : [...lire(localStorage), ...lire(sessionStorage)];
+      const limite = Date.now() - JOURS_DES_CREATIONS * 86_400_000;
+      const vues = new Set<string>();
+      setCreations(
+        lues.filter((c) => {
+          if (!c?.publicId || !c?.apercu || vues.has(c.publicId)) return false;
+          vues.add(c.publicId);
+          return !c.le || c.le >= limite;
+        }),
+      );
     } catch {
       /* mémoire indisponible (navigation privée…) : la séance repart de zéro */
     }
@@ -684,9 +712,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     }
   });
   function memoriserCreations(liste: Creation[]) {
-    setCreations(liste);
+    // Datées à leur arrivée (27/11), pour ne plus proposer, des jours plus
+    // tard, une création dont l'image a été effacée du serveur.
+    const datees = liste.map((c) => (c.le ? c : { ...c, le: Date.now() }));
+    setCreations(datees);
     try {
-      if (cleCreations) sessionStorage.setItem(cleCreations, JSON.stringify(liste));
+      if (cleCreations) memoireDesCreations().setItem(cleCreations, JSON.stringify(datees));
     } catch {
       /* mémoire pleine ou interdite : la liste vit au moins dans la page */
     }

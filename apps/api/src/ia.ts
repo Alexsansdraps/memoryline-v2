@@ -592,11 +592,14 @@ export async function origineDeLaDemande(c: Context, standDeLaPage: unknown): Pr
  * remet pas le compteur à zéro. Ni ses échecs (la faute n'en est pas à lui),
  * ni les affiches du stand, ni les ciels étoilés.
  */
-export async function essaisDuJourSurLeSite(v: {
-  cartId: string | null;
-  customerId: number | null;
-  ip: string | null;
-}): Promise<number> {
+export async function essaisDuJourSurLeSite(
+  v: {
+    cartId: string | null;
+    customerId: number | null;
+    ip: string | null;
+  },
+  lecteur: LecteurDepense = db,
+): Promise<number> {
   const g = schema.aiGenerations;
   const qui: SQL[] = [];
   if (v.cartId) qui.push(eq(g.cartId, v.cartId));
@@ -604,7 +607,7 @@ export async function essaisDuJourSurLeSite(v: {
   // « local » : aucune adresse transmise (développement) ; elle ne désigne personne.
   if (v.ip && v.ip !== "local") qui.push(eq(g.ip, v.ip));
   if (!qui.length) return 0;
-  const [r] = await db
+  const [r] = await lecteur
     .select({ n: raw<number>`count(*)::int` })
     .from(g)
     .where(
@@ -2243,38 +2246,48 @@ export function mountIaRoutes(app: Hono): void {
     // site, ESSAIS_PAR_JOUR_SITE par jour ; la tablette du stand, sans limite.
     // Contrôlé juste avant d'écrire la ligne : une demande refusée plus haut
     // (photo, affiche) ne dit pas « revenez demain ».
+    //
+    // Compter puis écrire sous un même verrou (relecture du 27/11) : des
+    // demandes lancées ensemble lisaient toutes le même compte avant qu'aucune
+    // ligne n'existe, et passaient toutes — jusqu'à 10 au lieu de 3. Comme le
+    // relais photo du site (ia-relais.ts). Le verrou ne tient que ces deux
+    // requêtes courtes, et la tablette ne le prend jamais.
     const provenance = await origineDeLaDemande(c, body.stand);
-    if (provenance.origine === "site") {
-      const deja = await essaisDuJourSurLeSite({ cartId, customerId: client?.id ?? null, ip });
-      if (deja >= ESSAIS_PAR_JOUR_SITE)
-        return c.json(
-          {
-            error: `Vous avez fait vos ${ESSAIS_PAR_JOUR_SITE} essais du jour. Revenez demain pour créer d'autres affiches.`,
-            limiteDuJour: true,
-            limite: ESSAIS_PAR_JOUR_SITE,
-          },
-          429,
-        );
-    }
-
     const publicId = randomUUID();
-    const [ligne] = await db
-      .insert(schema.aiGenerations)
-      .values({
-        publicId,
-        productId: produit.id,
-        cartId,
-        customerId: client?.id ?? null,
-        sourcePath: `ia/${nomPhoto}`,
-        prompt: consigne,
-        model: reg["ia.modele"],
-        size: tailleChoisie,
-        status: "en_cours",
-        ip,
-        origine: provenance.origine,
-        standId: provenance.standId,
-      })
-      .returning();
+    const ligne = await db.transaction(async (tx) => {
+      if (provenance.origine === "site") {
+        await tx.execute(raw`select pg_advisory_xact_lock(hashtext(${"ia-essais-du-site"}))`);
+        const deja = await essaisDuJourSurLeSite({ cartId, customerId: client?.id ?? null, ip }, tx);
+        if (deja >= ESSAIS_PAR_JOUR_SITE) return null;
+      }
+      const [l] = await tx
+        .insert(schema.aiGenerations)
+        .values({
+          publicId,
+          productId: produit.id,
+          cartId,
+          customerId: client?.id ?? null,
+          sourcePath: `ia/${nomPhoto}`,
+          prompt: consigne,
+          model: reg["ia.modele"],
+          size: tailleChoisie,
+          status: "en_cours",
+          ip,
+          origine: provenance.origine,
+          standId: provenance.standId,
+        })
+        .returning();
+      return l ?? null;
+    });
+    if (!ligne)
+      return c.json(
+        {
+          error: `Vous avez fait vos ${ESSAIS_PAR_JOUR_SITE} essais du jour. Revenez demain pour créer d'autres affiches.`,
+          limiteDuJour: true,
+          limite: ESSAIS_PAR_JOUR_SITE,
+        },
+        429,
+      );
 
     // La durée de chaque création, au journal (26/11) : c'est ce qui dira, en
     // ligne, si « Comptez une à trois minutes » (site) et OPENAI_TIMEOUT_MS

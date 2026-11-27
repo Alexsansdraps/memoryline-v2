@@ -14,14 +14,15 @@
  * Touche la BASE LOCALE, et elle seule (`@db:5432`, hors production) : ses
  * lignes portent une marque à part et sont effacées à la fin ; son stand
  * d'essai naît archivé et fermé, et est effacé ensuite ; la migration est
- * essayée dans une transaction annulée. Aucun appel à OpenAI (clé factice,
- * adresse injoignable, et la demande refusée ne va jamais jusqu'à lui), aucun
- * courriel.
+ * essayée dans une transaction annulée. Aucun appel à OpenAI : un faux, sur
+ * cette machine, refuse chaque image (clé factice) ; aucun courriel.
  */
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
@@ -29,14 +30,30 @@ import { Hono } from "hono";
 const baseLocale =
   /@db:5432\//.test(process.env.DATABASE_URL ?? "") && process.env.NODE_ENV !== "production";
 
-// Avant le premier import d'ia.ts, qui lit la clé à son chargement.
+/**
+ * Un faux OpenAI, sur cette machine : il refuse chaque image au bout d'une
+ * seconde. Une création reste donc « en cours » le temps que des demandes
+ * lancées ensemble se croisent, comme avec le vrai (une à trois minutes) ;
+ * refusée, elle ne coûte rien. Rien ne quitte la machine.
+ */
+let fauxOpenAI: Server | null = null;
+// Avant le premier import d'ia.ts, qui lit la clé et l'adresse à son chargement.
 if (baseLocale) {
+  fauxOpenAI = createServer((req, res) => {
+    req.resume();
+    setTimeout(() => {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "essai : image refusée" } }));
+    }, 1000);
+  });
+  await new Promise<void>((ok) => fauxOpenAI!.listen(0, "127.0.0.1", ok));
   process.env.OPENAI_API_KEY = "sk-TEST-ORIGINE-factice";
-  process.env.OPENAI_BASE_URL = "http://127.0.0.1:9/v1";
+  process.env.OPENAI_BASE_URL = `http://127.0.0.1:${(fauxOpenAI.address() as AddressInfo).port}/v1`;
 }
 
 after(async () => {
   if (!baseLocale) return;
+  fauxOpenAI?.close();
   const { sql } = await import("../src/db/client.js");
   await sql.end({ timeout: 5 });
 });
@@ -193,6 +210,47 @@ test("3 essais par jour sur le site : la 4e demande est refusée, sans rien écr
     assert.equal(lignes.length, 7, "aucune ligne de plus");
   } finally {
     await db.delete(g).where(like(g.publicId, `${marque}-%`));
+    await rm(resolve(IA_DIR, photo), { force: true });
+  }
+});
+
+test("demandes lancées ensemble par un visiteur du site : exactement 3 passent (verrou, relecture du 27/11)", { skip: sauf }, async () => {
+  const { db, schema } = await import("../src/db/client.js");
+  const { and, eq, like } = await import("drizzle-orm");
+  const { IA_DIR, mountIaRoutes } = await import("../src/ia.js");
+  const g = schema.aiGenerations;
+  const marque = `essai-course-${Date.now()}`;
+  const panier = `${marque}-panier`;
+  // Une autre adresse de documentation que l'essai précédent : son anti-rafale est à part.
+  const ip = "203.0.113.78";
+  const photo = `${marque}.jpg`;
+  const [affichePhoto] = await db
+    .select({ id: schema.products.id })
+    .from(schema.products)
+    .where(and(eq(schema.products.aiEnabled, true), eq(schema.products.skyEnabled, false)))
+    .limit(1);
+  const app = new Hono();
+  mountIaRoutes(app);
+  try {
+    await writeFile(resolve(IA_DIR, photo), Buffer.from("photo d'essai"));
+    // Six demandes ensemble (sous les 10 par minute de l'anti-rafale). Celles
+    // qui passent la limite partent vers le faux OpenAI, qui les refuse au
+    // bout d'une seconde : rien ne part vraiment.
+    const reponses = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        app.request("/ia/generer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Forwarded-For": ip },
+          body: JSON.stringify({ productId: affichePhoto!.id, photo, cartId: panier }),
+        }),
+      ),
+    );
+    const refusees = reponses.filter((r) => r.status === 429).length;
+    assert.equal(refusees, 3, `codes : ${reponses.map((r) => r.status).join(", ")}`);
+    const lignes = await db.select({ id: g.id }).from(g).where(eq(g.cartId, panier));
+    assert.equal(lignes.length, 3);
+  } finally {
+    await db.delete(g).where(like(g.cartId, `${marque}-%`));
     await rm(resolve(IA_DIR, photo), { force: true });
   }
 });
