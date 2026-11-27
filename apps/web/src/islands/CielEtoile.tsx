@@ -98,21 +98,27 @@ export interface MiseDuCiel {
  * `bas` (texte en bas). MÊMES calculs que dispositionDuCiel
  * (apps/api/src/ciel.ts) : si l'un change, changer l'autre.
  */
-export function zoneDuDessin(m: Pick<MiseDuCiel, "style" | "texte" | "ville">): { haut: number; bas: number } {
+export function zoneDuDessin(
+  m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages">,
+): { haut: number; bas: number } {
   const W = 2480;
   const H = 3508;
+  // Texte en haut, le dessin remonte et rapetisse un peu (27/11, Alexandra :
+  // « trop bas la constellation quand c'est en mode texte en haut ») ; le ciel
+  // de cette nuit seulement s'il y a des personnages.
   if (m.style === "nuit") {
-    const cy = m.texte === "haut" ? H * 0.55 : H * 0.31;
-    const R = m.texte === "haut" ? W * 0.34 : W * 0.31;
+    const remonte = m.texte === "haut" && !!m.personnages;
+    const cy = m.texte === "haut" ? (remonte ? H * 0.49 : H * 0.55) : H * 0.31;
+    const R = m.texte === "haut" && !remonte ? W * 0.34 : W * 0.31;
     return { haut: (cy - R - 93) / H, bas: (cy + R + (m.ville ? 257 : 192)) / H };
   }
   if (m.style === "couple") {
-    const cy = H * (m.texte === "haut" ? 0.5 : 0.36);
+    const cy = H * (m.texte === "haut" ? 0.46 : 0.36);
     const R = W * 0.205;
     return { haut: (cy - R * 1.14) / H, bas: (cy + R + 12) / H };
   }
-  const cy = H * (m.texte === "haut" ? 0.55 : 0.33);
-  const R = W * 0.34;
+  const cy = H * (m.texte === "haut" ? 0.48 : 0.33);
+  const R = W * (m.texte === "haut" ? 0.32 : 0.34);
   if (m.style === "libre") return { haut: (cy - R * 0.78) / H, bas: (cy + R * 0.98) / H };
   return { haut: (cy - R - 24) / H, bas: (cy + R + 24) / H };
 }

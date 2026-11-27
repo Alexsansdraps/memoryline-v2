@@ -883,7 +883,9 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     "enfant",
     "enfant-sur-epaules",
     "adulte-bebe",
-    "montre-le-ciel",
+    // « montre-le-ciel » retiré (27/11, Alexandra : « tiens pour les svg c'est
+    // ça qu'il faut pour les ombres, supprime celles que tu as fait tu prends
+    // ça ») : son image n'en a pas d'équivalent.
     "chien",
     // 27/11, Alexandra : « et le chat en ombre ? »
     "chat",
@@ -1925,7 +1927,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     // `?v=assises` (27/11, Alexandra : les vignettes montraient encore les
     // silhouettes debout) : la réponse reste une heure en cache, l'adresse
     // neuve passe outre l'ancienne liste.
-    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=assises-chat`)
+    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=ombres-image`)
       .then((r) => r.json())
       .then((data: { silhouettes?: { id: string; d: string; gauche: number; droite: number; haut: number }[] }) =>
         setFormesSilhouettes(Object.fromEntries((data.silhouettes ?? []).map((s) => [s.id, s]))),

@@ -366,24 +366,32 @@ export function dispositionDuCiel(
   style: StyleCiel,
   texte: PlaceTexte,
   ville = false,
+  personnages = false,
 ): { cy: number; R: number; haut: number; bas: number } {
   const W = LARGEUR_CIEL;
   const H = HAUTEUR_CIEL;
+  /*
+   * Texte en haut, le dessin remonte et rapetisse un peu (27/11, Alexandra :
+   * « trop bas la constellation quand c'est en mode texte en haut ») : sous
+   * lui, la place des personnages, sans que les coordonnées touchent une
+   * tête. Le ciel de cette nuit SANS personnage garde le cercle d'avant au
+   * pixel près (les ciels déjà vendus se redessinent pareil).
+   */
   if (style === "nuit") {
-    // Texte en haut : le cercle d'avant, au pixel près.
-    const cy = texte === "haut" ? H * CENTRE_Y_CIEL : H * 0.31;
-    const R = texte === "haut" ? W * 0.34 : W * 0.31;
+    const remonte = texte === "haut" && personnages;
+    const cy = texte === "haut" ? (remonte ? H * 0.49 : H * CENTRE_Y_CIEL) : H * 0.31;
+    const R = texte === "haut" && !remonte ? W * 0.34 : W * 0.31;
     // Haut : la lettre N ; bas : les coordonnées, ou la ville et les coordonnées.
     return { cy, R, haut: (cy - R - 93) / H, bas: (cy + R + (ville ? 257 : 192)) / H };
   }
   if (style === "couple") {
-    const cy = H * (texte === "haut" ? 0.5 : 0.36);
+    const cy = H * (texte === "haut" ? 0.46 : 0.36);
     const R = W * 0.205;
     // La date du cercle de gauche monte en arc au-dessus de lui.
     return { cy, R, haut: (cy - R * 1.14) / H, bas: (cy + R + 12) / H };
   }
-  const cy = H * (texte === "haut" ? CENTRE_Y_CIEL : 0.33);
-  const R = W * 0.34;
+  const cy = H * (texte === "haut" ? 0.48 : 0.33);
+  const R = W * (texte === "haut" ? 0.32 : 0.34);
   if (style === "libre") return { cy, R, haut: (cy - R * 0.78) / H, bas: (cy + R * 0.98) / H };
   return { cy, R, haut: (cy - R - 24) / H, bas: (cy + R + 24) / H };
 }
@@ -422,14 +430,14 @@ export function lireReglagesCiel(
   if (
     !Array.isArray(silhouettes) ||
     silhouettes.length > SILHOUETTES_MAX ||
-    !silhouettes.every(
-      (id) =>
-        typeof id === "string" &&
-        /^[a-z-]+(:m)?$/.test(id) &&
-        SILHOUETTES_ASSISES_PAR_ID.has(id.split(":")[0]!),
-    )
+    !silhouettes.every((id) => typeof id === "string" && /^[a-z-]+(:m)?$/.test(id))
   )
     return { ok: false, error: "Personnages invalides" };
+  // Un id bien formé mais inconnu (« montre-le-ciel », retiré le 27/11 quand
+  // les ombres de l'image d'Alexandra ont remplacé les dessins : « supprime
+  // celles que tu as fait tu prends ça ») est ignoré, pas refusé : un ancien
+  // réglage enregistré se redessine sans lui.
+  const connues = (silhouettes as string[]).filter((id) => SILHOUETTES_ASSISES_PAR_ID.has(id.split(":")[0]!));
   const langue = (LANGUES_CIEL as readonly string[]).includes(String(b.langue)) ? (b.langue as LangueCiel) : "fr";
   const signes: IdSigne[] = [];
   const dates: (string | null)[] = [];
@@ -459,7 +467,7 @@ export function lireReglagesCiel(
       dates.push(date);
     }
   }
-  return { ok: true, reglages: { style: s, texte, signes, dates, silhouettes: silhouettes as string[], langue } };
+  return { ok: true, reglages: { style: s, texte, signes, dates, silhouettes: connues, langue } };
 }
 
 /**
@@ -476,7 +484,8 @@ export function lireReglagesCiel(
  *   (plafondDesSilhouettes ; la fenêtre du ciel y arrête le bloc de lignes) ;
  * - texte en haut, un signe ou un signe sans cercle : celles qui se tiennent
  *   sous la date (à défaut, sous le nom du signe) restent sous elle.
- * Le ciel de cette nuit texte en haut et le couple ne changent pas.
+ * - texte en haut, le ciel de cette nuit ou le couple : sous les coordonnées
+ *   ou les cercles, remontés pour leur laisser la place (27/11).
  */
 function silhouettesDuCiel(
   ids: readonly string[],
@@ -491,6 +500,11 @@ function silhouettesDuCiel(
   const H = HAUTEUR_CIEL;
   let plafond: { y: number; x0?: number; x1?: number } | undefined;
   if (m.texte === "bas") plafond = { y: plafondDesSilhouettes(m.style, m.ville) * H };
+  else if (m.style === "nuit" || m.style === "couple")
+    // Texte en haut (27/11, Alexandra : « trop bas la constellation quand
+    // c'est en mode texte en haut ») : jamais une tête sur les coordonnées ou
+    // sous les cercles ; le dessin remonté laisse la place, ce n'est qu'un garde-fou.
+    plafond = { y: (dispositionDuCiel(m.style, "haut", m.ville, true).bas + 0.015) * H };
   else if (m.style === "signe" || m.style === "libre") {
     // Mêmes mesures que dessinDuSigne (ciel-signes.ts) : la date sous le nom.
     const { cy, R } = dispositionDuCiel(m.style, m.texte);
@@ -613,7 +627,9 @@ export function svgDuCiel(
   // l'affiche s'empilent en haut, sur le premier petit tiers. Texte en bas
   // (27/11) : le cercle monte, un peu plus petit (dispositionDuCiel).
   const texte = options.texte ?? "haut";
-  const { cy, R } = dispositionDuCiel("nuit", texte);
+  // Avec des personnages, texte en haut, le cercle remonte (27/11).
+  const personnages = (options.silhouettes ?? []).some((id) => SILHOUETTES_ASSISES_PAR_ID.has(id.split(":")[0]!));
+  const { cy, R } = dispositionDuCiel("nuit", texte, !!(options.ville ?? "").trim(), personnages);
   const px = (p: { x: number; y: number }) => `${(cx + p.x * R).toFixed(1)},${(cy + p.y * R).toFixed(1)}`;
 
   // Tracés des constellations : un segment n'est gardé que si ses deux
@@ -943,8 +959,9 @@ export function mountCielRoutes(app: Hono): void {
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
       // Le filigrane se cale sur le centre du dessin, où qu'il soit.
-      const { cy } = dispositionDuCiel(reglages.style, reglages.texte);
-      const centreY = nuit && reglages.texte === "haut" ? CENTRE_Y_CIEL : cy / HAUTEUR_CIEL;
+      // Remonté avec des personnages, texte en haut (27/11) : le même calcul que le dessin.
+      const { cy } = dispositionDuCiel(reglages.style, reglages.texte, !!ville, reglages.silhouettes.length > 0);
+      const centreY = cy / HAUTEUR_CIEL;
       // Sans anneau pour un couple ou un signe sans cercle (27/11) : il ne
       // suivrait pas le dessin.
       const anneau = reglages.style === "nuit" || reglages.style === "signe";

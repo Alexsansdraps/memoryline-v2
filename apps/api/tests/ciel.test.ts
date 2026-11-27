@@ -142,7 +142,10 @@ test("réglages du ciel : par défaut comme avant ; un champ faux est refusé (2
   refus({ style: "signe", signes: ["Ari", "Tau"] });
   // Les personnages : identifiants connus, quatre au plus.
   assert.deepEqual(ok({ silhouettes: ["couple", "chien"] }).silhouettes, ["couple", "chien"]);
-  refus({ silhouettes: ["licorne"] });
+  // Un id inconnu mais bien formé (« montre-le-ciel », retiré le 27/11) est ignoré ; une chaîne invalide reste refusée.
+  assert.deepEqual(ok({ silhouettes: ["montre-le-ciel", "chien:m", "licorne"] }).silhouettes, ["chien:m"]);
+  refus({ silhouettes: ["Licorne !"] });
+  refus({ silhouettes: [42] });
   refus({ silhouettes: "couple" });
   refus({ silhouettes: ["enfant", "enfant", "chien", "couple", "homme-manteau", "chat", "enfant", "chien", "couple"] }); // 9 > 8
 });
@@ -204,7 +207,7 @@ test("silhouettes posées : 0, 1, 4 ; sur le ciel de cette nuit comme sur un sig
   assert.equal(nb(un), 1);
   // La couleur de la colline (27/11, Alexandra : « supp ça » pour la teinte automatique).
   assert.ok(un.includes(`<g fill="${teintesDuTheme(THEMES_CIEL_DE_BASE[0]!).collinePres}" data-silhouettes`));
-  assert.equal(nb(svgDuCiel(47.75, 7.34, t, undefined, { texte: "bas", silhouettes: ["couple", "enfant", "chien", "montre-le-ciel"] })), 4);
+  assert.equal(nb(svgDuCiel(47.75, 7.34, t, undefined, { texte: "bas", silhouettes: ["couple", "enfant", "chien", "chat"] })), 4);
   const r = lireReglagesCiel({ style: "couple", dates: ["1995-02-26", "1998-09-11"], silhouettes: ["couple", "enfant"] });
   assert.ok(r.ok);
   assert.equal(nb(svgDuSigne(r.reglages)), 2);
@@ -221,7 +224,7 @@ test("silhouettes : sous la date du signe (texte en haut), sous la place des lig
     await import("../src/ciel.ts");
   // Assises depuis le 27/11 (Alexandra : « je les veux assis les personnages !!! »).
   const { SILHOUETTES_ASSISES_PAR_ID: SILHOUETTES_PAR_ID } = await import("../src/ciel-silhouettes-assises.ts");
-  const quatre = ["couple", "enfant-sur-epaules", "chien", "montre-le-ciel"];
+  const quatre = ["couple", "enfant-sur-epaules", "chien", "femme-cheveux-longs"];
   const sommets = (svg: string, ids: string[]) =>
     [...(svg.match(/<g fill="[^"]*" data-silhouettes="1">(.*?)<\/g>/)?.[1] ?? "").matchAll(/<path transform="translate\(([\d.]+) ([\d.]+)\) scale\(([\d.]+)\)"/g)].map((m, i) => {
       const s = SILHOUETTES_PAR_ID.get(ids[i]!)!;
