@@ -2,7 +2,11 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 000. ÉTAT AU 27/11, 21 H 40 — tout `main` est EN LIGNE (`8037862`)
+## 000. ÉTAT AU 27/11, 21 H 55 — tout `main` est EN LIGNE (`b2c1298`)
+
+- 21 h 55 : le cercle au MILIEU DE LA PAGE pour tous les styles, avec ou sans personnages ; un texte ne le pousse que du nécessaire (taille fixe, réduite seulement si plus de place) ; bas de la place à 0,76 (`b2c1298`). Remplace la règle « tout le vide au-dessus » de `7f8e1a0`.
+
+### 21 h 40
 
 - **Règle d'Alexandra (27/11 au soir)** : hors des heures d'ouverture du marché (avant 11 h, après 20 h), mise en ligne directe « en mode hotfix » après chaque correction vérifiée ; pendant l'ouverture, seulement sur son « met en prod ».
 - Depuis 21 h 45 : jusqu'à 8 scènes d'ombres (`93da69a`) ; cercle posé juste au-dessus de la bande des personnages, tout le vide au-dessus (`7f8e1a0`) ; calage du texte dans sa place, en haut / au milieu / en bas (`8037862`) ; personnages sur tous les styles, signe, couple (paysage) et signe sans cercle compris (`8037862`).
