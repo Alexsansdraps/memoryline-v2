@@ -1819,52 +1819,78 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
               dans son cadre, il suit le corps de la fenêtre et n'agrandit
               plus rien ; le clic, le dépôt et le relais du stand sont
               inchangés. */}
-          <label
-            class={`relative ${choixDuStyle() ? "mt-3" : "mt-5"} flex flex-col items-center justify-center gap-1 border-2 border-dashed p-6 text-center transition-colors ${
-              survol()
-                ? "cursor-pointer border-terracotta bg-terracotta/5"
-                : "cursor-pointer border-ink/25 hover:border-ink/50"
-            } ${occupe() ? "pointer-events-none opacity-60" : ""}`}
-            onDragOver={(e) => {
-              // Toujours retenu, même éteinte : une photo lâchée à côté du
-              // but ne doit pas remplacer la boutique par l'image seule.
-              e.preventDefault();
-              setSurvol(true);
-            }}
-            onDragLeave={() => setSurvol(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setSurvol(false);
-              const f = e.dataTransfer?.files?.[0];
-              if (f) void choisirPhoto(f);
-            }}
+          {/* Au stand, pas de zone de dépôt (27/11, Alexandra : « enlève ça
+              pour les stands Déposez votre photo ici, ou cliquez pour la
+              choisir / JPEG, PNG ou WebP ») : la photo arrive du téléphone
+              par le relais, juste dessous. Le champ fichier reste, caché et
+              dans son cadre positionné (voir plus haut) : le bouton « Choisir
+              une photo » l'ouvre toujours sur la tablette. */}
+          <Show
+            when={!props.stand}
+            fallback={
+              <div class="relative">
+                <input
+                  ref={champFichier}
+                  type="file"
+                  accept={TYPES_PHOTO.join(",")}
+                  class="sr-only"
+                  disabled={occupe()}
+                  onChange={(e) => {
+                    const f = e.currentTarget.files?.[0];
+                    e.currentTarget.value = "";
+                    if (f) void choisirPhoto(f);
+                  }}
+                />
+              </div>
+            }
           >
-            <input
-              ref={champFichier}
-              type="file"
-              accept={TYPES_PHOTO.join(",")}
-              class="sr-only"
-              disabled={occupe()}
-              onChange={(e) => {
-                const f = e.currentTarget.files?.[0];
-                // Remise à zéro : rechoisir LE MÊME fichier doit relancer.
-                e.currentTarget.value = "";
+            <label
+              class={`relative ${choixDuStyle() ? "mt-3" : "mt-5"} flex flex-col items-center justify-center gap-1 border-2 border-dashed p-6 text-center transition-colors ${
+                survol()
+                  ? "cursor-pointer border-terracotta bg-terracotta/5"
+                  : "cursor-pointer border-ink/25 hover:border-ink/50"
+              } ${occupe() ? "pointer-events-none opacity-60" : ""}`}
+              onDragOver={(e) => {
+                // Toujours retenu, même éteinte : une photo lâchée à côté du
+                // but ne doit pas remplacer la boutique par l'image seule.
+                e.preventDefault();
+                setSurvol(true);
+              }}
+              onDragLeave={() => setSurvol(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setSurvol(false);
+                const f = e.dataTransfer?.files?.[0];
                 if (f) void choisirPhoto(f);
               }}
-            />
-            <span class="text-sm font-medium">
-              {nomPhoto() ? tr("ia.changer_photo") : tr("ia.depot")}
-            </span>
-            {/* Aucune limite de poids à annoncer : la photo est réduite
-                dans le navigateur avant de partir. « 10 Mo maximum » faisait
-                renoncer à des photos de téléphone parfaitement acceptées. */}
-            <span class="text-xs text-ink-soft">{tr("ia.depot_formats")}</span>
-            <Show when={nomPhoto()}>
-              <span class="mt-1 max-w-full truncate text-xs text-ink-soft">
-                {nomPhoto()}
+            >
+              <input
+                ref={champFichier}
+                type="file"
+                accept={TYPES_PHOTO.join(",")}
+                class="sr-only"
+                disabled={occupe()}
+                onChange={(e) => {
+                  const f = e.currentTarget.files?.[0];
+                  // Remise à zéro : rechoisir LE MÊME fichier doit relancer.
+                  e.currentTarget.value = "";
+                  if (f) void choisirPhoto(f);
+                }}
+              />
+              <span class="text-sm font-medium">
+                {nomPhoto() ? tr("ia.changer_photo") : tr("ia.depot")}
               </span>
-            </Show>
-          </label>
+              {/* Aucune limite de poids à annoncer : la photo est réduite
+                  dans le navigateur avant de partir. « 10 Mo maximum » faisait
+                  renoncer à des photos de téléphone parfaitement acceptées. */}
+              <span class="text-xs text-ink-soft">{tr("ia.depot_formats")}</span>
+              <Show when={nomPhoto()}>
+                <span class="mt-1 max-w-full truncate text-xs text-ink-soft">
+                  {nomPhoto()}
+                </span>
+              </Show>
+            </label>
+          </Show>
 
           {/* Au stand, la photo est souvent dans le téléphone du client : la
               tablette montre un QR code, la photo arrive ici. Même règle que
