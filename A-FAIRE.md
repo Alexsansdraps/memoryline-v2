@@ -2,7 +2,11 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 000. ÉTAT AU 27/11, 21 H 05 — tout `main` est EN LIGNE (`38c48be`, mis en ligne à 21 h 00 sur « et met en prod »)
+## 000. ÉTAT AU 27/11, 21 H 25 — tout `main` est EN LIGNE (`9648113`, sur « met tout en prod !!!!!!! »)
+
+- Depuis 21 h 05 : plusieurs scènes d'ombres à nouveau, jusqu'à 4 (`52fab81`, « on peut plus ajouter plusieurs personnages ») ; vignettes des nouvelles ombres réparées (`9648113`, adresse de la liste changée : le navigateur gardait l'ancienne une heure).
+
+### Avant (21 h 05)
 
 Fait ce soir (PC de la maison), tout en ligne :
 - **Tailles de texte** (`717da2f`) : trois « A » (petit / moyen / grand) sous chaque ligne de la fenêtre photo IA et ciel ; aperçu, place des lignes sur le ciel et impression (pdf.ts lit déjà `taille`). « Moyen » n'écrit rien. → 00.B point 1 FAIT ; restent 00.B points 2 à 4.
