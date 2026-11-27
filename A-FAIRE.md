@@ -2,7 +2,11 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 000. ÉTAT AU 27/11, 21 H 25 — tout `main` est EN LIGNE (`9648113`, sur « met tout en prod !!!!!!! »)
+## 000. ÉTAT AU 27/11, 21 H 45 — tout `main` est EN LIGNE (`e45fbac`, sur « hop mets en prod »)
+
+- Depuis 21 h 25 : la constellation ne bouge plus quand on ajoute un personnage (bas de la place fixe à 0,72, `21e111f`) ; enfant seul à 70 % d'un adulte ; 15 scènes de la 4e planche (`protos/ombres-4.png`, `ee42ad0`) ; chevaux proposés : la femme et son cheval couché, l'homme et son cheval seulement (`e45fbac`). Catalogue de l'API : 59 tracés (10 anciens + 49) ; la fiche en propose 46 (seul·e 17, couple 6, famille 9, animal 14). Liste des tracés en `?v=ombres-groupes-3` : la changer à chaque nouveau catalogue.
+
+### Avant (21 h 25)
 
 - Depuis 21 h 05 : plusieurs scènes d'ombres à nouveau, jusqu'à 4 (`52fab81`, « on peut plus ajouter plusieurs personnages ») ; vignettes des nouvelles ombres réparées (`9648113`, adresse de la liste changée : le navigateur gardait l'ancienne une heure).
 
