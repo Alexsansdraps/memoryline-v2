@@ -2,7 +2,7 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 27/11, 13 h 50 : en ligne jusqu'à `c75d866` ; 3 commits prêts mais PAS en ligne (`7c211ce`, `0d3ccef`, `171c887`) ; les étapes de la fenêtre IA restent À FAIRE
+## 0. État au 27/11, 14 h : en ligne jusqu'à `c75d866` ; 3 commits prêts mais PAS en ligne (`7c211ce`, `0d3ccef`, `171c887`) ; À FAIRE : les étapes de la fenêtre IA, et plus de limite sur la création d'un ciel
 
 ### 0.0000000000000 À FAIRE EN PREMIER : des étapes dans la fenêtre « Personnaliser » des affiches IA (photo ET ciel étoilé)
 - Demande d'Alexandra (27/11, vers 13 h 40), sur la fiche Ciel étoilé puis sur l'affiche à partir d'une photo : « pareil ici on met des steps car la page est trop longue », « quand on ouvre c'est trop long faut des steps ». Elle a arrêté la session (« mets dans à faire je continue après à mon taf ») : **rien n'est commencé ici**, AfficheIA.tsx a seulement été lu.
@@ -14,6 +14,13 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
   - Un envoi de photo ou une création qui échoue, ou une photo qui arrive du téléphone, ramène à l'étape 1 (le message d'erreur y est) ; un refus du panier s'affiche à l'étape 4.
   - L'aperçu (colonne de gauche) et « Vos créations » ne changent pas. Libellés des étapes dans ui.ts, 7 langues.
   - **Stand compris** : c'est l'écran de la tablette du marché. L'essayer au harnais (`apps/web/.harnais-persos`, `/affiches/affiche-photo?styles=7`, mode stand) avant toute mise en ligne, et mettre en ligne marché fermé. Le harnais est hors de git : sur ce PC, `demarrer.mjs` réécrit maintenant aussi l'import `./CielEtoile.tsx` (ligne à recopier sur l'autre poste, sinon il refuse de démarrer).
+
+### 0.00000000000000 À FAIRE AUSSI : plus AUCUNE limite sur la création d'un ciel étoilé
+- Alexandra, 27/11 vers 13 h 35, en essayant la fiche Ciel étoilé (thème « encre ») : la création a répondu `{"error":"Trop de demandes d'affilée, réessayez dans une minute"}` (429). « Pour ÇA il faut pas de limite ! parce que ça consomme pas de token. »
+- **Cause** (apps/api/src/ciel.ts) : `tropDAppels` refuse au-delà de 10 appels par minute et par adresse, et ce compteur est **partagé** entre `POST /ia/ciel` (la création) et `GET /ia/ciel/apercu-theme` (l'aperçu des thèmes du BO, à chaque image pas encore en mémoire). Ouvrir BO › Ciel étoilé : couleurs après un redémarrage de l'API compte déjà 6 appels, chaque couleur changée en ajoute un : en essayant ensuite la fiche, la limite tombe tout de suite. Un appel refusé est compté lui aussi.
+- Ce qui N'est PAS en cause : les « 3 essais par jour sur le site » (`essaisDuJourSurLeSite`, ia.ts) ne comptent que les affiches à partir d'une photo — `filtreDuPerimetre("affiches")` écarte le modèle « ciel » — et `/ia/ciel` ne les consulte pas. Le plafond mensuel OpenAI non plus.
+- **À faire** : retirer `tropDAppels` de `POST /ia/ciel` (et sa phrase d'erreur) ; donner à l'aperçu des thèmes son propre compteur, large (ou aucun). Adapter `tests/ciel.test.ts` si un essai porte dessus ; le message « rafale » du site (`causeDuStatut`, 429) ne doit plus pouvoir venir du ciel.
+- À savoir avant de tout enlever : un ciel ne coûte aucun jeton, mais environ 0,3 s de processeur et près de 1 Mo de disque (PNG pleine définition + aperçu), gardés 30 jours s'il n'est pas acheté (`ia.purgeJours`). Sans aucune limite, un robot remplirait les 19 Go libres du VPS en quelques heures. Proposition : aucune limite qu'une personne puisse atteindre, et un garde-fou très haut contre les robots seulement (par exemple 120 par minute et par adresse, jamais vu par une cliente ni par la tablette du stand). À décider avec Alexandra : garde-fou très haut, ou vraiment rien.
 
 ### 0.000000000000 COMMITÉ ET POUSSÉ, PAS EN LIGNE (à mettre en ligne sur un « met en prod » d'Alexandra, marché fermé de préférence)
 - `7c211ce` : la fenêtre du ciel s'appelle « Votre ciel étoilé » (plus « Votre affiche à partir de votre photo ») et son aperçu vide montre une carte du ciel au lieu d'une photo ; 7 langues.
