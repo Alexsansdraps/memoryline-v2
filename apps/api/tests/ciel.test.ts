@@ -250,11 +250,14 @@ test("silhouettes : sous la date du signe (texte en haut), sous la place des lig
   // Texte en bas : sous la place gardée aux lignes, pour tous les styles.
   for (const style of ["signe", "libre", "couple"] as const) {
     const svg = svgDuSigne(regl({ style, texte: "bas", dates: ["1990-11-02", "1988-04-25"].slice(0, style === "couple" ? 2 : 1), silhouettes: quatre }));
-    for (const t of sommets(svg, quatre)) assert.ok(t.haut >= plafondDesSilhouettes(style) * HAUTEUR_CIEL - 0.5, style);
+    // Le couple est en paysage depuis le 27/11 au soir : sa feuille fait LARGEUR_CIEL de haut.
+    const hauteur = style === "couple" ? LARGEUR_CIEL : HAUTEUR_CIEL;
+    for (const t of sommets(svg, quatre)) assert.ok(t.haut >= plafondDesSilhouettes(style) * hauteur - 0.5, style);
   }
   const nuit = svgDuCiel(47.75, 7.34, new Date(Date.UTC(2025, 5, 14, 21, 10)), undefined, { texte: "bas", ville: "Mulhouse", silhouettes: quatre });
   for (const t of sommets(nuit, quatre)) assert.ok(t.haut >= plafondDesSilhouettes("nuit", true) * HAUTEUR_CIEL - 0.5);
-  // La même taille partout, texte en haut ou en bas (27/11, Alexandra : « les persos doivent pas changer de taille ») : 0,145 de la hauteur pour 175 cm.
-  const couple = svgDuSigne(regl({ style: "couple", dates: ["1990-11-02", "1988-04-25"], silhouettes: ["couple"] }));
-  assert.match(couple, new RegExp(`scale\\(${((HAUTEUR_CIEL * 0.145) / 175).toFixed(4)}\\)`));
+  // La même taille partout, texte en haut ou en bas (27/11, Alexandra : « les persos doivent pas changer de taille ») :
+  // 0,22 de la hauteur pour 175 cm depuis le 27/11 au soir (« les personnages ombres sont trop petits »).
+  const signe = svgDuSigne(regl({ style: "signe", texte: "haut", dates: ["1990-11-02"], silhouettes: ["femme-ondulee"] }));
+  assert.match(signe, new RegExp(`scale\\(${((HAUTEUR_CIEL * 0.22) / 175).toFixed(4)}\\)`));
 });

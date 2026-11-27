@@ -37,6 +37,7 @@
 
 import type { Silhouette } from "./ciel-silhouettes.js";
 import { OMBRES } from "./ciel-ombres.js";
+import { OMBRES_2 } from "./ciel-ombres-2.js";
 
 /** Un point du dessin ; le troisième chiffre (1) en fait un angle vif. */
 type P = readonly [number, number] | readonly [number, number, 1];
@@ -246,7 +247,13 @@ function forme(id: string, nom: string, ...contours: P[][]): Silhouette {
  * supprimés ; « montre-le-ciel », sans équivalent dans l'image, disparaît
  * (un ancien réglage qui le cite est ignoré par lireReglagesCiel).
  */
-export const SILHOUETTES_ASSISES: readonly Silhouette[] = OMBRES;
+export const SILHOUETTES_ASSISES: readonly Silhouette[] = [
+  ...OMBRES,
+  // La 2e planche (27/11 au soir), rangée par groupes (ciel-ombres-2.ts) :
+  // c'est elle que la fiche propose ; les dix d'avant restent connues pour
+  // redessiner les ciels déjà créés.
+  ...OMBRES_2,
+];
 
 export const SILHOUETTES_ASSISES_PAR_ID: ReadonlyMap<string, Silhouette> = new Map(SILHOUETTES_ASSISES.map((s) => [s.id, s]));
 

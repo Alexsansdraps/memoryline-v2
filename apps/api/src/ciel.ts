@@ -45,6 +45,7 @@ import {
 } from "./ciel-signes.js";
 import { poserSilhouettes } from "./ciel-silhouettes.js";
 import { SILHOUETTES_ASSISES, SILHOUETTES_ASSISES_PAR_ID } from "./ciel-silhouettes-assises.js";
+import { GROUPES_OMBRES, OMBRES_2 } from "./ciel-ombres-2.js";
 
 /**
  * La vignette d'une silhouette assise seule, par id (27/11, pour les boutons du
@@ -531,6 +532,11 @@ function silhouettesDuCiel(
     couleur,
     largeur: W,
     hauteur: H,
+    // Plus grandes (27/11 au soir, Alexandra : « les personnages ombres sont
+    // trop petits ») : 0,22 de la hauteur pour 175 cm au lieu de 0,145 — un
+    // adulte assis fait 11 % de l'affiche au lieu de 7,5 %. Le plafond
+    // (jamais sur un texte) les rapetisse encore s'il le faut.
+    taillePx: H * 0.22,
     // Assises (27/11, Alexandra : « je les veux assis les personnages !!! qui
     // regardent bien », « et ils sont debout mdr »), nettement espacées et sans
     // accessoires autour (27/11, Alexandra : « c'est quoi ce bordel au niveau du
@@ -872,7 +878,12 @@ export function mountCielRoutes(app: Hono): void {
    */
   app.get("/ia/ciel/silhouettes", (c: Context) =>
     c.json(
-      { silhouettes: SILHOUETTES_ASSISES.map(({ id, d, gauche, droite, haut }) => ({ id, d, gauche, droite, haut })) },
+      {
+        silhouettes: SILHOUETTES_ASSISES.map(({ id, d, gauche, droite, haut }) => ({ id, d, gauche, droite, haut })),
+        // Les scènes proposées, par groupe (27/11 au soir : « trop de
+        // possibilités ») : seul·e, en couple, en famille, avec un animal.
+        groupes: GROUPES_OMBRES.map((g) => ({ id: g, scenes: OMBRES_2.filter((o) => o.groupe === g).map((o) => o.id) })),
+      },
       200,
       { "Cache-Control": "public, max-age=3600" },
     ),

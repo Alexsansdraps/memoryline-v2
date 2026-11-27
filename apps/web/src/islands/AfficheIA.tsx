@@ -899,22 +899,48 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * est coché ; `silhouettesCiel` : ce qui est sur le ciel (« Mettre sur mon
    * ciel » le redessine).
    */
-  const SILHOUETTES_CIEL = [
-    "femme-cheveux-longs",
-    "femme-chignon",
-    "homme-manteau",
-    "homme-bonnet",
-    "enfant",
-    "enfant-sur-epaules",
-    "adulte-bebe",
-    // « montre-le-ciel » retiré (27/11, Alexandra : « tiens pour les svg c'est
-    // ça qu'il faut pour les ombres, supprime celles que tu as fait tu prends
-    // ça ») : son image n'en a pas d'équivalent.
-    "chien",
-    // 27/11, Alexandra : « et le chat en ombre ? »
-    "chat",
-    "couple",
-  ] as const;
+  /*
+   * Les scènes proposées, rangées par groupe (27/11 au soir, Alexandra :
+   * « faudrait que ça soit plus logique y'a trop de possibilités », « ça fait
+   * bcp de possibilités le client va se prendre la tête ») : on choisit QUI,
+   * puis UNE scène — plus de mélange à huit ni de glisser-déposer. Les tracés
+   * viennent de la 2e planche d'ombres d'Alexandra (apps/api/src/ciel-ombres-2.ts) ;
+   * les dix d'avant restent connues de l'API pour les ciels déjà créés.
+   */
+  const GROUPES_SILHOUETTES = {
+    seul: [
+      "femme-ondulee",
+      "femme-longs",
+      "femme-carre",
+      "femme-tres-longs-boucles",
+      "femme-bouclee-courte",
+      "femme-chignon-haut",
+      "homme-court",
+      "homme-boucle",
+      "homme-capuche",
+      "homme-casquette",
+      "enfant-boucle",
+    ],
+    couple: [
+      "couple-homme-femme",
+      "couple-frises",
+      "couple-femmes-queue",
+      "couple-femmes-chignon",
+      "couple-hommes-epaule",
+      "couple-hommes-front",
+    ],
+    famille: [
+      "famille-homme-bebe-femme",
+      "famille-epaules-bebe",
+      "famille-femme-enfant",
+      "famille-homme-deux-bebes",
+      "famille-deux-hommes-enfant",
+    ],
+    animal: ["femme-chien", "enfant-chien", "homme-chat", "femme-lapin", "homme-cheval", "homme-deux-lapins"],
+  } as const;
+  type GroupeSilhouettes = keyof typeof GROUPES_SILHOUETTES;
+  type SceneSilhouette = (typeof GROUPES_SILHOUETTES)[GroupeSilhouettes][number];
+  const [groupeSilhouettes, setGroupeSilhouettes] = createSignal<GroupeSilhouettes>("seul");
   const [choixSilhouettes, setChoixSilhouettes] = createSignal<string[]>([]);
   const [silhouettesCiel, setSilhouettesCiel] = createSignal<string[]>([]);
   /*
@@ -1998,138 +2024,52 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       </Show>
     );
   };
-  const nomSilhouette = (id: (typeof SILHOUETTES_CIEL)[number]) => tr(`ciel.silh.${id}`);
-  /*
-   * Le glisser-déposer des personnages choisis (27/11, Alexandra : « on peut
-   * les intervertir », « non on interverti au drag and drop ») : pendant le
-   * geste, l'ordre montré change sous le doigt (`ordreGlisse`) ; au dépôt, il
-   * devient le choix, et le ciel se redessine aussitôt.
-   */
-  let rangeeSilhouettes: HTMLDivElement | undefined;
-  const [glisseSilhouette, setGlisseSilhouette] = createSignal<number | null>(null);
-  const [ordreGlisse, setOrdreGlisse] = createSignal<string[] | null>(null);
-  const ordreAffiche = () => ordreGlisse() ?? choixSilhouettes();
-  function attraperSilhouette(e: PointerEvent, depart: number) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    const cible = e.currentTarget as HTMLElement;
-    try {
-      cible.setPointerCapture(e.pointerId);
-    } catch {
-      /* sans capture, le geste suit quand même la fenêtre */
-    }
-    let rang = depart;
-    setOrdreGlisse([...choixSilhouettes()]);
-    setGlisseSilhouette(rang);
-    const bouger = (ev: PointerEvent) => {
-      const cases = Array.from(rangeeSilhouettes?.querySelectorAll<HTMLElement>("[data-rang-silhouette]") ?? []);
-      // La case la plus proche du doigt, au centre.
-      let proche = rang;
-      let meilleure = Infinity;
-      cases.forEach((c, k) => {
-        const b = c.getBoundingClientRect();
-        const d = Math.hypot(ev.clientX - (b.left + b.width / 2), ev.clientY - (b.top + b.height / 2));
-        if (d < meilleure) {
-          meilleure = d;
-          proche = k;
-        }
-      });
-      if (proche === rang) return;
-      setOrdreGlisse((l) => {
-        if (!l) return l;
-        const copie = [...l];
-        const [pris] = copie.splice(rang, 1);
-        copie.splice(proche, 0, pris!);
-        return copie;
-      });
-      rang = proche;
-      setGlisseSilhouette(rang);
-    };
-    const lacher = () => {
-      window.removeEventListener("pointermove", bouger);
-      window.removeEventListener("pointerup", lacher);
-      window.removeEventListener("pointercancel", lacher);
-      const ordre = ordreGlisse();
-      setOrdreGlisse(null);
-      setGlisseSilhouette(null);
-      if (ordre && ordre.join(",") !== choixSilhouettes().join(",")) {
-        setChoixSilhouettes(ordre);
-        // Le dépôt redessine sans attendre le délai anti-rafale.
-        clearTimeout(minuteurSilhouettes);
-        setSilhouettesCiel([...ordre]);
-      }
-    };
-    window.addEventListener("pointermove", bouger);
-    window.addEventListener("pointerup", lacher);
-    window.addEventListener("pointercancel", lacher);
-  }
+  const nomSilhouette = (id: SceneSilhouette) => tr(`ciel.silh.${id}`);
+  /** La scène posée sur le ciel, sans son « :m » de miroir ; null : aucune. */
+  const sceneChoisie = () => (choixSilhouettes()[0]?.split(":")[0] ?? null) as SceneSilhouette | null;
+  const enMiroir = () => !!choixSilhouettes()[0]?.endsWith(":m");
+  const choisirScene = (id: SceneSilhouette | null) => setChoixSilhouettes(id ? [id] : []);
   const blocSilhouettes = () => (
     <div class="mt-5">
-      <p class="flex items-baseline justify-between text-sm font-medium">
-        <span>{tr("ia.perso.titre")}</span>
-        <span class="text-xs tabular-nums text-ink-soft">{choixSilhouettes().length}/8</span>
-      </p>
-      {/* Celles qui seront posées, dans l'ordre, de gauche à droite : la
-          croix en retire une ; on les intervertit en les faisant glisser
-          (27/11, Alexandra : « non on interverti au drag and drop »), à la
-          souris comme au doigt (événements pointer). */}
-      <div
-        ref={rangeeSilhouettes}
-        class="mt-2 flex min-h-[4.5rem] touch-none flex-wrap items-end gap-2 border border-dashed border-ink/20 p-2"
-      >
-        <For each={ordreAffiche()}>
-          {(id, i) => (
-            <div
-              data-rang-silhouette={i()}
-              onPointerDown={(e) => attraperSilhouette(e, i())}
-              title={tr("ciel.silh.glisser")}
-              class={`relative flex h-16 w-12 cursor-grab select-none items-end justify-center text-ink ${
-                glisseSilhouette() === i() ? "opacity-50" : ""
+      <p class="text-sm font-medium">{tr("ia.perso.titre")}</p>
+      {/* 1. Qui : quatre onglets. */}
+      <div role="tablist" aria-label={tr("ia.perso.titre")} class="mt-2 flex flex-wrap gap-2">
+        <For each={Object.keys(GROUPES_SILHOUETTES) as GroupeSilhouettes[]}>
+          {(g) => (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={groupeSilhouettes() === g}
+              onClick={() => setGroupeSilhouettes(g)}
+              class={`border px-3 py-1.5 text-sm transition-colors ${
+                groupeSilhouettes() === g ? "border-ink bg-ink text-paper" : "border-ink/20 hover:border-ink/45"
               }`}
             >
-              {/* « id:m » = retourné en miroir (27/11, Alexandra : « pouvoir
-                  inverser le sens des personnages »). */}
-              <span class="pointer-events-none flex h-full w-full" style={id.endsWith(":m") ? { transform: "scaleX(-1)" } : undefined}>
-                {dessinSilhouette(id.split(":")[0]!, "pointer-events-none h-full w-full")}
-              </span>
-              <button
-                type="button"
-                aria-label={tr("ciel.silh.inverser")}
-                title={tr("ciel.silh.inverser")}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() =>
-                  setChoixSilhouettes((l) =>
-                    l.map((x, k) => (k !== i() ? x : x.endsWith(":m") ? x.slice(0, -2) : `${x}:m`)),
-                  )
-                }
-                class="absolute -bottom-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full border border-ink/30 bg-paper text-[11px] leading-none text-ink hover:border-ink"
-              >
-                ⇄
-              </button>
-              <span aria-hidden="true" class="pointer-events-none absolute -left-1 -top-1 text-[11px] leading-none text-ink-soft">
-                ⠿
-              </span>
-              <button
-                type="button"
-                aria-label={`${tr("ciel.silh.retirer")} : ${nomSilhouette(id.split(":")[0] as (typeof SILHOUETTES_CIEL)[number])}`}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => setChoixSilhouettes((l) => l.filter((_, k) => k !== i()))}
-                class="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink text-[10px] leading-none text-paper hover:bg-terracotta"
-              >
-                ✕
-              </button>
-            </div>
+              {tr(`ciel.groupe.${g}`)}
+            </button>
           )}
         </For>
       </div>
-      <div class="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5">
-        <For each={SILHOUETTES_CIEL}>
+      {/* 2. Une scène, ou aucune (un toucher la pose, le ciel se redessine). */}
+      <div role="radiogroup" aria-label={tr(`ciel.groupe.${groupeSilhouettes()}`)} class="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={sceneChoisie() === null}
+          onClick={() => choisirScene(null)}
+          class="ml-choix flex min-w-0 flex-col items-center justify-center gap-1 border border-ink/15 px-1 pb-1.5 pt-2 text-center text-[11px] leading-tight hover:border-ink/45"
+        >
+          <span aria-hidden="true" class="flex h-14 items-center text-2xl text-ink/30">∅</span>
+          <span>{tr("ciel.silh.aucun")}</span>
+        </button>
+        <For each={GROUPES_SILHOUETTES[groupeSilhouettes()] as readonly SceneSilhouette[]}>
           {(id) => (
             <button
               type="button"
-              disabled={choixSilhouettes().length >= 8}
-              onClick={() => setChoixSilhouettes((l) => (l.length < 8 ? [...l, id] : l))}
-              class="flex min-w-0 flex-col items-center gap-1 border border-ink/15 px-1 pb-1.5 pt-2 text-center text-[11px] leading-tight transition-colors hover:border-ink/45 disabled:opacity-50"
+              role="radio"
+              aria-checked={sceneChoisie() === id}
+              onClick={() => choisirScene(id)}
+              class="ml-choix flex min-w-0 flex-col items-center gap-1 border border-ink/15 px-1 pb-1.5 pt-2 text-center text-[11px] leading-tight hover:border-ink/45"
             >
               {dessinSilhouette(id, "h-14 w-full text-ink/80")}
               <span>{nomSilhouette(id)}</span>
@@ -2137,6 +2077,20 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           )}
         </For>
       </div>
+      {/* Retourner la scène (27/11, Alexandra : « pouvoir inverser le sens des personnages »). */}
+      <Show when={sceneChoisie()}>
+        <button
+          type="button"
+          aria-pressed={enMiroir()}
+          onClick={() =>
+            setChoixSilhouettes((l) => (l[0] ? [l[0].endsWith(":m") ? l[0].slice(0, -2) : `${l[0]}:m`] : l))
+          }
+          class="mt-3 inline-flex items-center gap-2 border border-ink/20 px-3 py-1.5 text-sm hover:border-ink/45"
+        >
+          <span aria-hidden="true">⇄</span>
+          {tr("ciel.silh.inverser")}
+        </button>
+      </Show>
       {/* Le ciel ne peut pas se redessiner (un couple à une seule date) :
           on le dit ici aussi (27/11, relecture). */}
       <Show when={cielIncomplet()}>
