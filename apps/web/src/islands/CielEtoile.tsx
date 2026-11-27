@@ -95,6 +95,51 @@ export interface MiseDuCiel {
    * sur les couples créés avant : ils gardent leur mise en page de portrait.
    */
   paysage?: boolean;
+  /**
+   * La hauteur du bloc de texte au moment du dessin, en fraction de la
+   * hauteur (27/11 au soir) : présente, le dessin est placé par la mise en
+   * page centrée. Absente (ciels d'avant), la mise en page d'avant.
+   */
+  hauteurTexte?: number;
+}
+
+/*
+ * La mise en page CENTRÉE (27/11 au soir, Alexandra : « elle doit être au
+ * milieu au début, puis poussée si on ajoute du texte […] et le texte entier
+ * on doit pouvoir le centrer au milieu de la place dispo ») : MÊMES calculs
+ * que dispositionCentree (apps/api/src/ciel.ts) — si l'un change, changer
+ * l'autre. La place va de MARGE_HAUT_CIEL à basDeLaPlace (85 %, 70 % avec
+ * des personnages, qui ont leur bande dessous).
+ */
+export const MARGE_HAUT_CIEL = 0.035;
+export const ECART_TEXTE_CIEL = 0.03;
+export const basDeLaPlace = (personnages: boolean): number => (personnages ? 0.7 : 0.85);
+function dispositionCentree(
+  m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages" | "paysage">,
+  hauteurTexte: number,
+): { haut: number; bas: number } {
+  const paysage = m.style === "couple" && !!m.paysage;
+  const W = paysage ? 3508 : 2480;
+  const H = paysage ? 2480 : 3508;
+  const e =
+    m.style === "nuit"
+      ? { a: 2, b: 93 + (m.ville ? 257 : 192) }
+      : m.style === "couple"
+        ? { a: 2.14, b: 12 }
+        : m.style === "libre"
+          ? { a: 1.76, b: 0 }
+          : { a: 2, b: 48 };
+  const Rdefaut = m.style === "couple" ? W * 0.17 : W * 0.34;
+  const A = MARGE_HAUT_CIEL * H;
+  const B = basDeLaPlace(!!m.personnages && m.style === "nuit") * H;
+  const h = Math.max(0, hauteurTexte) * H;
+  const g = h > 0 ? ECART_TEXTE_CIEL * H : 0;
+  const dispo = B - A - h - g;
+  const R = Math.max(Rdefaut * 0.6, Math.min(Rdefaut, (dispo - e.b) / e.a));
+  const D = e.a * R + e.b;
+  const debut = A + Math.max(0, dispo - D) / 2;
+  const haut = m.texte === "haut" ? debut + h + g : debut;
+  return { haut: haut / H, bas: (haut + D) / H };
 }
 
 /**
@@ -104,8 +149,9 @@ export interface MiseDuCiel {
  * (apps/api/src/ciel.ts) : si l'un change, changer l'autre.
  */
 export function zoneDuDessin(
-  m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages" | "paysage">,
+  m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages" | "paysage" | "hauteurTexte">,
 ): { haut: number; bas: number } {
+  if (typeof m.hauteurTexte === "number") return dispositionCentree(m, m.hauteurTexte);
   // Le couple en paysage (27/11 au soir) : feuille couchée, 3508 × 2480.
   // MÊMES valeurs que dispositionDuCiel (apps/api/src/ciel.ts).
   if (m.style === "couple" && m.paysage) {
@@ -218,6 +264,12 @@ export interface CielEtoileProps {
   texte?: PlaceTexte;
   /** Les ombres chinoises posées (étape Personnages, 27/11) ; les changer redessine le ciel. */
   silhouettes?: readonly string[];
+  /**
+   * La hauteur du bloc de texte, en fraction de la hauteur de l'affiche
+   * (27/11 au soir) : le dessin se place autour d'elle ; quand elle change
+   * nettement, le ciel se redessine (après la frappe).
+   */
+  hauteurTexte?: number;
   /** Dit à la fenêtre le style et les signes choisis, à chaque changement. */
   onReglage?: (r: { style: StyleCiel; signes: IdSigne[] }) => void;
   /**
@@ -449,6 +501,26 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
     ),
   );
 
+  /*
+   * Le texte grandit ou rapetisse (une ligne ajoutée, une taille changée) :
+   * le dessin doit se pousser (27/11 au soir). On attend la fin de la frappe
+   * (0,9 s), et seulement si l'écart se voit (plus de 0,4 % de la hauteur).
+   */
+  let hauteurDessinee = 0;
+  let minuteurTexte: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(minuteurTexte));
+  createEffect(
+    on(
+      () => props.hauteurTexte ?? 0,
+      (h) => {
+        clearTimeout(minuteurTexte);
+        if (Math.abs(h - hauteurDessinee) < 0.004) return;
+        minuteurTexte = setTimeout(() => redessinerSiDessine(), 900);
+      },
+      { defer: true },
+    ),
+  );
+
   async function dessiner(e?: Event, auto = false) {
     e?.preventDefault();
     if (occupe()) return;
@@ -475,7 +547,9 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
       // Le couple se dessine en paysage (27/11, Alexandra : « pour les couples
       // il faut impérativement avoir le format paysage sinon c'est laid »).
       ...(s === "couple" ? { paysage: true } : {}),
+      hauteurTexte: Math.round((props.hauteurTexte ?? 0) * 10000) / 10000,
     };
+    hauteurDessinee = mise.hauteurTexte ?? 0;
     setOccupe(true);
     setErreur(null);
     try {
@@ -485,6 +559,9 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
         theme: theme() ?? undefined,
         style: s,
         texte: mise.texte,
+        // La mise en page centrée (27/11 au soir) : l'API place le dessin
+        // autour du bloc de texte.
+        hauteurTexte: mise.hauteurTexte,
         silhouettes: [...(props.silhouettes ?? [])],
         langue: props.langue,
       };

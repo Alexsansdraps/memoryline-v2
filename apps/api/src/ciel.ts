@@ -374,12 +374,67 @@ export const placeParDefaut = (style: StyleCiel): PlaceTexte => (style === "nuit
  * les lignes de texte se posent au-dessus de `haut` ou sous `bas`. Pour un
  * couple, `R` est le rayon de chacun des deux cercles.
  */
+/*
+ * La mise en page CENTRÉE (27/11 au soir, Alexandra : « quand on crée la
+ * constellation, elle doit être au milieu au début, puis poussée si on ajoute
+ * du texte (en fonction d'en bas ou d'en haut) et le texte entier (les 3
+ * lignes) on doit pouvoir le centrer au milieu de la place dispo, en haut ou
+ * en bas, par rapport à la constellation »).
+ *
+ * La place : de 3,5 % sous le haut de la feuille jusqu'à 85 % de sa hauteur
+ * (les collines), ou 70 % quand des personnages sont posés (leur bande à eux,
+ * dessous). Sans texte, le dessin se centre dans cette place. Avec un texte de
+ * hauteur h (envoyé par la fiche, en fraction de la hauteur), le dessin et le
+ * texte (plus 3 % d'écart) se centrent ensemble ; le texte se centre ensuite,
+ * côté fiche, entre le bord de la place et le dessin. Trop long, le dessin
+ * rapetisse (jusqu'à 60 % de son rayon).
+ *
+ * La fenêtre du ciel (apps/web/src/islands/CielEtoile.tsx, zoneDuDessin) fait
+ * le MÊME calcul : si l'un change, changer l'autre.
+ */
+export const MARGE_HAUT_CIEL = 0.035;
+export const ECART_TEXTE_CIEL = 0.03;
+export const basDeLaPlace = (personnages: boolean): number => (personnages ? 0.7 : 0.85);
+
+/** Hauteur du dessin pour un rayon R (en px) : D = a R + b, et du haut au centre : c R + e. */
+function empriseDuDessin(style: StyleCiel, ville: boolean): { a: number; b: number; c: number; e: number } {
+  if (style === "nuit") return { a: 2, b: 93 + (ville ? 257 : 192), c: 1, e: 93 };
+  if (style === "couple") return { a: 2.14, b: 12, c: 1.14, e: 0 };
+  if (style === "libre") return { a: 1.76, b: 0, c: 0.78, e: 0 };
+  return { a: 2, b: 48, c: 1, e: 24 };
+}
+
+export function dispositionCentree(
+  style: StyleCiel,
+  texte: PlaceTexte,
+  ville: boolean,
+  personnages: boolean,
+  hauteurTexte: number,
+): { cy: number; R: number; haut: number; bas: number } {
+  const { W, H } = dimensionsDuCiel(style);
+  const { a, b, c, e } = empriseDuDessin(style, ville);
+  const Rdefaut = style === "couple" ? W * 0.17 : W * 0.34;
+  const A = MARGE_HAUT_CIEL * H;
+  const B = basDeLaPlace(personnages && style === "nuit") * H;
+  const h = Math.max(0, hauteurTexte) * H;
+  const g = h > 0 ? ECART_TEXTE_CIEL * H : 0;
+  const dispo = B - A - h - g;
+  const R = Math.max(Rdefaut * 0.6, Math.min(Rdefaut, (dispo - b) / a));
+  const D = a * R + b;
+  const debut = A + Math.max(0, dispo - D) / 2;
+  const haut = texte === "haut" ? debut + h + g : debut;
+  return { cy: haut + c * R + e, R, haut: haut / H, bas: (haut + D) / H };
+}
+
 export function dispositionDuCiel(
   style: StyleCiel,
   texte: PlaceTexte,
   ville = false,
   personnages = false,
+  /** Envoyée par la fiche depuis le 27/11 au soir : la mise en page centrée. */
+  hauteurTexte?: number,
 ): { cy: number; R: number; haut: number; bas: number } {
+  if (typeof hauteurTexte === "number") return dispositionCentree(style, texte, ville, personnages, hauteurTexte);
   const W = LARGEUR_CIEL;
   const H = HAUTEUR_CIEL;
   /*
@@ -423,6 +478,8 @@ export interface ReglagesCiel {
   /** Les ombres chinoises, de gauche à droite (ciel-silhouettes.ts). */
   silhouettes: string[];
   langue: LangueCiel;
+  /** Hauteur du bloc de texte, en fraction de la hauteur (mise en page centrée, 27/11 au soir). */
+  hauteurTexte?: number;
 }
 
 /** Au plus quatre personnages sur un ciel (27/11). */
@@ -483,7 +540,22 @@ export function lireReglagesCiel(
       dates.push(date);
     }
   }
-  return { ok: true, reglages: { style: s, texte, signes, dates, silhouettes: connues, langue } };
+  // La hauteur du texte (27/11 au soir) : absente, la mise en page d'avant.
+  const ht = b.hauteurTexte;
+  if (ht !== undefined && (typeof ht !== "number" || !Number.isFinite(ht) || ht < 0 || ht > 0.6))
+    return { ok: false, error: "Hauteur du texte invalide" };
+  return {
+    ok: true,
+    reglages: {
+      style: s,
+      texte,
+      signes,
+      dates,
+      silhouettes: connues,
+      langue,
+      ...(typeof ht === "number" ? { hauteurTexte: ht } : {}),
+    },
+  };
 }
 
 /**
@@ -506,7 +578,7 @@ export function lireReglagesCiel(
 function silhouettesDuCiel(
   ids: readonly string[],
   couleur: string,
-  m: { style: StyleCiel; texte: PlaceTexte; ville?: boolean; date?: boolean },
+  m: { style: StyleCiel; texte: PlaceTexte; ville?: boolean; date?: boolean; hauteurTexte?: number },
 ): string {
   if (!ids.length) return "";
   // 27/11, Alexandra : « supp ça » — pas de teinte automatique, les
@@ -515,7 +587,9 @@ function silhouettesDuCiel(
   // La feuille du style : couchée pour le couple (27/11).
   const { W, H } = dimensionsDuCiel(m.style);
   let plafond: { y: number; x0?: number; x1?: number } | undefined;
-  if (m.texte === "bas") plafond = { y: plafondDesSilhouettes(m.style, m.ville) * H };
+  // Mise en page centrée : les personnages ont leur bande, sous la place.
+  if (typeof m.hauteurTexte === "number") plafond = { y: (basDeLaPlace(true) + 0.005) * H };
+  else if (m.texte === "bas") plafond = { y: plafondDesSilhouettes(m.style, m.ville) * H };
   else if (m.style === "nuit" || m.style === "couple")
     // Texte en haut (27/11, Alexandra : « trop bas la constellation quand
     // c'est en mode texte en haut ») : jamais une tête sur les coordonnées ou
@@ -578,14 +652,14 @@ function collines(W: number, H: number) {
  * points cardinaux ni de coordonnées : ce n'est pas le ciel d'un lieu.
  */
 export function svgDuSigne(
-  reglages: Pick<ReglagesCiel, "style" | "texte" | "signes" | "dates" | "silhouettes" | "langue">,
+  reglages: Pick<ReglagesCiel, "style" | "texte" | "signes" | "dates" | "silhouettes" | "langue" | "hauteurTexte">,
   theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
 ): string {
   const c = teintesDuTheme(theme);
   // Couchée pour le couple (27/11).
   const { W, H } = dimensionsDuCiel(reglages.style);
   const cx = W / 2;
-  const { cy, R } = dispositionDuCiel(reglages.style, reglages.texte);
+  const { cy, R } = dispositionDuCiel(reglages.style, reglages.texte, false, false, reglages.hauteurTexte);
   const date = (i: number) => dateEcrite(reglages.dates[i], reglages.langue);
   const couleurs = { etoiles: c.etoiles, dorures: c.dorures };
   const dome = (x: number, r: number) => `<circle cx="${x}" cy="${cy}" r="${r}" fill="url(#dome)"/>`;
@@ -627,7 +701,7 @@ export function svgDuSigne(
   <rect width="${W}" height="${H}" fill="url(#nuit)"/>
   ${dessin}
   <path d="${loin}" fill="${c.collineLoin}"/>
-  <path d="${pres}" fill="${c.collinePres}"/>${silhouettesDuCiel(reglages.silhouettes, c.collinePres, { style: reglages.style, texte: reglages.texte, date: !!reglages.dates[0] })}
+  <path d="${pres}" fill="${c.collinePres}"/>${silhouettesDuCiel(reglages.silhouettes, c.collinePres, { style: reglages.style, texte: reglages.texte, date: !!reglages.dates[0], hauteurTexte: reglages.hauteurTexte })}
 </svg>`;
 }
 
@@ -637,7 +711,7 @@ export function svgDuCiel(
   lon: number,
   instant: Date,
   theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
-  options: { ville?: string | null; texte?: PlaceTexte; silhouettes?: readonly string[] } = {},
+  options: { ville?: string | null; texte?: PlaceTexte; silhouettes?: readonly string[]; hauteurTexte?: number } = {},
 ): string {
   const c = teintesDuTheme(theme);
   const W = LARGEUR_CIEL;
@@ -650,7 +724,7 @@ export function svgDuCiel(
   const texte = options.texte ?? "haut";
   // Avec des personnages, texte en haut, le cercle remonte (27/11).
   const personnages = (options.silhouettes ?? []).some((id) => SILHOUETTES_ASSISES_PAR_ID.has(id.split(":")[0]!));
-  const { cy, R } = dispositionDuCiel("nuit", texte, !!(options.ville ?? "").trim(), personnages);
+  const { cy, R } = dispositionDuCiel("nuit", texte, !!(options.ville ?? "").trim(), personnages, options.hauteurTexte);
   const px = (p: { x: number; y: number }) => `${(cx + p.x * R).toFixed(1)},${(cy + p.y * R).toFixed(1)}`;
 
   // Tracés des constellations : un segment n'est gardé que si ses deux
@@ -720,7 +794,7 @@ export function svgDuCiel(
   </g>
   ${legendeDuLieu(options.ville ?? null, cx, cy + R, c.dorures, coordonnees(lat, lon))}
   <path d="${collineLoin}" fill="${c.collineLoin}"/>
-  <path d="${collinePres}" fill="${c.collinePres}"/>${silhouettesDuCiel(options.silhouettes ?? [], c.collinePres, { style: "nuit", texte, ville: !!(options.ville ?? "").trim() })}
+  <path d="${collinePres}" fill="${c.collinePres}"/>${silhouettesDuCiel(options.silhouettes ?? [], c.collinePres, { style: "nuit", texte, ville: !!(options.ville ?? "").trim(), hauteurTexte: options.hauteurTexte })}
 </svg>`;
 }
 
@@ -730,7 +804,7 @@ export async function rendreCiel(
   lon: number,
   instant: Date,
   theme?: Pick<ThemeCiel, "fond" | "etoiles" | "dorures">,
-  options: { ville?: string | null; texte?: PlaceTexte; silhouettes?: readonly string[] } = {},
+  options: { ville?: string | null; texte?: PlaceTexte; silhouettes?: readonly string[]; hauteurTexte?: number } = {},
 ): Promise<Buffer> {
   return sharp(Buffer.from(svgDuCiel(lat, lon, instant, theme, options))).png().toBuffer();
 }
@@ -980,13 +1054,24 @@ export function mountCielRoutes(app: Hono): void {
       // La ville sous le cercle, si la cliente l'a demandée (27/11).
       const ville = nuit && b.afficherVille === true ? String(b.ville ?? "").slice(0, 80) : null;
       const pleine = nuit
-        ? await rendreCiel(lat, lon, instant, theme, { ville, texte: reglages.texte, silhouettes: reglages.silhouettes })
+        ? await rendreCiel(lat, lon, instant, theme, {
+            ville,
+            texte: reglages.texte,
+            silhouettes: reglages.silhouettes,
+            hauteurTexte: reglages.hauteurTexte,
+          })
         : await sharp(Buffer.from(svgDuSigne(reglages, theme))).png().toBuffer();
       const nomPleine = `${publicId}-pleine.png`;
       await writeFile(resolve(IA_DIR, nomPleine), pleine);
       // Le filigrane se cale sur le centre du dessin, où qu'il soit.
       // Remonté avec des personnages, texte en haut (27/11) : le même calcul que le dessin.
-      const { cy } = dispositionDuCiel(reglages.style, reglages.texte, !!ville, reglages.silhouettes.length > 0);
+      const { cy } = dispositionDuCiel(
+        reglages.style,
+        reglages.texte,
+        !!ville,
+        reglages.silhouettes.length > 0,
+        reglages.hauteurTexte,
+      );
       const feuille = dimensionsDuCiel(reglages.style);
       const centreY = cy / feuille.H;
       // Sans anneau pour un couple ou un signe sans cercle (27/11) : il ne
@@ -1009,6 +1094,7 @@ export function mountCielRoutes(app: Hono): void {
           // ciel de cette nuit sans rien reste celle d'avant.
           ...(reglages.texte !== placeParDefaut(reglages.style) ? { texte: reglages.texte } : {}),
           ...(reglages.silhouettes.length ? { silhouettes: reglages.silhouettes } : {}),
+          ...(typeof reglages.hauteurTexte === "number" ? { hauteurTexte: reglages.hauteurTexte } : {}),
           theme: { id: theme.id, nom: theme.nom, fond: theme.fond, etoiles: theme.etoiles, dorures: theme.dorures },
         }),
         // Hors de BO › Affiches IA et du plafond (filtreDuPerimetre, ia.ts, 27/11).

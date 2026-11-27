@@ -66,6 +66,8 @@ import RelaisPhoto from "./RelaisPhoto.tsx";
 import CielEtoile, {
   zoneDuDessin,
   basDuTexte,
+  basDeLaPlace,
+  MARGE_HAUT_CIEL,
   type IdSigne,
   type MiseDuCiel,
   type PlaceTexte,
@@ -873,9 +875,16 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       ecarts.reduce((s, e) => s + e, 0) +
       (boites[0]?.deborde ?? 0) +
       (boites[boites.length - 1]?.deborde ?? 0);
-    // Le bloc se tient à 3 % de la hauteur du dessin, sans sortir de la feuille.
-    const haut =
-      mise.texte === "haut"
+    // Mise en page centrée (27/11 au soir) : le bloc se centre dans sa place,
+    // entre le bord (ou la bande des personnages) et le dessin. Avant : il se
+    // tenait à 3 % du dessin.
+    const centre = typeof mise.hauteurTexte === "number";
+    const bande = basDeLaPlace(!!mise.personnages && mise.style === "nuit");
+    const haut = centre
+      ? mise.texte === "haut"
+        ? Math.max(0.02, (MARGE_HAUT_CIEL + zone.haut - hauteur) / 2)
+        : Math.max(zone.bas + 0.01, (zone.bas + bande - hauteur) / 2)
+      : mise.texte === "haut"
         ? Math.max(0.045, zone.haut - 0.03 - hauteur)
         : // Avec des personnages, le bloc s'arrête au-dessus de leurs têtes (27/11).
           Math.min(zone.bas + 0.03, basDuTexte(mise) - hauteur);
@@ -886,11 +895,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       places.set(l.rang, { x: 0.5, y: Math.round((y + b.boite / 2) * 10000) / 10000 });
       y += b.boite + (ecarts[i] ?? 0);
     });
-    return places;
+    return { places, hauteur };
   });
+  /** La hauteur du bloc de texte, pour placer le dessin autour (27/11 au soir). */
+  const hauteurTexteCiel = () => (lignesRemplies().length ? placesDuCiel().hauteur : 0);
   /** Les lignes remplies telles qu'on les dessine : posées d'office sur un ciel. */
   const lignesAffichees = () =>
-    modeCiel() ? lignesRemplies().map((l) => ({ ...l, ...placesDuCiel().get(l.rang) })) : lignesRemplies();
+    modeCiel() ? lignesRemplies().map((l) => ({ ...l, ...placesDuCiel().places.get(l.rang) })) : lignesRemplies();
 
   /*
    * Les ombres chinoises du ciel (27/11, Alexandra : « les personnages tu
@@ -2642,6 +2653,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   onCree={cielCree}
                   texte={texteCiel()}
                   silhouettes={silhouettesCiel()}
+                  hauteurTexte={hauteurTexteCiel()}
                   onReglage={reglageCiel}
                   onIncomplet={setCielIncomplet}
                 />
