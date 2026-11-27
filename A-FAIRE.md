@@ -14,6 +14,17 @@ Faits le 27/11 au soir et EN LIGNE (`e4bb63c`) : couleur des ombres par thème (
 
 1. **Personnages unifiés des affiches classiques** (voir 0.4) : planche du 27/11 au soir refaite (`travaux/personnages-unifies/gabarits-final/planche-gabarits.jpg`, copie dans `Documents/memory-line/planche-personnages-27-11-soir.jpg`) : âgés au dos rond et aux épaules tombantes, ado aux épaules souples, cheval DEBOUT de dos (lui donner un facteur de taille d'environ 2 à la création), chat dont la queue s'enroule au sol. **Attend l'avis d'Alexandra sur la planche**, puis : garde-robe (hauts, bas, coiffures, accessoires) dessinée SUR les gabarits, NAC, puis les lots du plan (`travaux/personnages-unifies/plan.md`). Relancer la planche : `bash travaux/personnages-unifies/gabarits-final/run.sh` (conteneur `memoryline-api` local).
 
+## 0.1 bis EN COURS le 27/11 vers 23 h 35 (chantiers lancés en agents, en local)
+
+- **Affiche éphémère du stand de Mulhouse** (`travaux/affiche-stand-mulhouse/`, consigne complète dans `workflow.js`) — Alexandra, 27/11 au soir :
+  - un produit « Marché de Noël de Mulhouse » dans une collection éphémère du même nom, RATTACHÉ AU STAND n° 1 : il disparaît tout seul (site, tablette, recherche, page du stand) quand le stand est désactivé, archivé ou clôturé ; une simple fermeture du soir ne le retire pas ; les paniers existants ne sont pas touchés ;
+  - le client choisit un motif parmi 28 (planches `Documents/memory-line/protos/motifs-alsace-noel.webp` et `motifs-mulhouse-2.png`) ; maisons à colombages et maisons ouvrières en COULEURS, une couleur par maison ;
+  - les personnages comme d'habitude ; texte en haut ou en bas ;
+  - fonds : unis, dégradés ou images (motifs répétés), rangés comme des fonds ordinaires ;
+  - **à faire à la main après le chantier** (demandé à 23 h 50, pas dans la consigne des agents) : choisir un motif remplit la ligne 1 avec son nom, dans la langue du client, modifiable ;
+  - **mise en prod demandée** (« met en prod ensuite », « hop vas y ») une fois vérifié en local, hors ouverture (hotfix).
+- **Garde-robe des personnages classiques** (`travaux/personnages-unifies/garde-robe/`) : peau recolorable faite (8 teintes, 13 corps) ; coiffures, hauts, bas, accessoires en fabrication ; planche finale à montrer à Alexandra. Pas de mise en prod (dessin préparatoire, pas branché).
+
 ## 0.2 Règles
 
 - **Mise en ligne** : hors ouverture du marché (avant 11 h, après 20 h), Claude met en ligne directement en mode « hotfix ». Pendant l'ouverture : seulement sur un « met en prod » d'Alexandra pour CE changement, après avoir vérifié qu'il n'y a aucune activité (`docker compose -f docker-compose.prod.yml logs --since 15m api | grep -ciE 'cart|checkout|commande'`). Recette : § 5.
