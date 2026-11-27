@@ -34,6 +34,10 @@ RESTE, dans cet ordre :
 Vérifier en local (Chrome sans écran + CDP), captures à montrer à Alexandra.
 
 ### 00.B Trois tailles de texte par ligne — FAIT pour les affiches personnalisables, RESTE la photo IA et le ciel
+> 27/11, 17 h 25 — Alexandra, devant l’étape « 2. Texte » du ciel étoilé EN LIGNE : « la taille des textes sur les lignes ça se met où je vois rien ». Un agent a été lancé au bureau à 17 h 25 pour l’ajouter à AfficheIA.tsx (photo IA + ciel). S’il a abouti, c’est commité sur `main` juste après cette note (message « Trois tailles de texte … affiche photo IA et ciel ») et PAS en ligne ; sinon, c’est le point 1 ci-dessous. Vérifier aussi l’impression de ces affiches avec une taille choisie. À mettre en ligne sur son « met en prod ».
+>
+> Autre remarque de 17 h 20, non résolue : « encore le message rouge problème de crédit ». Vérifié en prod en lecture seule : aucun refus OpenAI pour crédit depuis le 25/11 19 h 15, les créations aboutissent (17 h 15). Lui demander OÙ elle le voit (capture) ; ne rien changer sans ça.
+
 Fait (commité) : trois boutons « A » petit/moyen/grand sous chaque ligne du configurateur ; champ optionnel `taille: "s"|"m"|"l"` du bloc de texte (packages/types config.ts) ; `facteurTailleLigne` (mise-en-page-texte.ts : 0,8 / 1 / 1,25) appliqué à l'aperçu (PosterPreview) ET au PDF (pdf.ts) ; « moyen » n'écrit rien → une ligne d'avant garde exactement son empreinte d'impression.
 Reste : 1) AfficheIA.tsx (affiche photo IA et ciel étoilé) : boutons sur chaque ligne + envoyer `taille` + appliquer facteurTailleLigne là où ces textes sont dessinés pour l'impression ; 2) la réduction des lignes trop longues de l'aperçu (reductionDeLigne) ne tient pas compte du multiplicateur (écart possible aux limites avec le PDF) ; 3) ajouter un essai automatique (ligne sans taille = même empreinte) ; 4) essai visuel dans le navigateur (pas fait).
 
