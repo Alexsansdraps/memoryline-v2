@@ -189,7 +189,22 @@ export const ui = {
     "ia.style_titre": "Quel genre d'affiche ?",
     "ia.style_aide":
       "Choisissez le style qui vous plaît : votre affiche sera créée dans cet esprit.",
-    "ia.style_manquant": "Choisissez d'abord un style, ci-dessus.",
+    /* Les étapes de la fenêtre (27/11, Alexandra : « J'aimerais des steps
+       pour ça, avec des petits onglets », « où on peut retourner modifier
+       évidemment », « quand on ouvre c'est trop long faut des steps ») —
+       AfficheIA.tsx. Photo (ou Ciel), Texte, puis Personnages et Format,
+       les mots du module (cfg.etape.*). Des noms d'un mot : les quatre
+       pastilles tiennent sur une ligne de téléphone. Le rappel du style ne
+       dit plus « ci-dessus » : il peut se lire au bas de l'étape. */
+    "ia.style_manquant": "Choisissez d'abord un style.",
+    "ia.etapes": "Étapes de votre affiche",
+    "ia.etape.photo": "Photo",
+    "ia.etape.ciel": "Ciel",
+    "ia.etape.texte": "Texte",
+    // Les étapes Personnages et Format avant toute création (A-FAIRE, lot 3).
+    "ia.etape.creer_dabord": "Créez d'abord votre affiche (étape 1).",
+    // Lu par les lecteurs d'écran après le nom d'une étape cochée.
+    // L'étape du format avant toute création : rien encore à mettre au panier.
     "ia.precision": "Une précision à ajouter ? (facultatif)",
     "ia.precision_exemple":
       "Par exemple : au coucher du soleil, dans des tons chauds…",
@@ -249,8 +264,10 @@ export const ui = {
     "ia.perso.resume": "{nombre}, {vue}",
     "ia.perso.resume_muret": "assis sur le muret",
     "ia.perso.resume_face": "debout, de face",
+    // Le sens se choisit à l'étape « Photo » depuis le 27/11 (AfficheIA.tsx,
+    // onglets) : la phrase ne renvoie plus « plus haut ».
     "ia.perso.paysage":
-      "Les personnages s'ajoutent aux affiches en portrait. Pour en ajouter, choisissez « Portrait » plus haut, puis générez une autre version.",
+      "Les personnages s'ajoutent aux affiches en portrait. Pour en ajouter, choisissez « Portrait » à l'étape « Photo », puis générez une autre version.",
     "ia.perso.chargement": "Chargement des personnages…",
     "ia.perso.erreur":
       "Les personnages n'ont pas pu être chargés. Vérifiez la connexion, puis réessayez.",
@@ -1104,7 +1121,13 @@ export const ui = {
     "ia.style_titre": "What kind of poster?",
     "ia.style_aide":
       "Choose the style you like: your poster will be created in that spirit.",
-    "ia.style_manquant": "First choose a style, above.",
+    "ia.style_manquant": "First choose a style.",
+    "ia.etapes": "Steps for your poster",
+    "ia.etape.photo": "Photo",
+    "ia.etape.ciel": "Sky",
+    "ia.etape.texte": "Text",
+    // Les étapes Personnages et Format avant toute création (A-FAIRE, lot 3).
+    "ia.etape.creer_dabord": "Create your poster first (step 1).",
     "ia.precision": "Anything to add? (optional)",
     "ia.precision_exemple": "For example: at sunset, in warm tones…",
     "ia.generer": "Create my poster",
@@ -1154,7 +1177,7 @@ export const ui = {
     "ia.perso.resume_muret": "sitting on the wall",
     "ia.perso.resume_face": "standing, facing forward",
     "ia.perso.paysage":
-      "Characters can only be added to portrait posters. To add some, choose “Portrait” above, then create another version.",
+      "Characters can only be added to portrait posters. To add some, choose “Portrait” in the “Photo” step, then create another version.",
     "ia.perso.chargement": "Loading characters…",
     "ia.perso.erreur":
       "The characters couldn't be loaded. Check your connection, then try again.",
@@ -1953,7 +1976,13 @@ export const ui = {
     "ia.style_titre": "Welche Art von Poster?",
     "ia.style_aide":
       "Wählen Sie den Stil, der Ihnen gefällt: Ihr Poster wird in diesem Sinne gestaltet.",
-    "ia.style_manquant": "Wählen Sie zuerst oben einen Stil.",
+    "ia.style_manquant": "Wählen Sie zuerst einen Stil.",
+    "ia.etapes": "Schritte zu Ihrem Poster",
+    "ia.etape.photo": "Foto",
+    "ia.etape.ciel": "Himmel",
+    "ia.etape.texte": "Text",
+    // Les étapes Personnages et Format avant toute création (A-FAIRE, lot 3).
+    "ia.etape.creer_dabord": "Erstellen Sie zuerst Ihr Poster (Schritt 1).",
     "ia.precision": "Möchten Sie etwas ergänzen? (optional)",
     "ia.precision_exemple":
       "Zum Beispiel: bei Sonnenuntergang, in warmen Farbtönen…",
@@ -2005,7 +2034,7 @@ export const ui = {
     "ia.perso.resume_muret": "auf der Mauer sitzend",
     "ia.perso.resume_face": "stehend, von vorne",
     "ia.perso.paysage":
-      "Figuren gibt es nur auf Postern im Hochformat. Wählen Sie dafür oben „Hochformat“ und erstellen Sie dann eine andere Version.",
+      "Figuren gibt es nur auf Postern im Hochformat. Wählen Sie dafür „Hochformat“ im Schritt „Foto“ und erstellen Sie dann eine andere Version.",
     "ia.perso.chargement": "Figuren werden geladen…",
     "ia.perso.erreur":
       "Die Figuren konnten nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
@@ -2810,7 +2839,13 @@ export const ui = {
     "ia.style_titre": "Che tipo di poster?",
     "ia.style_aide":
       "Scegli lo stile che preferisci: il tuo poster sarà creato in quello spirito.",
-    "ia.style_manquant": "Scegli prima uno stile, qui sopra.",
+    "ia.style_manquant": "Scegli prima uno stile.",
+    "ia.etapes": "Passaggi del tuo poster",
+    "ia.etape.photo": "Foto",
+    "ia.etape.ciel": "Cielo",
+    "ia.etape.texte": "Testo",
+    // Les étapes Personnages et Format avant toute création (A-FAIRE, lot 3).
+    "ia.etape.creer_dabord": "Crea prima il tuo poster (passaggio 1).",
     "ia.precision": "Vuoi aggiungere qualcosa? (facoltativo)",
     "ia.precision_exemple": "Per esempio: al tramonto, con toni caldi…",
     "ia.generer": "Crea il mio poster",
@@ -2860,7 +2895,7 @@ export const ui = {
     "ia.perso.resume_muret": "sul muretto",
     "ia.perso.resume_face": "in piedi, di fronte",
     "ia.perso.paysage":
-      "I personaggi si aggiungono solo ai poster in verticale. Per aggiungerne, scegli «Verticale» qui sopra, poi crea un'altra versione.",
+      "I personaggi si aggiungono solo ai poster in verticale. Per aggiungerne, scegli «Verticale» nel passaggio «Foto», poi crea un'altra versione.",
     "ia.perso.chargement": "Caricamento dei personaggi…",
     "ia.perso.erreur":
       "Non è stato possibile caricare i personaggi. Controlla la connessione, poi riprova.",
@@ -3658,7 +3693,13 @@ export const ui = {
     "ia.style_titre": "¿Qué tipo de lámina?",
     "ia.style_aide":
       "Elige el estilo que te guste: tu lámina se creará con ese espíritu.",
-    "ia.style_manquant": "Elige primero un estilo, más arriba.",
+    "ia.style_manquant": "Elige primero un estilo.",
+    "ia.etapes": "Pasos de tu lámina",
+    "ia.etape.photo": "Foto",
+    "ia.etape.ciel": "Cielo",
+    "ia.etape.texte": "Texto",
+    // Les étapes Personnages et Format avant toute création (A-FAIRE, lot 3).
+    "ia.etape.creer_dabord": "Crea primero tu lámina (paso 1).",
     "ia.precision": "¿Quieres añadir algo? (opcional)",
     "ia.precision_exemple": "Por ejemplo: al atardecer, en tonos cálidos…",
     "ia.generer": "Crear mi lámina",
@@ -3708,7 +3749,7 @@ export const ui = {
     "ia.perso.resume_muret": "en el murete",
     "ia.perso.resume_face": "de pie, de frente",
     "ia.perso.paysage":
-      "Los personajes solo se añaden a las láminas en vertical. Para añadirlos, elige «Vertical» más arriba y crea otra versión.",
+      "Los personajes solo se añaden a las láminas en vertical. Para añadirlos, elige «Vertical» en el paso «Foto» y crea otra versión.",
     "ia.perso.chargement": "Cargando los personajes…",
     "ia.perso.erreur":
       "No se han podido cargar los personajes. Comprueba la conexión y vuelve a intentarlo.",
@@ -4489,7 +4530,13 @@ export const ui = {
     "ia.photo_titre": "お写真",
     "ia.style_titre": "どんなポスターにしますか？",
     "ia.style_aide": "お好みのスタイルを選んでください。その雰囲気でポスターを作成します。",
-    "ia.style_manquant": "先に上でスタイルを選んでください。",
+    "ia.style_manquant": "先にスタイルを選んでください。",
+    "ia.etapes": "ポスター作りのステップ",
+    "ia.etape.photo": "写真",
+    "ia.etape.ciel": "星空",
+    "ia.etape.texte": "文字",
+    // Les étapes Personnages et Format avant toute création (A-FAIRE, lot 3).
+    "ia.etape.creer_dabord": "まずステップ1でポスターを作成してください。",
     "ia.precision": "補足があれば入力してください（任意）",
     "ia.precision_exemple": "例：夕暮れ時、暖かい色合いで…",
     "ia.generer": "ポスターを作る",
@@ -4528,7 +4575,7 @@ export const ui = {
     "ia.perso.resume": "{nombre}・{vue}",
     "ia.perso.resume_muret": "塀に座る",
     "ia.perso.resume_face": "立ち姿・正面",
-    "ia.perso.paysage": "キャラクターは縦向きのポスターにのみ追加できます。追加するには、上で「縦向き」を選んでから、別のバージョンを作ってください。",
+    "ia.perso.paysage": "キャラクターは縦向きのポスターにのみ追加できます。追加するには、「写真」のステップで「縦向き」を選んでから、別のバージョンを作ってください。",
     "ia.perso.chargement": "キャラクターを読み込み中…",
     "ia.perso.erreur": "キャラクターを読み込めませんでした。接続を確認して、もう一度お試しください。",
     "ia.refus.indisponible": "現在、このポスターにはキャラクターを追加できません。しばらくしてからもう一度お試しいただくか、キャラクターを削除してからカートに入れてください。",
@@ -5198,7 +5245,13 @@ export const ui = {
     "ia.photo_titre": "您的照片",
     "ia.style_titre": "想要哪种风格的海报？",
     "ia.style_aide": "选择您喜欢的风格：您的海报将按此风格制作。",
-    "ia.style_manquant": "请先在上方选择一种风格。",
+    "ia.style_manquant": "请先选择一种风格。",
+    "ia.etapes": "海报制作步骤",
+    "ia.etape.photo": "照片",
+    "ia.etape.ciel": "星空",
+    "ia.etape.texte": "文字",
+    // Les étapes Personnages et Format avant toute création (A-FAIRE, lot 3).
+    "ia.etape.creer_dabord": "请先在第 1 步制作海报。",
     "ia.precision": "还有补充说明吗？（选填）",
     "ia.precision_exemple": "例如：日落时分，暖色调…",
     "ia.generer": "制作我的海报",
@@ -5237,7 +5290,7 @@ export const ui = {
     "ia.perso.resume": "{nombre}，{vue}",
     "ia.perso.resume_muret": "坐在矮墙上",
     "ia.perso.resume_face": "站立，正面",
-    "ia.perso.paysage": "人物只能添加到竖版海报上。如需添加，请在上方选择“竖版”，然后生成另一个版本。",
+    "ia.perso.paysage": "人物只能添加到竖版海报上。如需添加，请在“照片”步骤中选择“竖版”，然后生成另一个版本。",
     "ia.perso.chargement": "正在加载人物…",
     "ia.perso.erreur": "人物未能加载。请检查网络连接后重试。",
     "ia.refus.indisponible": "此海报暂时无法添加人物。请稍后重试，或移除人物后再加入购物车。",

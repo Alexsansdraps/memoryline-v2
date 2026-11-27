@@ -158,24 +158,6 @@ export interface AfficheIAProps {
 /** Étapes du parcours, dans l'ordre où le client les traverse. */
 type Etape = "depot" | "envoi" | "generation" | "pret";
 
-/**
- * Le numéro d'une étape, devant son titre.
- *
- * Il ne s'affiche que lorsque le parcours en compte vraiment plusieurs —
- * style, puis photo : c'est lui qui dit, sans une phrase de plus, dans quel
- * ordre les faire.
- */
-function Numero(props: { n: number }): JSX.Element {
-  return (
-    <span
-      aria-hidden="true"
-      class="inline-flex h-6 w-6 shrink-0 items-center justify-center bg-ink text-xs font-medium text-paper"
-    >
-      {props.n}
-    </span>
-  );
-}
-
 /* --------------------------------------------------------------------------
  * Les dessins d'attente
  *
@@ -442,10 +424,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * style, et un appui sans lui AMÈNE au choix et le dit en rouge.
    */
   const [rappelStyle, setRappelStyle] = createSignal(false);
+  /** Le bloc des styles, en haut de l'étape 1 : le rappel l'amène en vue. */
   let blocStyle: HTMLDivElement | undefined;
   const rappelerLeStyle = () => {
     setRappelStyle(true);
-    blocStyle?.scrollIntoView({ block: "start", behavior: "smooth" });
+    // Les styles sont à l'étape 1 depuis le 27/11 : elle doit être montrée
+    // AVANT de faire défiler jusqu'à eux.
+    allerA("source", true);
+    requestAnimationFrame(() => blocStyle?.scrollIntoView({ block: "start", behavior: "smooth" }));
   };
 
   /**
@@ -902,8 +888,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     const refus = verifierFormatPhoto(fichier);
     if (refus) {
       setEchec(refus);
+      // Le refus se lit à l'étape de la photo (27/11), même quand elle
+      // arrive du téléphone pendant qu'on regarde une autre étape.
+      signalerEchec("source");
       return;
     }
+    // Une photo choisie, ou arrivée du téléphone pendant qu'on regarde une
+    // autre étape : on revient à l'étape 1, où elle se crée (27/11).
+    allerA("source");
     const ancienne = photoLocale();
     if (ancienne) URL.revokeObjectURL(ancienne);
     const locale = URL.createObjectURL(fichier);
@@ -933,6 +925,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       arreterChrono();
       setEchec(causeDe(e));
       setEtape("depot");
+      signalerEchec("source");
     }
   }
 
@@ -982,11 +975,16 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           ...(compoAReprendre ? { compo: compoAReprendre } : {}),
         },
       ]);
+      // L'affiche est là : on reste à l'étape 1, où « Continuer » devient
+      // le bouton plein (barreDesEtapes) — on peut encore en refaire une.
     } catch (e) {
       setEchec(causeDe(e));
       // On garde la photo ET l'affiche déjà obtenue : un essai raté ne doit
       // ni effacer l'aperçu retenu, ni obliger à rechoisir le fichier.
       setEtape(apercu() ? "pret" : "depot");
+      // Les trois essais du jour, une création qui n'aboutit pas… : le
+      // message est à l'étape de la photo, sous ce qui relance (27/11).
+      signalerEchec("source");
     } finally {
       arreterChrono();
     }
@@ -1003,6 +1001,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     setApercuChemin(null);
     setEchec(null);
     setEtape("depot");
+    // « Recommencer » ramène à l'étape 1, où tout repart (27/11).
+    allerA("source");
   }
 
   /**
@@ -1043,6 +1043,8 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       // Une affiche avec personnages refusée par le serveur (20/11) reçoit
       // sa phrase ; toute autre panne, le message d'avant.
       setEchec(refusDuPanier(e) ?? "inconnu");
+      // À l'étape du format, sous « Ajouter au panier » (27/11).
+      signalerEchec("format");
       setAjout(false);
     }
   }
@@ -1350,6 +1352,438 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     />
   );
 
+  /* ------------------------------------------------------------------------
+   * Les étapes de la fenêtre (27/11).
+   *
+   * Alexandra, devant la colonne des réglages — styles, photo, sens,
+   * précision, lignes et polices, couleur, formats : « J'aimerais des steps
+   * pour ça, avec des petits onglets », « où on peut retourner modifier
+   * évidemment » ; puis, sur le ciel étoilé : « pareil ici on met des steps
+   * car la page est trop longue », « quand on ouvre c'est trop long faut des
+   * steps ». Tout s'y empilait, sur plus de deux écrans de la tablette.
+   *
+   * Quatre étapes, comme le module des affiches personnalisables (ses
+   * pastilles, sa barre du bas) : 1. la Photo — le style, la photo, le
+   * relais, le sens, la précision, « Créer mon affiche » — ou le Ciel — son
+   * formulaire ; 2. le Texte ; 3. les Personnages ; 4. le Format et le
+   * panier. Chaque pastille se touche à tout moment, en arrière pour
+   * modifier comme en avant ; « Retour » et « Continuer » font de même au
+   * bas de la fenêtre.
+   *
+   * Rien d'autre ne change : mêmes états, mêmes appels, même aperçu, mêmes
+   * « Vos créations », même panier. Les étapes cachées restent MONTÉES
+   * (attribut `hidden`, jamais de <Show>) : le relais du téléphone continue
+   * d'attendre la photo, le formulaire du ciel garde sa date et sa ville, et
+   * rien de ce qui est tapé ne se perd d'une étape à l'autre.
+   * ---------------------------------------------------------------------- */
+  type Onglet = "source" | "texte" | "personnages" | "format";
+  const ONGLETS: Onglet[] = ["source", "texte", "personnages", "format"];
+  /** Le nom d'une étape : la première est la Photo, ou le Ciel. */
+  const nomOnglet = (o: Onglet): string =>
+    tr(
+      o === "source"
+        ? modeCiel()
+          ? "ia.etape.ciel"
+          : "ia.etape.photo"
+        : o === "texte"
+          ? "ia.etape.texte"
+          : o === "personnages"
+            ? "cfg.etape.personnages"
+            : "cfg.etape.format",
+    );
+  /** L'étape montrée. Pas `etape`, qui dit autre chose (depot, envoi, generation, pret). */
+  const [volet, setVolet] = createSignal<Onglet>("source");
+  const idEtape = (o: Onglet) => `ml-ia-${props.product.id}-etape-${o}`;
+  let rangeeOnglets: HTMLDivElement | undefined;
+
+  /**
+   * Montre une étape. `auDoigt` : c'est un appui du client — une pastille,
+   * « Continuer », « Retour ». L'étape qui arrive prend la place de celle où
+   * il touchait, et le second coup d'un double appui, sur la tablette,
+   * tomberait sur ce qui vient d'arriver sous son doigt : comme à l'ouverture
+   * des personnages, les clics de l'instant qui suit sont avalés.
+   *
+   * Le focus qui était dans l'étape qui se cache — « Continuer » excepté,
+   * qui reste —, retomberait au début de la page : il passe à la pastille de
+   * la nouvelle étape, dans la fenêtre.
+   */
+  function allerA(o: Onglet, auDoigt = false) {
+    if (o === volet()) return;
+    const quittee = document.getElementById(idEtape(volet()));
+    const focusDedans = !!quittee && quittee.contains(document.activeElement);
+    setVolet(o);
+    if (focusDedans)
+      rangeeOnglets
+        ?.querySelector<HTMLButtonElement>(`[data-etape="${o}"]`)
+        ?.focus({ preventScroll: true });
+    if (auDoigt) avalerLesClicsUnInstant();
+    // Le haut de l'étape en vue : « Continuer » se touche au bas de la
+    // fenêtre, et l'étape suivante commencerait sinon au-dessus de son bord.
+    queueMicrotask(montrerLesOnglets);
+  }
+
+  /**
+   * La rangée des pastilles, ramenée en haut de la fenêtre : passée au-dessus
+   * du bord, ou loin en dessous — au téléphone, sous le grand aperçu, où
+   * l'étape nouvelle commençait derrière la barre du bas. Sur un grand écran,
+   * elle est déjà en haut de sa colonne : rien ne bouge.
+   */
+  function montrerLesOnglets() {
+    if (!corpsModale || !rangeeOnglets) return;
+    const ecart =
+      rangeeOnglets.getBoundingClientRect().top - corpsModale.getBoundingClientRect().top;
+    if (ecart < 0 || ecart > corpsModale.clientHeight * 0.4)
+      corpsModale.scrollTo({ top: Math.max(0, corpsModale.scrollTop + ecart - 12) });
+  }
+
+  /**
+   * L'étape où se lit l'échec en cours : celle du geste qui l'a causé — la
+   * photo (son envoi, la création) ou le format (le panier). Un échec arrivé
+   * pendant qu'on regarde une autre étape y ramène, et son message se met en
+   * vue, même au bas de l'étape : il doit se voir.
+   */
+  const [ongletEchec, setOngletEchec] = createSignal<"source" | "format">("source");
+  let messagePhoto: HTMLParagraphElement | undefined;
+  let messageFormat: HTMLParagraphElement | undefined;
+  function signalerEchec(o: "source" | "format") {
+    setOngletEchec(o);
+    allerA(o);
+    requestAnimationFrame(() =>
+      (o === "source" ? messagePhoto : messageFormat)?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      }),
+    );
+  }
+
+  /**
+   * La barre du bas, collée au bord de la fenêtre comme celle du module
+   * (`.ml-cfg-pied`) : « Retour », sauf à la première étape ; « Continuer »,
+   * sauf à la dernière, où « Ajouter au panier » tient ce rôle. À la
+   * première étape, tant qu'aucune affiche n'existe, « Continuer » n'est
+   * qu'un contour : l'action principale y reste « Créer mon affiche ».
+   */
+  const barreDesEtapes = () => {
+    const rang = () => ONGLETS.indexOf(volet());
+    const precedente = () => ONGLETS[rang() - 1];
+    const suivante = () => ONGLETS[rang() + 1];
+    const enContour = () => volet() === "source" && !apercu();
+    return (
+      <div
+        class="ml-cfg-pied sticky bottom-0 z-[3] mt-6 flex items-center justify-between gap-3 border-t border-ink/10 bg-paper py-3"
+      >
+        <Show when={precedente()} fallback={<span />}>
+          {(p) => (
+            <button
+              type="button"
+              onClick={() => allerA(p(), true)}
+              class="inline-flex items-center gap-2 border border-ink/30 px-5 py-2.5 text-sm font-medium transition-colors hover:border-ink"
+            >
+              <span aria-hidden="true">←</span>
+              {tr("cfg.retour")}
+            </button>
+          )}
+        </Show>
+        <Show when={suivante()}>
+          {(s) => (
+            <button
+              type="button"
+              onClick={() => allerA(s(), true)}
+              class={`inline-flex items-center gap-2 rounded-full border border-ink px-6 py-2.5 text-sm font-medium transition-colors ${
+                enContour() ? "hover:bg-ink hover:text-paper" : "bg-ink text-paper hover:bg-ink/85"
+              }`}
+            >
+              {tr("cfg.continuer")}
+              <span aria-hidden="true">→</span>
+            </button>
+          )}
+        </Show>
+      </div>
+    );
+  };
+
+  /* ------------------------------------------------------------------------
+   * Les morceaux de la colonne qui servent deux fois depuis le 27/11 : dans
+   * les étapes, et dans la colonne du ciel étoilé, restée d'un seul tenant.
+   * Rangés ici tels qu'ils étaient écrits dans la colonne.
+   * ---------------------------------------------------------------------- */
+
+  /*
+   * Les trois lignes, avec les règles des affiches personnalisables
+   * (packages/types/src/fonts.ts) : chaque ligne ne propose que SES
+   * polices — `policesDeLaLigne` —, et la première s'écrit en capitales.
+   * Chaque police est montrée DANS la police, sous son nom, comme au
+   * configurateur ; la couleur est commune aux trois. L'étape « Textes ».
+   */
+  const blocTextes = () => (
+    <div class="mt-5 space-y-3">
+      <Index each={lignes()}>
+        {(ligne, rang) => (
+          <label class="block text-sm">
+            <span class="font-medium">{tr(CLES_LIGNES[rang]!.champ)}</span>
+            {/* Une zone de texte : la touche Entrée coupe la ligne,
+                trois morceaux au plus, comme au configurateur — qui
+                ne l'écrit plus sous les champs, ici non plus. */}
+            <textarea
+              rows={Math.min(MORCEAUX_PAR_LIGNE, ligne().value.split("\n").length)}
+              value={ligne().value}
+              maxLength={60}
+              placeholder={tr(CLES_LIGNES[rang]!.exemple)}
+              onInput={(e) => saisirLigne(rang, e.currentTarget)}
+              class="mt-1 w-full resize-none border border-ink/20 bg-paper px-3 py-2 text-sm leading-snug focus:border-ink focus:outline-none"
+            />
+            {/* Écarts de 10 px : la coche du choix fait (`ml-choix`)
+                déborde de son coin d'autant, et ne doit pas mordre sur
+                le champ au-dessus ni sur la police voisine. */}
+            <div class="mt-2.5 flex flex-wrap gap-2.5">
+              <For each={policesDeLaLigne(rang)}>
+                {(police) => (
+                  <button
+                    type="button"
+                    aria-pressed={ligne().font === police.id}
+                    title={nomTraduit(CLES_POLICES, police)}
+                    onClick={() => modifierLigne(rang, { font: police.id })}
+                    class="ml-choix border border-ink/20 px-3 py-1.5 text-lg leading-snug hover:border-ink/45"
+                    style={{ "font-family": familleCss(police) }}
+                  >
+                    {nomTraduit(CLES_POLICES, police)}
+                  </button>
+                )}
+              </For>
+            </div>
+          </label>
+        )}
+      </Index>
+
+      <div>
+        <p class="text-sm font-medium">{tr("cfg.couleur_texte")}</p>
+        <div class="mt-2.5 flex gap-3">
+          <For each={COULEURS_TEXTE_AFFICHE}>
+            {(c) => (
+              <button
+                type="button"
+                aria-pressed={couleur() === c.hex}
+                aria-label={nomTraduit(CLES_COULEURS, c)}
+                title={nomTraduit(CLES_COULEURS, c)}
+                onClick={() => setCouleur(c.hex)}
+                // La couleur garde son fond (style en ligne) ; le choix
+                // fait reçoit les marques communes (`ml-choix`).
+                class="ml-choix h-9 w-9 border border-ink/30 hover:border-ink/60"
+                style={{ background: c.hex }}
+              />
+            )}
+          </For>
+        </div>
+      </div>
+    </div>
+  );
+
+  /**
+   * Les formats, sans montant au stand : l'étape « Format ». `marge` :
+   * l'écart au-dessus, celui de la colonne où ils se posent.
+   */
+  const blocFormats = (marge: string) => (
+    <Show when={formats().length > 1}>
+      <div class={marge}>
+        <p class="text-sm font-medium">{tr("produit.format")}</p>
+        {/* Les mêmes cases que le format de la fiche, et le même choix
+            fait (`ml-choix`) : plus de noir plein, qu'on prenait pour un
+            bouton à presser. */}
+        <div class="mt-3 flex gap-3">
+          <For each={formats()}>
+            {(f) => (
+              <button
+                type="button"
+                onClick={() => setFormat(f.format)}
+                aria-pressed={format() === f.format}
+                class="ml-choix border border-ink/20 px-4 py-3 text-left text-sm hover:border-ink/45"
+              >
+                <span class="block font-semibold">{f.format}</span>
+                <Show when={!props.sansPrix}>
+                  <span class="block font-semibold text-ink-soft">
+                    {formatPrice(f.priceCents, locale)}
+                  </span>
+                </Show>
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+    </Show>
+  );
+
+  /**
+   * Les personnages (20/11), facultatifs, une fois l'affiche obtenue : sous
+   * la couleur du texte, à l'étape « Textes » depuis le 27/11. En portrait
+   * seulement : en paysage, l'aperçu et l'impression ne savent pas les
+   * placer, une phrase le dit à la place des boutons. Ils ne changent pas le
+   * prix : aucun montant ici, au stand comme sur le site.
+   */
+  const blocPersonnages = () => (
+    <div class="mt-5">
+      <p class="text-sm font-medium">{tr("ia.perso.titre")}</p>
+      <Show
+        when={orientationApercu() === "portrait"}
+        fallback={<p class="mt-1 text-sm text-ink-soft">{tr("ia.perso.paysage")}</p>}
+      >
+        {/* Avec des personnages : ce qu'il y a, et les deux gestes.
+            Pour passer de dos à face, on retire puis on rechoisit :
+            on ne mélange jamais les deux sur une affiche. */}
+        <Show
+          when={compoMontree()}
+          fallback={
+            <>
+              <p class="mt-1 text-sm text-ink-soft">{tr("ia.perso.aide")}</p>
+              {/* Deux gros boutons, le muret d'abord (décision du
+                  20/11) : assez grands pour le doigt, et l'on voit
+                  d'un coup d'œil ce que chacun donne. */}
+              <div class="mt-3 grid grid-cols-2 gap-3">
+                <For each={["back", "front"] as const}>
+                  {(vue) => (
+                    <button
+                      type="button"
+                      disabled={occupe() || ajout()}
+                      onClick={() => ouvrirComposition(vue)}
+                      class="flex flex-col items-center justify-center gap-1 border border-ink/15 px-3 py-3.5 text-center transition-colors hover:border-ink/45 disabled:opacity-60"
+                    >
+                      <svg
+                        viewBox="0 0 48 48"
+                        class="h-10 w-10 text-ink/60"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.6"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        {TRAITS_PERSONNAGES[vue]()}
+                      </svg>
+                      <span class="text-sm font-semibold">
+                        {tr(vue === "back" ? "ia.perso.muret" : "ia.perso.face")}
+                      </span>
+                      <span class="text-xs text-ink-soft">
+                        {tr(vue === "back" ? "ia.perso.muret_detail" : "ia.perso.face_detail")}
+                      </span>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </>
+          }
+        >
+          {(compo) => (
+            <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              <span>{resumeCompo(compo())}</span>
+              <span aria-hidden="true" class="text-ink-soft">
+                ·
+              </span>
+              <button
+                type="button"
+                disabled={occupe() || ajout()}
+                onClick={() => ouvrirComposition(compo().vue)}
+                class="underline underline-offset-4 transition-colors hover:text-terracotta disabled:opacity-60"
+              >
+                {tr("ia.perso.modifier")}
+              </button>
+              <span aria-hidden="true" class="text-ink-soft">
+                ·
+              </span>
+              <button
+                type="button"
+                disabled={occupe() || ajout()}
+                onClick={retirerComposition}
+                class="underline underline-offset-4 transition-colors hover:text-terracotta disabled:opacity-60"
+              >
+                {tr("ia.perso.retirer")}
+              </button>
+            </p>
+          )}
+        </Show>
+      </Show>
+    </div>
+  );
+
+  /**
+   * Le nombre d'exemplaires : les mêmes boutons qu'ailleurs dans la
+   * boutique, deux touches plutôt qu'un champ seul, parce que sur un
+   * téléphone passer de 1 à 3 se fait au pouce sans ouvrir le clavier.
+   */
+  const blocQuantite = () => (
+    <div class="inline-flex items-center border border-ink/20">
+      <button
+        type="button"
+        onClick={() => setQuantite((q) => bornerQuantite(q - 1))}
+        disabled={ajout() || occupe() || quantite() <= 1}
+        aria-label={tr("panier.moins")}
+        class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
+      >
+        −
+      </button>
+      <input
+        type="number"
+        min="1"
+        max="20"
+        value={quantite()}
+        onInput={(e) =>
+          setQuantite(bornerQuantite(Number(e.currentTarget.value)))
+        }
+        disabled={ajout() || occupe()}
+        aria-label={tr("panier.quantite")}
+        class="w-12 border-x border-ink/20 bg-transparent py-2.5 text-center text-sm focus:outline-none"
+      />
+      <button
+        type="button"
+        onClick={() => setQuantite((q) => bornerQuantite(q + 1))}
+        disabled={ajout() || occupe() || quantite() >= 20}
+        aria-label={tr("panier.plus")}
+        class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
+      >
+        +
+      </button>
+    </div>
+  );
+
+  /** « Ajouter au panier », ou « Ajouter les 3 affiches au panier » quand on en a coché plusieurs. */
+  const boutonAjouter = () => (
+    <button
+      type="button"
+      // Éteint tant qu'aucune affiche n'existe : l'étape « Format » se
+      // montre à tout moment depuis le 27/11 (étapes de la fenêtre).
+      disabled={ajout() || occupe() || !apercu()}
+      aria-busy={ajout()}
+      onClick={() => void ajouterAuPanier()}
+      class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
+    >
+      {/* Pendant l'ajout, un rond qui tourne et ce qui se passe en
+          toutes lettres : le « … » seul se lisait comme une panne. */}
+      <Show
+        when={!ajout()}
+        fallback={
+          <>
+            <span class="ml-spinner ml-spinner-clair mr-2" aria-hidden="true" />
+            {tr("produit.ajout_en_cours")}
+          </>
+        }
+      >
+        {affichesAAjouter().length > 1
+          ? tr("ia.ajouter_n").replace("{n}", String(affichesAAjouter().length))
+          : tr("produit.ajouter")}
+      </Show>
+    </button>
+  );
+
+  /** « Repartir de zéro » : ni photo ni affiche, les créations de la séance restent. */
+  const boutonRecommencer = () => (
+    <button
+      type="button"
+      disabled={occupe()}
+      onClick={reprendreDepart}
+      class="text-sm text-ink-soft underline underline-offset-4 hover:text-terracotta transition-colors disabled:opacity-60"
+    >
+      {tr("ia.recommencer")}
+    </button>
+  );
+
   return (
     <>
       <button
@@ -1377,7 +1811,13 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         if (e.target === e.currentTarget && !composer()) fermer();
       }}
     >
-    <div class="ml-modal-panel">
+    {/* Toute la hauteur permise, d'une étape à l'autre (27/11) : la fenêtre
+        se centre sur sa hauteur, et une étape plus courte — le style, le
+        format — la faisait rapetisser et descendre de 70 px sur un grand
+        écran, petits onglets compris, qui fuyaient sous la souris. La colonne
+        d'un seul tenant d'avant la remplissait de toute façon. Au téléphone
+        et sur la tablette en portrait, elle est déjà plein écran. */}
+    <div class="ml-modal-panel md:h-[92vh]">
       <header class="ml-modal-head">
         <h2 class="text-xl sm:text-2xl">{modeCiel() ? tr("ciel.titre_fenetre") : tr("ia.titre")}</h2>
         {/* Pendant la composition, la croix vaut « Retour » : elle ramène à
@@ -1738,11 +2178,51 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
         </div>
 
         {/* ---------------------------- Commandes ------------------------ */}
-        <div>
+        {/* Les étapes (27/11, voir `volet`) : les pastilles en haut, une étape
+            à la fois, la barre « Retour / Continuer » collée au bas de la
+            fenêtre. `min-w-0` : la rangée des pastilles ne passe jamais à la
+            ligne ; sans lui, sa largeur minimale élargissait la colonne, et
+            la fenêtre défilait de côté sur un téléphone de 320 px. */}
+        <div class="min-w-0">
+          {/* Les pastilles, comme celles du module des affiches
+              personnalisables (`.ml-cfg-etapes`) : sur une ligne, numérotées,
+              celle de l'étape montrée pleine (`aria-current`). Chacune se
+              touche à tout moment, pour revenir modifier comme pour aller
+              plus loin. */}
+          <div
+            ref={rangeeOnglets}
+            class="ml-cfg-etapes mt-1 flex flex-nowrap gap-1.5"
+            role="group"
+            aria-label={tr("ia.etapes")}
+          >
+            <For each={ONGLETS}>
+              {(o, i) => {
+                const vu = () => volet() === o;
+                return (
+                  <button
+                    type="button"
+                    data-etape={o}
+                    aria-controls={idEtape(o)}
+                    aria-current={vu() ? "step" : undefined}
+                    onClick={() => allerA(o, true)}
+                    class={`ml-cfg-etape inline-flex min-h-8 min-w-0 flex-auto items-center justify-center whitespace-nowrap rounded-full px-3 py-1.5 text-[13px] font-semibold leading-tight transition-colors ${
+                      vu() ? "bg-ink text-paper" : "bg-ink/10 text-ink hover:bg-ink/15"
+                    }`}
+                  >
+                    <span class="min-w-0 overflow-hidden text-ellipsis">
+                      {i() + 1}. {nomOnglet(o)}
+                    </span>
+                  </button>
+                );
+              }}
+            </For>
+          </div>
 
-          <Show
-            when={!modeCiel()}
-            fallback={
+          {/* 1. Photo — le style, la photo, ce qui en fait une affiche — ou
+              Ciel — son formulaire. « Générer une autre version » et
+              « Recommencer » sont ici, près de ce qu'ils refont. */}
+          <div id={idEtape("source")} hidden={volet() !== "source"}>
+            <Show when={modeCiel()}>
               <div class="mt-5">
                 <CielEtoile
                   langue={props.langue ?? LANGUE_DEFAUT}
@@ -1751,581 +2231,353 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   onCree={cielCree}
                 />
               </div>
-            }
-          >
-          {/* 1. Le style, EN PREMIER quand la boutique en propose : c'est lui
-              qui fait la première génération, pas seulement les suivantes.
-              Une carte par style — sa première image, son nom —, assez
-              grande pour le doigt sur la tablette du stand. */}
-          <Show when={choixDuStyle()}>
-            <div class="mt-5 scroll-mt-4" ref={blocStyle}>
-              <p class="flex items-center gap-2 font-medium">
-                <Numero n={1} />
-                {tr("ia.style_titre")}
-              </p>
-              <p class="mt-1 text-sm text-ink-soft">{tr("ia.style_aide")}</p>
-              <Show when={rappelStyle() && styleManquant()}>
-                <p role="alert" class="mt-2 bg-terracotta/10 px-3 py-2 text-sm font-medium text-terracotta-deep">
-                  {tr("ia.style_manquant")}
-                </p>
-              </Show>
-              {/* TOUJOURS une rangée qui défile de côté (27/11, Alexandra :
-                  « ça doit tjs rester scroll horizontal ») : autant de styles
-                  qu'elle en ajoute, la fenêtre ne s'allonge plus. Les flèches
-                  et la barre sont celles de toutes les listes du site
-                  (ZoneDefilante). Un peu de marge en haut et à droite : la
-                  coche du style choisi déborde du coin de sa carte. */}
-              <ZoneDefilante
-                sens="horizontal"
-                versDebut={tr("cfg.precedent")}
-                versFin={tr("cfg.suivant")}
-                class="mt-1 flex snap-x gap-3 overflow-x-auto pb-1 pr-2 pt-2"
-              >
-                <For each={styles()}>
-                  {(st) => {
-                    const actif = () => styleChoisi() === st.id;
-                    const image = assetUrl(st.images[0], 400);
-                    return (
-                      <button
-                        type="button"
-                        aria-pressed={actif()}
-                        disabled={occupe()}
-                        // Toucher le style déjà choisi le GARDE : il est
-                        // obligatoire, et un second appui involontaire sur
-                        // la tablette ne doit pas éteindre la suite.
-                        onClick={() => {
-                          setStyleChoisi(st.id);
-                          setRappelStyle(false);
-                        }}
-                        // Le choix fait se dessine par `ml-choix` (global.css),
-                        // comme tous les choix du site : cadre et coche
-                        // rouges. Rien n'est rogné : la coche déborde du coin
-                        // de la carte.
-                        class="ml-choix flex w-[8.5rem] shrink-0 snap-start flex-col border border-ink/15 text-left hover:border-ink/45 disabled:opacity-60 sm:w-[9.5rem]"
-                      >
-                        <Show when={image} fallback={<AttenteStyle titre={st.titre} />}>
-                          <img
-                            src={image!}
-                            alt=""
-                            loading="lazy"
-                            class="aspect-[4/5] w-full object-cover"
-                          />
-                        </Show>
-                        {/* Le nom ne se remplit plus de noir : un bandeau noir
-                            se lisait comme un bouton à presser, pas comme un
-                            choix fait. */}
-                        <span
-                          class={`px-3 py-2.5 text-sm ${actif() ? "font-semibold" : ""}`}
-                        >
-                          {st.titre}
-                        </span>
-                      </button>
-                    );
-                  }}
-                </For>
-              </ZoneDefilante>
-            </div>
-
-            <p class="mt-6 flex items-center gap-2 font-medium">
-              <Numero n={2} />
-              {tr("ia.photo_titre")}
-            </p>
-          </Show>
-
-          {/* Zone de dépôt : clic OU glisser-déposer. Le champ fichier reste
-              un vrai <input>, donc utilisable au clavier et aux lecteurs
-              d'écran ; le cadre n'est que sa décoration. Éteinte tant qu'un
-              style reste à choisir, et elle dit pourquoi. */}
-          {/* `relative` (21/11) : le champ masqué (sr-only) est en position
-              absolue. Sans ancêtre positionné, il se plaçait par rapport au
-              fond grisé de la fenêtre (.ml-modal-overlay, en position fixe),
-              bien plus bas que son bord : ce fond défilait, surtout quand un
-              toucher sur la zone donnait le focus au champ — jusqu'à plus de
-              800 px sur téléphone, et environ 60 px sur la tablette du stand
-              dès quatre styles —, et emportait l'en-tête et la croix. Rangé
-              dans son cadre, il suit le corps de la fenêtre et n'agrandit
-              plus rien ; le clic, le dépôt et le relais du stand sont
-              inchangés. */}
-          {/* Au stand, pas de zone de dépôt (27/11, Alexandra : « enlève ça
-              pour les stands Déposez votre photo ici, ou cliquez pour la
-              choisir / JPEG, PNG ou WebP ») : la photo arrive du téléphone
-              par le relais, juste dessous. Le champ fichier reste, caché et
-              dans son cadre positionné (voir plus haut) : le bouton « Choisir
-              une photo » l'ouvre toujours sur la tablette. */}
-          <Show
-            when={!props.stand}
-            fallback={
-              <div class="relative">
-                <input
-                  ref={champFichier}
-                  type="file"
-                  accept={TYPES_PHOTO.join(",")}
-                  class="sr-only"
-                  disabled={occupe()}
-                  onChange={(e) => {
-                    const f = e.currentTarget.files?.[0];
-                    e.currentTarget.value = "";
-                    if (f) void choisirPhoto(f);
-                  }}
-                />
-              </div>
-            }
-          >
-            <label
-              class={`relative ${choixDuStyle() ? "mt-3" : "mt-5"} flex flex-col items-center justify-center gap-1 border-2 border-dashed p-6 text-center transition-colors ${
-                survol()
-                  ? "cursor-pointer border-terracotta bg-terracotta/5"
-                  : "cursor-pointer border-ink/25 hover:border-ink/50"
-              } ${occupe() ? "pointer-events-none opacity-60" : ""}`}
-              onDragOver={(e) => {
-                // Toujours retenu, même éteinte : une photo lâchée à côté du
-                // but ne doit pas remplacer la boutique par l'image seule.
-                e.preventDefault();
-                setSurvol(true);
-              }}
-              onDragLeave={() => setSurvol(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setSurvol(false);
-                const f = e.dataTransfer?.files?.[0];
-                if (f) void choisirPhoto(f);
-              }}
-            >
-              <input
-                ref={champFichier}
-                type="file"
-                accept={TYPES_PHOTO.join(",")}
-                class="sr-only"
-                disabled={occupe()}
-                onChange={(e) => {
-                  const f = e.currentTarget.files?.[0];
-                  // Remise à zéro : rechoisir LE MÊME fichier doit relancer.
-                  e.currentTarget.value = "";
-                  if (f) void choisirPhoto(f);
-                }}
-              />
-              <span class="text-sm font-medium">
-                {nomPhoto() ? tr("ia.changer_photo") : tr("ia.depot")}
-              </span>
-              {/* Aucune limite de poids à annoncer : la photo est réduite
-                  dans le navigateur avant de partir. « 10 Mo maximum » faisait
-                  renoncer à des photos de téléphone parfaitement acceptées. */}
-              <span class="text-xs text-ink-soft">{tr("ia.depot_formats")}</span>
-              <Show when={nomPhoto()}>
-                <span class="mt-1 max-w-full truncate text-xs text-ink-soft">
-                  {nomPhoto()}
-                </span>
-              </Show>
-            </label>
-          </Show>
-
-          {/* Au stand, la photo est souvent dans le téléphone du client : la
-              tablette montre un QR code, la photo arrive ici. Même règle que
-              la zone de dépôt — éteinte tant qu'un style reste à choisir. */}
-          {/* Pendant la composition des personnages (20/11), le relais est
-              occupé puis fermé : une photo arrivée du téléphone effacerait
-              l'affiche qu'on est en train de composer (choisirPhoto). */}
-          {/* Sur le site aussi depuis le 21/11, sur un grand écran : même
-              place, mêmes règles, sans code du stand. */}
-          <Show when={props.stand || grandEcran()}>
-            <RelaisPhoto
-              langue={props.langue}
-              stand={!!props.stand}
-              disponible={true}
-              occupe={occupe() || !!composer()}
-              interrompre={etape() === "generation" || !!composer()}
-              onPhoto={(f) => void choisirPhoto(f)}
-            />
-          </Show>
-
-          {/* UNE consigne, et qu'on la voie : la boutique a retiré les autres
-              (cadrage, « un seul lieu »…) — elles décourageaient les photos de
-              famille, qui donnent justement de belles affiches. */}
-          <p class="mt-4 flex items-center gap-2 border-l-4 border-terracotta bg-terracotta/5 px-4 py-3 text-sm font-medium text-ink">
-            <span aria-hidden="true">📸</span>
-            {tr("ia.photo_nette")}
-          </p>
-
-          {/* Le sens de l'affiche, choisi AVANT de créer : il décide du cadrage
-              que l'IA compose. Deux gros boutons plutôt qu'une liste — on doit
-              voir d'un coup d'œil lequel est pris, sur la tablette du stand. */}
-          <div class="mt-4">
-            <span class="block text-sm font-medium">{tr("ia.orientation")}</span>
-            <div class="mt-3 grid grid-cols-2 gap-3" role="radiogroup">
-              <For each={["portrait", "paysage"] as const}>
-                {(sens) => (
-                  <button
-                    type="button"
-                    role="radio"
-                    aria-checked={orientation() === sens}
-                    disabled={occupe()}
-                    onClick={() => {
-                      sensChoisiALaMain = true;
-                      setOrientation(sens);
-                    }}
-                    // Choix fait : `ml-choix` (global.css), plus de noir plein.
-                    class={`ml-choix flex items-center justify-center gap-2 border border-ink/15 px-3 py-2.5 text-sm hover:border-ink/45 disabled:opacity-60 ${
-                      orientation() === sens ? "font-semibold" : ""
-                    }`}
+            </Show>
+            <Show when={!modeCiel()}>
+              {/* Le style, EN PREMIER quand la boutique en propose : c'est
+                  lui qui fait la première génération. Une carte par style —
+                  sa première image, son nom —, assez grande pour le doigt
+                  sur la tablette du stand. */}
+              <Show when={choixDuStyle()}>
+                <div ref={blocStyle}>
+                  <p class="mt-5 font-medium">{tr("ia.style_titre")}</p>
+                  <p class="mt-1 text-sm text-ink-soft">{tr("ia.style_aide")}</p>
+                  <Show when={rappelStyle() && styleManquant()}>
+                    <p role="alert" class="mt-2 bg-terracotta/10 px-3 py-2 text-sm font-medium text-terracotta-deep">
+                      {tr("ia.style_manquant")}
+                    </p>
+                  </Show>
+                  {/* TOUJOURS une rangée qui défile de côté (27/11, Alexandra :
+                      « ça doit tjs rester scroll horizontal ») : autant de styles
+                      qu'elle en ajoute, la fenêtre ne s'allonge plus. Les flèches
+                      et la barre sont celles de toutes les listes du site
+                      (ZoneDefilante). Un peu de marge en haut et à droite : la
+                      coche du style choisi déborde du coin de sa carte. */}
+                  <ZoneDefilante
+                    sens="horizontal"
+                    versDebut={tr("cfg.precedent")}
+                    versFin={tr("cfg.suivant")}
+                    class="mt-1 flex snap-x gap-3 overflow-x-auto pb-1 pr-2 pt-2"
                   >
-                    <span
-                      aria-hidden="true"
-                      class={`inline-block border-2 border-current ${
-                        sens === "portrait" ? "h-5 w-3.5" : "h-3.5 w-5"
-                      }`}
-                    />
-                    {tr(sens === "portrait" ? "ia.portrait" : "ia.paysage")}
-                  </button>
-                )}
-              </For>
-            </div>
-            <Show when={apercu() && orientation() !== orientationApercu()}>
-              <p class="mt-2 text-xs text-ink-soft">{tr("ia.orientation_relancer")}</p>
-            </Show>
-          </div>
+                    <For each={styles()}>
+                      {(st) => {
+                        const actif = () => styleChoisi() === st.id;
+                        const image = assetUrl(st.images[0], 400);
+                        return (
+                          <button
+                            type="button"
+                            aria-pressed={actif()}
+                            disabled={occupe()}
+                            // Toucher le style déjà choisi le GARDE : il est
+                            // obligatoire, et un second appui involontaire sur
+                            // la tablette ne doit pas éteindre la suite.
+                            // Même étape que la photo depuis le 27/11 : rien ne
+                            // change d'étape au choix d'un style.
+                            onClick={() => {
+                              setStyleChoisi(st.id);
+                              setRappelStyle(false);
+                            }}
+                            // Le choix fait se dessine par `ml-choix` (global.css),
+                            // comme tous les choix du site : cadre et coche
+                            // rouges. Rien n'est rogné : la coche déborde du coin
+                            // de la carte.
+                            class="ml-choix flex w-[8.5rem] shrink-0 snap-start flex-col border border-ink/15 text-left hover:border-ink/45 disabled:opacity-60 sm:w-[9.5rem]"
+                          >
+                            <Show when={image} fallback={<AttenteStyle titre={st.titre} />}>
+                              <img
+                                src={image!}
+                                alt=""
+                                loading="lazy"
+                                class="aspect-[4/5] w-full object-cover"
+                              />
+                            </Show>
+                            {/* Le nom ne se remplit plus de noir : un bandeau noir
+                                se lisait comme un bouton à presser, pas comme un
+                                choix fait. */}
+                            <span
+                              class={`px-3 py-2.5 text-sm ${actif() ? "font-semibold" : ""}`}
+                            >
+                              {st.titre}
+                            </span>
+                          </button>
+                        );
+                      }}
+                    </For>
+                  </ZoneDefilante>
+                </div>
+              </Show>
 
-          <label class="mt-4 block text-sm">
-            <span class="font-medium">{tr("ia.precision")}</span>
-            <input
-              type="text"
-              value={precision()}
-              disabled={occupe()}
-              placeholder={tr("ia.precision_exemple")}
-              onInput={(e) => setPrecision(e.currentTarget.value)}
-              class="mt-1 w-full border border-ink/20 bg-paper px-3 py-2 text-sm focus:border-ink focus:outline-none disabled:opacity-60"
-            />
-          </label>
+              <p class="mt-5 font-medium">{tr("ia.photo_titre")}</p>
 
-          {/* Tant qu'aucune affiche n'est obtenue, l'action suivante est ICI,
-              juste sous la photo, et non tout en bas après les textes et le
-              format : sur la tablette, « Créer mon affiche » tombait à plus
-              d'un écran de la photo qu'il concerne, et l'aperçu qui montre la
-              création en cours sortait de la vue au moment de toucher. */}
-          <Show when={!apercu()}>
-            <Show when={messageEchec()}>
-              <p
-                role="status"
-                class="mt-4 border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep"
-              >
-                {messageEchec()}
-              </p>
-            </Show>
-            <div class="mt-5 flex flex-wrap items-center gap-3">
+              {/* Zone de dépôt : clic OU glisser-déposer. Le champ fichier reste
+                  un vrai <input>, donc utilisable au clavier et aux lecteurs
+                  d'écran ; le cadre n'est que sa décoration. Éteinte tant qu'un
+                  style reste à choisir, et elle dit pourquoi. */}
+              {/* `relative` (21/11) : le champ masqué (sr-only) est en position
+                  absolue. Sans ancêtre positionné, il se plaçait par rapport au
+                  fond grisé de la fenêtre (.ml-modal-overlay, en position fixe),
+                  bien plus bas que son bord : ce fond défilait, surtout quand un
+                  toucher sur la zone donnait le focus au champ — jusqu'à plus de
+                  800 px sur téléphone, et environ 60 px sur la tablette du stand
+                  dès quatre styles —, et emportait l'en-tête et la croix. Rangé
+                  dans son cadre, il suit le corps de la fenêtre et n'agrandit
+                  plus rien ; le clic, le dépôt et le relais du stand sont
+                  inchangés. */}
+              {/* Au stand, pas de zone de dépôt (27/11, Alexandra : « enlève ça
+                  pour les stands Déposez votre photo ici, ou cliquez pour la
+                  choisir / JPEG, PNG ou WebP ») : la photo arrive du téléphone
+                  par le relais, juste dessous. Le champ fichier reste, caché et
+                  dans son cadre positionné (voir plus haut) : le bouton « Choisir
+                  une photo » l'ouvre toujours sur la tablette. */}
               <Show
-                when={chemin()}
+                when={!props.stand}
                 fallback={
-                  <button
-                    type="button"
-                    disabled={occupe()}
-                    onClick={() => champFichier?.click()}
-                    class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
-                  >
-                    {tr("ia.depot_bouton")}
-                  </button>
+                  <div class="relative">
+                    <input
+                      ref={champFichier}
+                      type="file"
+                      accept={TYPES_PHOTO.join(",")}
+                      class="sr-only"
+                      disabled={occupe()}
+                      onChange={(e) => {
+                        const f = e.currentTarget.files?.[0];
+                        e.currentTarget.value = "";
+                        if (f) void choisirPhoto(f);
+                      }}
+                    />
+                  </div>
                 }
               >
-                <button
-                  ref={boutonCreer}
-                  type="button"
-                  disabled={occupe()}
-                  onClick={() => (styleManquant() ? rappelerLeStyle() : void lancerGeneration())}
-                  class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
+                <label
+                  class={`relative mt-3 flex flex-col items-center justify-center gap-1 border-2 border-dashed p-6 text-center transition-colors ${
+                    survol()
+                      ? "cursor-pointer border-terracotta bg-terracotta/5"
+                      : "cursor-pointer border-ink/25 hover:border-ink/50"
+                  } ${occupe() ? "pointer-events-none opacity-60" : ""}`}
+                  onDragOver={(e) => {
+                    // Toujours retenu, même éteinte : une photo lâchée à côté du
+                    // but ne doit pas remplacer la boutique par l'image seule.
+                    e.preventDefault();
+                    setSurvol(true);
+                  }}
+                  onDragLeave={() => setSurvol(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setSurvol(false);
+                    const f = e.dataTransfer?.files?.[0];
+                    if (f) void choisirPhoto(f);
+                  }}
                 >
-                  {tr("ia.generer")}
-                </button>
-                <button
-                  type="button"
-                  disabled={occupe()}
-                  onClick={reprendreDepart}
-                  class="text-sm text-ink-soft underline underline-offset-4 hover:text-terracotta transition-colors disabled:opacity-60"
-                >
-                  {tr("ia.recommencer")}
-                </button>
-              </Show>
-            </div>
-            {/* La photo est partie avant que la liste des styles réponde : le
-                bouton est éteint, et il faut dire pourquoi. */}
-            <Show when={chemin() && styleManquant()}>
-              <p class="mt-2 text-sm text-ink-soft">{tr("ia.style_manquant")}</p>
-            </Show>
-          </Show>
-          </Show>
-
-          {/* Les trois lignes, avec les règles des affiches personnalisables
-              (packages/types/src/fonts.ts) : chaque ligne ne propose que SES
-              polices — `policesDeLaLigne` —, et la première s'écrit en
-              capitales. Chaque police est montrée DANS la police, sous son
-              nom, comme au configurateur ; la couleur est commune aux trois. */}
-          <div class="mt-5 space-y-3">
-            <Index each={lignes()}>
-              {(ligne, rang) => (
-                <label class="block text-sm">
-                  <span class="font-medium">{tr(CLES_LIGNES[rang]!.champ)}</span>
-                  {/* Une zone de texte : la touche Entrée coupe la ligne,
-                      trois morceaux au plus, comme au configurateur — qui
-                      ne l'écrit plus sous les champs, ici non plus. */}
-                  <textarea
-                    rows={Math.min(MORCEAUX_PAR_LIGNE, ligne().value.split("\n").length)}
-                    value={ligne().value}
-                    maxLength={60}
-                    placeholder={tr(CLES_LIGNES[rang]!.exemple)}
-                    onInput={(e) => saisirLigne(rang, e.currentTarget)}
-                    class="mt-1 w-full resize-none border border-ink/20 bg-paper px-3 py-2 text-sm leading-snug focus:border-ink focus:outline-none"
+                  <input
+                    ref={champFichier}
+                    type="file"
+                    accept={TYPES_PHOTO.join(",")}
+                    class="sr-only"
+                    disabled={occupe()}
+                    onChange={(e) => {
+                      const f = e.currentTarget.files?.[0];
+                      // Remise à zéro : rechoisir LE MÊME fichier doit relancer.
+                      e.currentTarget.value = "";
+                      if (f) void choisirPhoto(f);
+                    }}
                   />
-                  {/* Écarts de 10 px : la coche du choix fait (`ml-choix`)
-                      déborde de son coin d'autant, et ne doit pas mordre sur
-                      le champ au-dessus ni sur la police voisine. */}
-                  <div class="mt-2.5 flex flex-wrap gap-2.5">
-                    <For each={policesDeLaLigne(rang)}>
-                      {(police) => (
-                        <button
-                          type="button"
-                          aria-pressed={ligne().font === police.id}
-                          title={nomTraduit(CLES_POLICES, police)}
-                          onClick={() => modifierLigne(rang, { font: police.id })}
-                          class="ml-choix border border-ink/20 px-3 py-1.5 text-lg leading-snug hover:border-ink/45"
-                          style={{ "font-family": familleCss(police) }}
-                        >
-                          {nomTraduit(CLES_POLICES, police)}
-                        </button>
-                      )}
-                    </For>
-                  </div>
+                  <span class="text-sm font-medium">
+                    {nomPhoto() ? tr("ia.changer_photo") : tr("ia.depot")}
+                  </span>
+                  {/* Aucune limite de poids à annoncer : la photo est réduite
+                      dans le navigateur avant de partir. « 10 Mo maximum » faisait
+                      renoncer à des photos de téléphone parfaitement acceptées. */}
+                  <span class="text-xs text-ink-soft">{tr("ia.depot_formats")}</span>
+                  <Show when={nomPhoto()}>
+                    <span class="mt-1 max-w-full truncate text-xs text-ink-soft">
+                      {nomPhoto()}
+                    </span>
+                  </Show>
                 </label>
-              )}
-            </Index>
+              </Show>
 
-            <div>
-              <p class="text-sm font-medium">{tr("cfg.couleur_texte")}</p>
-              <div class="mt-2.5 flex gap-3">
-                <For each={COULEURS_TEXTE_AFFICHE}>
-                  {(c) => (
-                    <button
-                      type="button"
-                      aria-pressed={couleur() === c.hex}
-                      aria-label={nomTraduit(CLES_COULEURS, c)}
-                      title={nomTraduit(CLES_COULEURS, c)}
-                      onClick={() => setCouleur(c.hex)}
-                      // La couleur garde son fond (style en ligne) ; le choix
-                      // fait reçoit les marques communes (`ml-choix`).
-                      class="ml-choix h-9 w-9 border border-ink/30 hover:border-ink/60"
-                      style={{ background: c.hex }}
-                    />
-                  )}
-                </For>
+              {/* Au stand, la photo est souvent dans le téléphone du client : la
+                  tablette montre un QR code, la photo arrive ici. Même règle que
+                  la zone de dépôt — éteinte tant qu'un style reste à choisir. */}
+              {/* Pendant la composition des personnages (20/11), le relais est
+                  occupé puis fermé : une photo arrivée du téléphone effacerait
+                  l'affiche qu'on est en train de composer (choisirPhoto). */}
+              {/* Sur le site aussi depuis le 21/11, sur un grand écran : même
+                  place, mêmes règles, sans code du stand. */}
+              {/* Dans un autre onglet (27/11), il reste ouvert et à l'écoute :
+                  l'étape est cachée, pas démontée. La photo qui arrive se voit
+                  dans l'aperçu, toujours en vue sur la tablette. */}
+              <Show when={props.stand || grandEcran()}>
+                <RelaisPhoto
+                  langue={props.langue}
+                  stand={!!props.stand}
+                  disponible={true}
+                  occupe={occupe() || !!composer()}
+                  interrompre={etape() === "generation" || !!composer()}
+                  onPhoto={(f) => void choisirPhoto(f)}
+                />
+              </Show>
+
+              {/* UNE consigne, et qu'on la voie : la boutique a retiré les autres
+                  (cadrage, « un seul lieu »…) — elles décourageaient les photos de
+                  famille, qui donnent justement de belles affiches. */}
+              <p class="mt-4 flex items-center gap-2 border-l-4 border-terracotta bg-terracotta/5 px-4 py-3 text-sm font-medium text-ink">
+                <span aria-hidden="true">📸</span>
+                {tr("ia.photo_nette")}
+              </p>
+
+              {/* Le sens de l'affiche, choisi AVANT de créer : il décide du cadrage
+                  que l'IA compose. Deux gros boutons plutôt qu'une liste — on doit
+                  voir d'un coup d'œil lequel est pris, sur la tablette du stand. */}
+              <div class="mt-4">
+                <span class="block text-sm font-medium">{tr("ia.orientation")}</span>
+                <div class="mt-3 grid grid-cols-2 gap-3" role="radiogroup">
+                  <For each={["portrait", "paysage"] as const}>
+                    {(sens) => (
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={orientation() === sens}
+                        disabled={occupe()}
+                        onClick={() => {
+                          sensChoisiALaMain = true;
+                          setOrientation(sens);
+                        }}
+                        // Choix fait : `ml-choix` (global.css), plus de noir plein.
+                        class={`ml-choix flex items-center justify-center gap-2 border border-ink/15 px-3 py-2.5 text-sm hover:border-ink/45 disabled:opacity-60 ${
+                          orientation() === sens ? "font-semibold" : ""
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          class={`inline-block border-2 border-current ${
+                            sens === "portrait" ? "h-5 w-3.5" : "h-3.5 w-5"
+                          }`}
+                        />
+                        {tr(sens === "portrait" ? "ia.portrait" : "ia.paysage")}
+                      </button>
+                    )}
+                  </For>
+                </div>
+                <Show when={apercu() && orientation() !== orientationApercu()}>
+                  <p class="mt-2 text-xs text-ink-soft">{tr("ia.orientation_relancer")}</p>
+                </Show>
               </div>
-            </div>
-          </div>
 
-          <Show when={formats().length > 1}>
-            <div class="mt-4">
-              <p class="text-sm font-medium">{tr("produit.format")}</p>
-              {/* Les mêmes cases que le format de la fiche, et le même choix
-                  fait (`ml-choix`) : plus de noir plein, qu'on prenait pour un
-                  bouton à presser. */}
-              <div class="mt-3 flex gap-3">
-                <For each={formats()}>
-                  {(f) => (
-                    <button
-                      type="button"
-                      onClick={() => setFormat(f.format)}
-                      aria-pressed={format() === f.format}
-                      class="ml-choix border border-ink/20 px-4 py-3 text-left text-sm hover:border-ink/45"
-                    >
-                      <span class="block font-semibold">{f.format}</span>
-                      <Show when={!props.sansPrix}>
-                        <span class="block font-semibold text-ink-soft">
-                          {formatPrice(f.priceCents, locale)}
-                        </span>
-                      </Show>
-                    </button>
-                  )}
-                </For>
-              </div>
-            </div>
-          </Show>
+              <label class="mt-4 block text-sm">
+                <span class="font-medium">{tr("ia.precision")}</span>
+                <input
+                  type="text"
+                  value={precision()}
+                  disabled={occupe()}
+                  placeholder={tr("ia.precision_exemple")}
+                  onInput={(e) => setPrecision(e.currentTarget.value)}
+                  class="mt-1 w-full border border-ink/20 bg-paper px-3 py-2 text-sm focus:border-ink focus:outline-none disabled:opacity-60"
+                />
+              </label>
 
-          {/* Une fois l'affiche obtenue, les actions se regroupent en bas :
-              on a lu ses textes et choisi son format, reste à recommencer ou
-              à la garder. */}
-          <Show when={apercu()}>
-            {/* Les personnages (20/11), facultatifs, sous les formats. En
-                portrait seulement : en paysage, l'aperçu et l'impression ne
-                savent pas les placer, une phrase le dit à la place des
-                boutons. Ils ne changent pas le prix : aucun montant ici, au
-                stand comme sur le site. */}
-            <div class="mt-5">
-              <p class="text-sm font-medium">{tr("ia.perso.titre")}</p>
-              <Show
-                when={orientationApercu() === "portrait"}
-                fallback={<p class="mt-1 text-sm text-ink-soft">{tr("ia.perso.paysage")}</p>}
-              >
-                {/* Avec des personnages : ce qu'il y a, et les deux gestes.
-                    Pour passer de dos à face, on retire puis on rechoisit :
-                    on ne mélange jamais les deux sur une affiche. */}
+              {/* L'action suivante est ICI, juste sous la photo, et non tout en
+                  bas après les textes et le format : sur la tablette, « Créer
+                  mon affiche » tombait à plus d'un écran de la photo qu'il
+                  concerne, et l'aperçu qui montre la création en cours sortait de
+                  la vue au moment de toucher. L'affiche obtenue, « Générer une
+                  autre version » prend sa place (27/11 : il restait au bas de la
+                  colonne, près du panier). */}
+              <Show when={messageEchec() && ongletEchec() === "source"}>
+                <p
+                  ref={messagePhoto}
+                  role="status"
+                  class="mt-4 border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep"
+                >
+                  {messageEchec()}
+                </p>
+              </Show>
+              <div class="mt-5 flex flex-wrap items-center gap-3">
                 <Show
-                  when={compoMontree()}
+                  when={!apercu()}
                   fallback={
-                    <>
-                      <p class="mt-1 text-sm text-ink-soft">{tr("ia.perso.aide")}</p>
-                      {/* Deux gros boutons, le muret d'abord (décision du
-                          20/11) : assez grands pour le doigt, et l'on voit
-                          d'un coup d'œil ce que chacun donne. */}
-                      <div class="mt-3 grid grid-cols-2 gap-3">
-                        <For each={["back", "front"] as const}>
-                          {(vue) => (
-                            <button
-                              type="button"
-                              disabled={occupe() || ajout()}
-                              onClick={() => ouvrirComposition(vue)}
-                              class="flex flex-col items-center justify-center gap-1 border border-ink/15 px-3 py-3.5 text-center transition-colors hover:border-ink/45 disabled:opacity-60"
-                            >
-                              <svg
-                                viewBox="0 0 48 48"
-                                class="h-10 w-10 text-ink/60"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="1.6"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                aria-hidden="true"
-                              >
-                                {TRAITS_PERSONNAGES[vue]()}
-                              </svg>
-                              <span class="text-sm font-semibold">
-                                {tr(vue === "back" ? "ia.perso.muret" : "ia.perso.face")}
-                              </span>
-                              <span class="text-xs text-ink-soft">
-                                {tr(vue === "back" ? "ia.perso.muret_detail" : "ia.perso.face_detail")}
-                              </span>
-                            </button>
-                          )}
-                        </For>
-                      </div>
-                    </>
+                    <button
+                      type="button"
+                      disabled={occupe()}
+                      onClick={() => (styleManquant() ? rappelerLeStyle() : void lancerGeneration())}
+                      class="rounded-full border border-ink px-6 py-3 text-sm font-medium hover:bg-ink hover:text-paper transition-colors disabled:opacity-60"
+                    >
+                      {tr("ia.regenerer")}
+                    </button>
                   }
                 >
-                  {(compo) => (
-                    <p class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-                      <span>{resumeCompo(compo())}</span>
-                      <span aria-hidden="true" class="text-ink-soft">
-                        ·
-                      </span>
+                  <Show
+                    when={chemin()}
+                    fallback={
                       <button
                         type="button"
-                        disabled={occupe() || ajout()}
-                        onClick={() => ouvrirComposition(compo().vue)}
-                        class="underline underline-offset-4 transition-colors hover:text-terracotta disabled:opacity-60"
+                        disabled={occupe()}
+                        onClick={() => champFichier?.click()}
+                        class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
                       >
-                        {tr("ia.perso.modifier")}
+                        {tr("ia.depot_bouton")}
                       </button>
-                      <span aria-hidden="true" class="text-ink-soft">
-                        ·
-                      </span>
-                      <button
-                        type="button"
-                        disabled={occupe() || ajout()}
-                        onClick={retirerComposition}
-                        class="underline underline-offset-4 transition-colors hover:text-terracotta disabled:opacity-60"
-                      >
-                        {tr("ia.perso.retirer")}
-                      </button>
-                    </p>
-                  )}
+                    }
+                  >
+                    <button
+                      ref={boutonCreer}
+                      type="button"
+                      disabled={occupe()}
+                      onClick={() => (styleManquant() ? rappelerLeStyle() : void lancerGeneration())}
+                      class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
+                    >
+                      {tr("ia.generer")}
+                    </button>
+                  </Show>
                 </Show>
+                <Show when={apercu() || chemin()}>{boutonRecommencer()}</Show>
+              </div>
+              {/* La photo est partie avant que la liste des styles réponde : le
+                  bouton est éteint, et il faut dire pourquoi. */}
+              <Show when={!apercu() && chemin() && styleManquant()}>
+                <p class="mt-2 text-sm text-ink-soft">{tr("ia.style_manquant")}</p>
               </Show>
-            </div>
+            </Show>
+          </div>
 
-            <Show when={messageEchec()}>
+          {/* 2. Le texte : les trois lignes, leurs polices, la couleur. */}
+          <div id={idEtape("texte")} hidden={volet() !== "texte"}>
+            {blocTextes()}
+          </div>
+
+          {/* 3. Les personnages, une fois l'affiche obtenue. */}
+          <div id={idEtape("personnages")} hidden={volet() !== "personnages"}>
+            <Show
+              when={apercu()}
+              fallback={<p class="mt-5 text-sm text-ink-soft">{tr("ia.etape.creer_dabord")}</p>}
+            >
+              {blocPersonnages()}
+            </Show>
+          </div>
+
+          {/* 4. Le format, puis le panier : « Ajouter au panier » reste
+              éteint tant qu'aucune affiche n'existe, et une phrase dit
+              pourquoi. Un refus du panier se lit juste au-dessus. */}
+          <div id={idEtape("format")} hidden={volet() !== "format"}>
+            {blocFormats("mt-5")}
+            <Show when={!apercu()}>
+              <p class="mt-5 text-sm text-ink-soft">{tr("ia.etape.creer_dabord")}</p>
+            </Show>
+            <Show when={messageEchec() && ongletEchec() === "format"}>
               <p
+                ref={messageFormat}
                 role="status"
                 class="mt-4 border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep"
               >
                 {messageEchec()}
               </p>
             </Show>
-
             <div class="mt-6 flex flex-wrap items-center gap-3">
-              {/* Le ciel se redessine par son propre formulaire, plus haut. */}
-              <Show when={!modeCiel()}>
-              <button
-                type="button"
-                disabled={occupe()}
-                onClick={() => (styleManquant() ? rappelerLeStyle() : void lancerGeneration())}
-                class="rounded-full border border-ink px-6 py-3 text-sm font-medium hover:bg-ink hover:text-paper transition-colors disabled:opacity-60"
-              >
-                {tr("ia.regenerer")}
-              </button>
-              </Show>
-              {/* Les mêmes boutons qu'ailleurs dans la boutique : deux
-                  touches plutôt qu'un champ seul, parce que sur un
-                  téléphone passer de 1 à 3 se fait au pouce sans ouvrir le
-                  clavier. */}
-              <div class="inline-flex items-center border border-ink/20">
-                <button
-                  type="button"
-                  onClick={() => setQuantite((q) => bornerQuantite(q - 1))}
-                  disabled={ajout() || occupe() || quantite() <= 1}
-                  aria-label={tr("panier.moins")}
-                  class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
-                >
-                  −
-                </button>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={quantite()}
-                  onInput={(e) =>
-                    setQuantite(bornerQuantite(Number(e.currentTarget.value)))
-                  }
-                  disabled={ajout() || occupe()}
-                  aria-label={tr("panier.quantite")}
-                  class="w-12 border-x border-ink/20 bg-transparent py-2.5 text-center text-sm focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setQuantite((q) => bornerQuantite(q + 1))}
-                  disabled={ajout() || occupe() || quantite() >= 20}
-                  aria-label={tr("panier.plus")}
-                  class="px-3 py-2.5 text-lg leading-none text-ink-soft transition-colors hover:text-ink disabled:opacity-40"
-                >
-                  +
-                </button>
-              </div>
-              <button
-                type="button"
-                disabled={ajout() || occupe()}
-                aria-busy={ajout()}
-                onClick={() => void ajouterAuPanier()}
-                class="rounded-full bg-ink px-8 py-3 text-paper font-medium hover:bg-ink/85 transition-colors disabled:opacity-60"
-              >
-                {/* Pendant l'ajout, un rond qui tourne et ce qui se passe en
-                    toutes lettres : le « … » seul se lisait comme une panne. */}
-                <Show
-                  when={!ajout()}
-                  fallback={
-                    <>
-                      <span class="ml-spinner ml-spinner-clair mr-2" aria-hidden="true" />
-                      {tr("produit.ajout_en_cours")}
-                    </>
-                  }
-                >
-                  {affichesAAjouter().length > 1
-                    ? tr("ia.ajouter_n").replace("{n}", String(affichesAAjouter().length))
-                    : tr("produit.ajouter")}
-                </Show>
-              </button>
-              <button
-                type="button"
-                disabled={occupe()}
-                onClick={reprendreDepart}
-                class="text-sm text-ink-soft underline underline-offset-4 hover:text-terracotta transition-colors disabled:opacity-60"
-              >
-                {tr("ia.recommencer")}
-              </button>
+              <Show when={apercu()}>{blocQuantite()}</Show>
+              {boutonAjouter()}
             </div>
-          </Show>
+          </div>
+
+          {barreDesEtapes()}
         </div>
       </div>
     </div>
