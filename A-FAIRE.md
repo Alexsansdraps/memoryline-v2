@@ -1,347 +1,36 @@
-# À faire — Memory Line (à jour le 27/11)
+# À faire — Memory Line (remis au propre le 27/11 au soir)
 
-Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
+Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. L'historique des mises en ligne et le détail de chaque travail sont dans `git log` et dans les commentaires du code (l'ancienne version longue de ce fichier : `git show 108d185:A-FAIRE.md`). Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 000. ÉTAT AU 27/11, 22 H 30 — tout `main` est EN LIGNE (`3c9f0be`)
+## 0. État
 
-- **Réglés par Alexandra le 27/11 à 22 h 30** : le message rouge « crédit » (« ok », plus rien à chercher) et les deux lectures de contrôle des ventes du stand du 26/11 (`verifier-ventes-stand-26-11.sql`, `lignes-touchees.ts`) (« c bon », pas à faire). Ne plus les proposer.
-- 22 h 25 : un toucher sur une scène d'ombre en ajoute toujours une (la même plusieurs fois possible), seule la croix retire (`3c9f0be`).
-- RESTE : couleur des ombres dans les thèmes (BO) ; ménage des anciennes ombres et clés `ciel.silh.*` inutilisées ; tailles de texte (réduction des lignes longues × taille, test auto) ; essais de bout en bout (couple paysage → impression, 8 scènes, frappe → redessin) ; personnages classiques (00.C) en dernier.
+- **Tout `main` est EN LIGNE** (dernière mise en ligne de code : `3c9f0be`, 27/11 vers 22 h 25).
+- Marché de Noël de Mulhouse : du 20/11 au 27/12, 11 h – 20 h (le calendrier du stand ferme à 21 h ; le stand se ferme seul 1 h après la fin du dernier créneau).
+- Réglés par Alexandra le 27/11 à 22 h 30, à ne plus proposer : le message rouge « crédit » ; les lectures de contrôle des ventes du stand du 26/11.
 
-### 22 h 20
+## 0.1 Ce qui RESTE (dans cet ordre)
 
-- **« Modifier » une affiche IA depuis le panier : FAIT** (`395f360`). Lien sur les lignes IA (CartIsland, récapitulatif de CheckoutIsland) → fiche `?edit=ID` → AfficheIA rouvre la ligne (création, textes et tailles, personnages, format, nombre ; pour un ciel, son formulaire relu par `GET /ia/ciel/reglages/:publicId`, lecture seule, `afficherVille` désormais enregistré) ; « Valider l'affiche » fait `PUT /cart/:id/items/:itemId` (route existante, rien changé côté commandes). Essayé en local de bout en bout (rouvrir, modifier une ligne et sa taille, revalider : une seule ligne, vignette à jour, formulaire du ciel rouvert).
-- Onglet **« Animaux »** (`6f707a5`) : chien, chat, lapin, deux lapins détachés de leurs scènes (2e planche, `decoupe-animaux.py` dans le scratchpad, non gardé), plus chien et cheval. API : 63 tracés ; liste en `?v=ombres-groupes-4`.
+1. **Couleur des ombres dans les thèmes du ciel** : couleur optionnelle `personnages` dans `teintesDuTheme` / `THEMES_CIEL_DE_BASE` + champ dans BO › Ciel (`apps/admin/src/pages/ciel.astro`) ; absente = couleur de la colline (comme aujourd'hui).
+2. **Ménage** : clés `ciel.silh.*` des anciennes ombres inutilisées (ui.ts, 7 langues), code mort des silhouettes debout / dessinées (`ciel-silhouettes.ts`, `ciel-silhouettes-assises.ts`).
+3. **Tailles de texte** : la réduction des lignes trop longues de l'aperçu (`reductionDeLigne`) doit tenir compte du multiplicateur de taille ; essai automatique « ligne sans taille = même empreinte d'impression ».
+4. **Essais de bout en bout en local** : couple en paysage jusqu'au fichier d'impression, 8 scènes, frappe du texte → redessin.
+5. **Personnages unifiés des affiches classiques** (gros chantier, en dernier) : voir 0.4.
 
-### 22 h 05
+## 0.2 Règles
 
-- Depuis 21 h 55 : texte toujours centré dans sa place, boutons de calage retirés (`1c2b4fb`) ; bouton « Aucun » retiré (`4c478e5`) ; texte des affiches IA sur les vignettes du panier et du récapitulatif de caisse, affichage seulement (`80c481b`, nouveau `TexteAfficheIA.tsx`) ; taille des personnages petite / moyenne / grande, une pour toutes (`9abe4dc`).
-- **Stands « calendrier »** (`42dd9cc`) : la tablette prend des ventes de l'heure d'ouverture du premier créneau jusqu'à 1 h après la fin du dernier (avant : toute la journée). Règle dans `apps/api/src/stands-calendrier.ts` (`ouvertAuxHeures`), PAS dans packages/types (empreinte d'impression). Vérifié : Mulhouse fermé automatiquement à 22 h 04. À savoir : avant l'heure d'ouverture du calendrier, la tablette est fermée (l'ouvrir à la main = passer en manuel).
-- **À FAIRE (demande d'Alexandra, 27/11 22 h)** : « quand on est dans le panier, on puisse modifier une affiche, la modifier pour la revalider et la remettre modifiée ». Existe pour les affiches personnalisables (`?edit=ITEM_ID`, ProductConfigurator) ; absent pour les affiches IA (photo et ciel : `lienModifier` renvoie null). Plan : lien « Modifier » pour une ligne IA → fiche `?edit=ID` → AfficheIA rouvre la création (aiPublicId), les textes, tailles, format, quantité ; pour un ciel, relire ses réglages (style, date, lieu, thème, ombres, taille) depuis la ligne `ai_generation.prompt` (route à ajouter, sans écriture) ; « Ajouter au panier » devient « Mettre à jour » (même route de mise à jour que les affiches personnalisables). Ne pas toucher au paiement ni aux commandes passées.
+- **Mise en ligne** : hors ouverture du marché (avant 11 h, après 20 h), Claude met en ligne directement en mode « hotfix ». Pendant l'ouverture : seulement sur un « met en prod » d'Alexandra pour CE changement, après avoir vérifié qu'il n'y a aucune activité (`docker compose -f docker-compose.prod.yml logs --since 15m api | grep -ciE 'cart|checkout|commande'`). Recette : § 5.
+- **« Touche pas aux commandes »** (21/11) : ni données, ni logique (stand, caisse, factures, paiement, panier) sans demande explicite. On note, on ne corrige pas.
+- **Empreinte d'impression** : toucher `packages/types/src/*`, `pdf.ts`, `fichiers-impression.ts` ou `couleurs-image-fichier.ts` régénère tous les fichiers d'impression. À éviter.
+- Aucun essai de commande ni aucun ciel créé en prod : c'est de l'argent réel, c'est Alexandra qui essaie.
+- Pas de « Co-Authored-By » ni de « Generated with Claude Code » dans les commits.
+- Pas de look « gabarit IA » (surtitres à filet, capitales espacées…).
 
-### 21 h 55
+## 0.3 Environnement local
 
-- 21 h 55 : le cercle au MILIEU DE LA PAGE pour tous les styles, avec ou sans personnages ; un texte ne le pousse que du nécessaire (taille fixe, réduite seulement si plus de place) ; bas de la place à 0,76 (`b2c1298`). Remplace la règle « tout le vide au-dessus » de `7f8e1a0`.
-
-### 21 h 40
-
-- **Règle d'Alexandra (27/11 au soir)** : hors des heures d'ouverture du marché (avant 11 h, après 20 h), mise en ligne directe « en mode hotfix » après chaque correction vérifiée ; pendant l'ouverture, seulement sur son « met en prod ».
-- Depuis 21 h 45 : jusqu'à 8 scènes d'ombres (`93da69a`) ; cercle posé juste au-dessus de la bande des personnages, tout le vide au-dessus (`7f8e1a0`) ; calage du texte dans sa place, en haut / au milieu / en bas (`8037862`) ; personnages sur tous les styles, signe, couple (paysage) et signe sans cercle compris (`8037862`).
-- Pas essayé dans un navigateur : frappe → redessin, calage, 8 scènes, personnages sur un couple jusqu'au panier.
-
-### 21 h 45
-
-- Depuis 21 h 25 : la constellation ne bouge plus quand on ajoute un personnage (bas de la place fixe à 0,72, `21e111f`) ; enfant seul à 70 % d'un adulte ; 15 scènes de la 4e planche (`protos/ombres-4.png`, `ee42ad0`) ; chevaux proposés : la femme et son cheval couché, l'homme et son cheval seulement (`e45fbac`). Catalogue de l'API : 59 tracés (10 anciens + 49) ; la fiche en propose 46 (seul·e 17, couple 6, famille 9, animal 14). Liste des tracés en `?v=ombres-groupes-3` : la changer à chaque nouveau catalogue.
-
-### Avant (21 h 25)
-
-- Depuis 21 h 05 : plusieurs scènes d'ombres à nouveau, jusqu'à 4 (`52fab81`, « on peut plus ajouter plusieurs personnages ») ; vignettes des nouvelles ombres réparées (`9648113`, adresse de la liste changée : le navigateur gardait l'ancienne une heure).
-
-### Avant (21 h 05)
-
-Fait ce soir (PC de la maison), tout en ligne :
-- **Tailles de texte** (`717da2f`) : trois « A » (petit / moyen / grand) sous chaque ligne de la fenêtre photo IA et ciel ; aperçu, place des lignes sur le ciel et impression (pdf.ts lit déjà `taille`). « Moyen » n'écrit rien. → 00.B point 1 FAIT ; restent 00.B points 2 à 4.
-- **Couple en paysage** (`43039c3`) : l'API dessine le couple sur 3508 × 2480, la fenêtre se couche, la ligne de panier part en paysage. Les couples créés avant gardent leur portrait. → 00.A point 6 FAIT. Pas essayé : panier + impression d'un couple paysage jusqu'au bout.
-- **Ombres chinoises** (`91caceb`, `50c81c9`) : 28 scènes découpées dans `protos/ombres-2.png` + 6 sans doublon dans `protos/ombres-3.png` (hors dépôt), `apps/api/src/ciel-ombres-2.ts` (généré). L'étape Personnages propose 4 onglets (Seul·e, En couple, En famille, Avec un animal) puis UNE scène + « Retourner » ; plus de glisser-déposer ni de « /8 » (« trop de possibilités »). Les 10 ombres d'avant restent connues de l'API pour les ciels déjà créés. Ombres plus grandes (0,22 H pour 175 cm). → 00.A points 1, 3, 7 sans objet (petit/grand chien : il y a « enfant et chien » et « femme/homme et chien »).
-- **Mise en page centrée** (`38c48be`) : constellation au milieu au départ, poussée par le texte (haut ou bas), texte centré entre le bord et elle, bande réservée aux personnages en bas (place jusqu'à 70 % avec personnages, 85 % sans). La fiche envoie `hauteurTexte`, le ciel se redessine 0,9 s après la frappe. Même calcul dans `ciel.ts` (dispositionCentree) et `CielEtoile.tsx` : si l'un change, changer l'autre. Rendu vérifié sur 4 cas ; PAS essayé dans le navigateur (frappe → redessin).
-
-Reste (ciel) : 00.A point 5 (couleur des personnages dans les thèmes), point 8 (case par silhouette au BO — à revoir : 34 scènes en 4 groupes), point 9 + nettoyage (clés `ciel.silh.*` des anciennes ombres, `ciel.silh.glisser`, `ciel.silh.retirer`, `ciel.silh.mettre`, code mort ciel-silhouettes.ts) ; 00.B points 2 à 4 ; message rouge « crédit » (lui demander une capture) ; 00.C personnages classiques en dernier.
-
-**Base locale = copie de la prod (PC de la maison, 27/11 au soir, « faire le même env que sur l'autre pc »)** :
-- `docker-compose.override.yml` (hors git, `.git/info/exclude`) : service `db18` (Postgres 18, port 5436, conteneur `memoryline-db18`) et l'API locale qui le lit au lieu de Neon (Neon de dev était à 90 migrations sur 120). `memoryline-db` (16) reste pour la recette des tests (§ 0.2).
-- Copie chargée le 27/11 à 20 h 46 (`Documents/memory-line/copie-prod/`, hors dépôt, avec un LISEZMOI pour recharger) ; images de la prod copiées dans `data/assets`.
-- NEUTRALISÉE (local seulement) : `DELETE FROM cle_paiement`, `relance.active = false`, e-mails de `customer`, `gift_card.recipient_email`, `newsletter_sub`, `newsletter_subscriber`, `lettre_envoi`, `lettre_jeton`, `relance_refus` → `…@exemple.invalid`. À REJOUER après chaque rechargement.
-- Sur l'autre PC : la même chose s'il veut la même base (rien n'est commité de ce côté).
-
-## 00. POUR LE CLAUDE DE CHEZ ALEXANDRA — reprise du 27/11 au soir (écrit à 17 h)
-
-Tout est commité et poussé sur `main`. RIEN de ce qui suit n'est en ligne : la prod est à `c75d866`. Mise en ligne SEULEMENT sur un « met en prod » d'Alexandra, en listant ce qui part (§5 pour la marche à suivre).
-
-Ordre voulu par Alexandra (27/11, 16 h 30 : « J'aimerais au moins que tous les chantiers sauf les personnages classiques soient finis ») :
-1. finir le Ciel étoilé (00.A) ;
-2. les trois tailles de texte (00.B) ;
-3. les personnages unifiés des affiches classiques en dernier (00.C).
-
-### 00.0 Déjà commité ce soir, à mettre en ligne ensemble
-- Lots du GO (§0.GO) : étapes de la fenêtre IA, limite des ciels à 120/min, « Nuit de Noël » + thème Noël (migration 0120), « Voir sur un mur » corrigé, fenêtre plein écran sur la tablette du stand.
-- Police des chiffres « Manuscrite » : Kaushan Script à la place de l'ancienne (Caveat garde seulement le « ₤ »). Polices dans `apps/api/fonts/` et `apps/web/public/fonts/` ; le Dockerfile de l'API vérifie qu'elle est installée → l'image API doit être RECONSTRUITE à la mise en ligne. Attention : ça change l'empreinte d'impression, tous les fichiers d'impression et vignettes concernés se régénèrent une fois.
-- Textes du site « moins IA » (ui.ts 7 langues, compte, contact, configurateur). Alexandra : on n'y touche plus.
-- Ciel étoilé : voir 00.A (styles, signes, qualités, texte en haut/bas, personnages assis, glisser-déposer…).
-
-- Stand : e-mail du client FACULTATIF (`0072263`), seul le nom est demandé.
-
-### 00.A Ciel étoilé — ce qui RESTE de la passe finale (état à 16 h 50, commité)
-FAIT à 16 h 50 (dernier commit du jour) : personnages ASSIS sur le ciel et dans les vignettes (ciel-silhouettes-assises.ts, sans plaid/lanterne/lunette : « c'est quoi ce bordel au niveau du rendu ? ») ; chien sans museau ni truffe ; CHAT ajouté ; bras de « montre le ciel » raccourci de 20 % ; même taille de personnages en texte en haut et en bas (0,145 H) ; personnages centrés (« les personnages doivent être centrés au milieu ») ; jusqu'à 8 personnages (« maximum 8, pas 4 ») ; étape « Personnages » seulement pour « Ciel de cette nuit », changer de style les retire ; plus de bouton « Mettre sur mon ciel » (redessin 400 ms après chaque clic) ; réordonner par glisser-déposer (souris et doigt) ; ligne 3 des qualités vidée en revenant à la nuit (vérifié). Pas de teinte automatique des personnages (Alexandra : « supp ça »).
-RESTE, dans cet ordre :
-1. Un PETIT chien et un GRAND chien (« faut un petit et un grand chien ») : deux silhouettes assises distinctes (ids "petit-chien" / "grand-chien" ; garder "chien" = grand pour les anciens réglages), vignettes + 7 langues.
-2. FAIT (0072263^) : bouton ⇄ qui retourne un personnage en miroir (« id:m »).
-3. 8 personnages : vérifier au rendu que 8 tiennent dans la largeur une fois centrés (sinon réduire l'écart, puis l'échelle) — non vérifié à 16 h 50.
-4. « Texte en haut » : les têtes touchent la ligne des coordonnées → réduire et remonter le cercle SEULEMENT quand il y a des personnages (l'essai « ciel de cette nuit sans rien de nouveau : le SVG d'avant au caractère près » doit rester vrai). Piste de l'agent : cy = H×(CENTRE_Y_CIEL−0,035), R = W×0,315, et le centreY du filigrane suit cy.
-5. Couleur des personnages réglable dans les thèmes (« dans le réglage thème on doit pouvoir régler la couleur des persos ») : couleur optionnelle `personnages` dans teintesDuTheme / THEMES_CIEL_DE_BASE + champ dans l'écran des thèmes du ciel au BO ; absente = couleur de la colline (comme aujourd'hui).
-6. [RAPPELÉ par Alexandra le 27/11 à 17 h 30 : « les signes en couple c’est en paysage pas portrait » — PRIORITAIRE] Couple en PAYSAGE obligatoire (« pour les couples il faut impérativement avoir le format paysage sinon c'est laid ») : l'API ne dessine le ciel qu'en portrait. Il faut : API → accepter `orientation` et dessiner en paysage (A3/A4) ; CielEtoile.tsx → envoyer paysage pour Couple ; AfficheIA.tsx → dans `cielCree`, `sens: "paysage"` et setOrientationApercu("paysage") quand styleCiel() === "couple", masquer le portrait à l'étape Format ; vérifier panier + impression.
-7. Bras levé de l'enfant sur les épaules : mesurer, raccourcir si trop long.
-8. BO : une case par silhouette pour l'activer/désactiver (toutes visibles par défaut).
-9. Retirer la clé inutilisée `ciel.silh.mettre` de ui.ts.
-Vérifier en local (Chrome sans écran + CDP), captures à montrer à Alexandra.
-
-### 00.B Trois tailles de texte par ligne — FAIT pour les affiches personnalisables, RESTE la photo IA et le ciel
-> 27/11, 17 h 25 — Alexandra, devant l’étape « 2. Texte » du ciel étoilé EN LIGNE : « la taille des textes sur les lignes ça se met où je vois rien ». L’agent lancé à 17 h 25 a été ARRÊTÉ à 17 h 35 sans rien modifier (Alexandra partait) : RIEN n’est fait, c’est le point 1 « Reste » ci-dessous, à faire EN PREMIER à la reprise (avec le couple en paysage, 00.A point 6). Vérifier aussi l’impression de ces affiches avec une taille choisie. À mettre en ligne sur son « met en prod ».
->
-> Autre remarque de 17 h 20, non résolue : « encore le message rouge problème de crédit ». Vérifié en prod en lecture seule : aucun refus OpenAI pour crédit depuis le 25/11 19 h 15, les créations aboutissent (17 h 15). Lui demander OÙ elle le voit (capture) ; ne rien changer sans ça.
-
-Fait (commité) : trois boutons « A » petit/moyen/grand sous chaque ligne du configurateur ; champ optionnel `taille: "s"|"m"|"l"` du bloc de texte (packages/types config.ts) ; `facteurTailleLigne` (mise-en-page-texte.ts : 0,8 / 1 / 1,25) appliqué à l'aperçu (PosterPreview) ET au PDF (pdf.ts) ; « moyen » n'écrit rien → une ligne d'avant garde exactement son empreinte d'impression.
-Reste : 1) AfficheIA.tsx (affiche photo IA et ciel étoilé) : boutons sur chaque ligne + envoyer `taille` + appliquer facteurTailleLigne là où ces textes sont dessinés pour l'impression ; 2) la réduction des lignes trop longues de l'aperçu (reductionDeLigne) ne tient pas compte du multiplicateur (écart possible aux limites avec le PDF) ; 3) ajouter un essai automatique (ligne sans taille = même empreinte) ; 4) essai visuel dans le navigateur (pas fait).
-
-### 00.C Personnages unifiés des affiches classiques (en dernier)
-Travail en cours copié dans `travaux/personnages-unifies/` (gabarits SVG, gabarits.json, relevé, plan, planches). Décisions d'Alexandra : tous ASSIS et DE DOS (plus jamais debout), même style que les actuels, très variés (plusieurs femmes, hommes, enfants, des PERSONNES ÂGÉES, et animaux : chiens, chats, chevaux, et TOUS les NAC — lapin, cochon d'Inde, hamster, oiseau, tortue, furet…), accessoires très variés, AUCUN calage sur les nouveaux. Ajouter sans supprimer ; quand un nouveau remplace un ancien équivalent, ARCHIVER l'ancien (jamais de suppression), et retirer l'écran de calage du BO (garder les données). Bascule préparée en local, en prod seulement sur son OK.
-À reprendre sur la planche du 27/11 :
-- corps âgés pas assez différents (dos plus voûté, épaules tombantes) ; épaules de l'ado trop raides ;
-- le CHEVAL fait peur (« il fait peur là ») : à redessiner, DEBOUT (pas assis) et DE DOS (« le cheval il faut le faire debout pas assis et de dos ») — seule exception à la règle « tous assis » ;
-- la queue du chat (dos) pend sous la ligne d'assise : tous les personnages doivent être posés sur la même ligne, rien ne dépasse dessous (« je parle des personnages pas alignés », « regarde la queue ») — la queue s'enroule sur le côté, au niveau de l'assise ;
-- puis la garde-robe (hauts, bas, coiffures, accessoires) et les NAC.
-
-
-## 0. État au 27/11, 16 h : en ligne jusqu'à `c75d866` ; le « GO » est FAIT, commité et poussé, PAS en ligne (attend le « met en prod » d'Alexandra)
-
-### 0.GO — FAIT (lots 1, 2, 3), plus « Voir sur un mur » ; reste le lot 4 (mise en ligne)
-- **Lot 3** `2084fb0` — la fenêtre « Personnaliser » des affiches IA en 4 étapes, photo ET ciel : 1. Photo (style, photo, relais, sens, précision, Créer / Générer une autre version / Recommencer) ou Ciel (formulaire), 2. Texte, 3. Personnages, 4. Format et panier. Pastilles cliquables à tout moment (`aria-current="step"`), barre « Retour / Continuer » collée en bas (`.ml-cfg-pied`) ; à l'étape 1, « Continuer » est un contour tant qu'aucune affiche n'existe. Étapes masquées (`hidden`), jamais démontées : relais, formulaire du ciel, textes gardés. Retour à l'étape 1 sur une photo choisie ou arrivée du téléphone, un échec d'envoi ou de création (dont « 3 essais du jour »), « Recommencer », le rappel du style. « Ajouter au panier » éteint et « Créez d'abord votre affiche (étape 1). » sans affiche. Pas d'avance automatique. Repris du travail local de l'agent du 27/11 (onglets), réaligné sur ce plan.
-- **Lot 1** `e7f6221` — ciel étoilé : `compteurParMinute(120)`, un compteur pour `POST /ia/ciel`, un autre pour `/ia/ciel/apercu-theme` ; sur la fiche, un 429 dit `ia.err.rafale`. Essai : 120 passent, le 121e non, deux compteurs indépendants.
-- **Lot 2** `3ad627d` — étiquette « Nuit de Noël {année} » (SVG derrière le texte, penchée de 3°, se redresse et se balance, `aria-pressed`, annonce `aria-live`), de saison du 1er novembre au 31 janvier (`apps/web/src/lib/saison-noel.ts`) ; règle 24/12 à 23:59 et choisit « Noël ». Thème « Noël » (#7c1420, #fff6e5, #e9c56b) dans l'API et le BO ; **migration 0120** (ajout au réglage `ciel.themes` s'il existe, rejouable).
-- **« Voir sur un mur »** `f8358bc` (Alexandra : « ça s'affiche mal, c'est pas réaliste et l'affiche est tronquée ») : l'affiche y est dessinée à 480 px puis réduite d'un bloc — les tablettes Android grossissaient les lignes trop petites, d'où « Hôtel de vil… » coupé — ; coins droits (`PosterPreview auMur`), ombre portée, léger reflet ; elle remplit sa place à l'échelle (exception `.ml-mur-affiche` à la règle `.ml-cfg-poster` bridée par la hauteur d'écran). Se coupe au BO › Cadres (« Proposer Voir sur un mur », depuis le 26/11) ; la recherche du BO trouve la page avec « mur ».
-- **Essayé** (local, Chrome sans écran, création d'affiche simulée, aucun appel à OpenAI) : 4 étapes photo et ciel sur ordinateur 1440, téléphone 390, tablette ?stand=1 1024 × 768 ; parcours création → texte → personnages → format → panier (refus simulé), rappel du style, photo choisie depuis une autre étape, « 3 essais du jour » ; étiquette de Noël sur ordinateur et téléphone, vrai ciel dessiné en local avec le thème Noël ; « Voir sur un mur » tablette et téléphone, texte entier. Tests : API 603 (601 réussis, 2 sautés, 0 échec), `ciel.test.ts` 9/9, BO 82/82, astro check 0, tsc site (3 anciennes de StandSalon.tsx) et configurateur sans erreur.
-- **Pas essayé** : le harnais (`apps/web/.harnais-persos`) — remplacé par le site local en Docker ; un ciel ajouté au panier jusqu'au bout ; le stand en mode ciel ; « Mon mur » avec une vraie photo (même code que les pièces).
-- **Alexandra a demandé** : « ça serait pas mieux d'ajouter un tailwind css pour le style ? » — le site et le BO sont déjà en Tailwind ; seul le paquet du configurateur écrit ses styles en ligne (il est partagé par le site et le stand). Le passer en Tailwind serait une refonte sans effet visible : pas pendant le marché.
-
-#### Lot 4 — Mise en ligne, sur son « met en prod » seulement
-- À la fin des trois lots : dire à Alexandra ce qui est commité, ce qui a été essayé et ce qui ne l'a pas été, puis attendre. Une seule mise en ligne, marché fermé de préférence (11 h – 20 h : seulement si elle le demande, et après avoir vérifié qu'il n'y a aucune activité).
-- Elle emportera aussi les trois commits déjà en attente (`7c211ce`, `0d3ccef`, `171c887`, détail plus bas) et la migration du thème « Noël ». Recette : § 5 de ce fichier. Après : le site, le stand, le BO et l'API répondent, la fiche `/affiches/ciel-etoile` aussi, aucune erreur dans les journaux ; ne créer aucun ciel en prod (c'est Alexandra qui essaie).
-- Puis mettre ce fichier à jour (ce qui est en ligne, ce qui reste), commiter, pousser.
-
-### 0.RÉSERVE — idées de Noël notées, PAS dans le GO (seulement si Alexandra les demande)
-- **Le calendrier 2027 de la famille** : une affiche avec le titre en haut, les 12 mois, les personnages en bas, les anniversaires marqués d'un cœur ; même mécanique que le ciel (fond calculé, thèmes, aucun appel à OpenAI). Environ une journée.
-- **« Nous au marché de Noël »** : une affiche personnalisable classique, les personnages en bonnet devant un marché de Noël alsacien. Rien à coder : Margaux dessine les fonds et un bonnet, et crée le produit au BO.
-- **Un prénom sous chaque personnage** (« Les petits-enfants de Mamie Jo ») : touche au moteur d'impression, donc après le marché.
-
-### 0.000000000000 COMMITÉ ET POUSSÉ, PAS EN LIGNE (à mettre en ligne sur un « met en prod » d'Alexandra, marché fermé de préférence)
-- `7c211ce` : la fenêtre du ciel s'appelle « Votre ciel étoilé » (plus « Votre affiche à partir de votre photo ») et son aperçu vide montre une carte du ciel au lieu d'une photo ; 7 langues.
-- `0d3ccef` : BO › Ciel étoilé : couleurs — « Activé / Désactivé » au lieu de « Proposé » sur chaque thème (« tu mets activé/désactivé plutôt que proposé »).
-- `171c887` : affiche photo, « Quel genre d'affiche ? » — les styles tiennent sur UNE rangée qui défile de côté, avec les flèches et la barre des listes du site (ZoneDefilante) : « ça doit tjs rester scroll horizontal », « le scroll doit être visible aussi ». Essayé au harnais avec 7 styles : défilement aux flèches, barre visible, coche du style choisi entière.
-- Vérifié : tsc du site sans erreur nouvelle (les 3 de StandSalon.tsx sont anciennes), astro check du BO 0 erreur. La mise en ligne de `7c211ce` a été refusée par le contrôle de sécurité (3e de la journée, marché ouvert, pas demandée) : ne pas la forcer, attendre son feu vert.
-
-### 0.00000000000 (suite) EN LIGNE DEPUIS LE 27/11 À 13 H 25 (`c75d866`) : thèmes de couleurs du ciel, produit Ciel étoilé remis en vente
-- Mises en ligne à 13 h 13 (`2fb40fd`) et 13 h 25 (`c75d866`, migration 0119) sur « met le en ligne » puis « le produit tu le met en ligne » d'Alexandra : marché ouvert, mais 0 activité sur 15 minutes avant chacune ; sauvegarde faite.
-- **Thèmes** : 3 couleurs par thème (fond, étoiles, dorures), tout le reste calculé — dégradé du ciel, dôme, collines, constellations (`teintesDuTheme`, apps/api/src/ciel.ts). 6 thèmes de base (Nuit, Encre, Sapin, Bordeaux, Rose poudré, Crème), réglage `ciel.themes`. BO › Atelier › Affiches IA › « Ciel étoilé : couleurs » (`/bo/ciel`) : créer, renommer, recolorer avec aperçu (`/ia/ciel/apercu-theme`), désactiver, supprimer. Sur la fiche, rangée « Couleurs du ciel » (`/ia/ciel/themes`). Tests : `tests/ciel.test.ts`, 8/8.
-- Vérifié en prod : fiche 200 et dans le catalogue ; « Personnaliser » montre les 6 thèmes, Nuit choisi ; l'aperçu d'un thème est servi. PAS vu : la page `/bo/ciel` (je ne me connecte pas au BO). Aucun ciel créé en prod de mon côté : le parcours complet jusqu'au panier reste à essayer par Alexandra.
-- **Produit** : `/affiches/ciel-etoile`, désactivé le 26/11 au soir (0117, « genre desactiver »), remis en vente le 27/11 (0119). Le statut « Caché » existe au BO (en vente par son lien, hors listes). « Vos créations » n'apparaît pas sur cette fiche (`66e6c00`). Filigrane centré sur la carte (`ebc9332`). Reste à la boutique : traductions du nom et de la description, visuel définitif (celui en place est l'exemple « Naissance de Mathis »).
-- Protos pour Margaux, hors dépôt : `Documents/memory-line/protos/` (proto-naissance-mathis.png, proto-mathis-2-lignes.png).
-
-### 0.00000000000 EN LIGNE DEPUIS LE 27/11 À 11 H 49 (`0a01048`, avec `8f166ac` et `591ee54`)
-- Sur « met en prod » d'Alexandra. Avant : tsc de l'API, 601 tests de l'API (599 réussis, 2 sautés, 0 échec), 82 tests du BO, astro check et tsc du site sans erreur nouvelle. Pas de migration.
-- `8f166ac` : à la tablette du stand, plus de zone « Déposez votre photo ici, ou cliquez pour la choisir / JPEG, PNG ou WebP » (« enlève ça pour les stands ») ; la photo arrive du téléphone, « Choisir une photo » reste.
-- `591ee54` : plus de phrase « Votre photo est dans votre téléphone ? Scannez un code : elle arrive ici. » sous « Envoyer la photo depuis votre téléphone », au stand comme sur le site.
-- `0a01048`, relecture indépendante de `aa5ec18` (2 relecteurs, constats contre-vérifiés) :
-  - la limite de 3 essais tient aussi contre des demandes lancées ensemble : compte et écriture sous un verrou (`pg_advisory_xact_lock`), comme le relais photo. Essai : 6 demandes ensemble, exactement 3 passent ;
-  - sur le site, les créations restent dans le NAVIGATEUR (localStorage, 7 jours), plus seulement dans l'onglet : limite atteinte, une cliente qui avait fermé l'onglet n'avait plus rien à mettre au panier. Au stand, toujours dans l'onglet ;
-  - BO › Affiches IA : le nom du stand passe à la ligne au lieu d'être coupé.
-  - Écartés par la relecture, voulus : le mode stand sans code vaut pendant l'ouverture d'un stand (sinon la tablette risquerait d'être bloquée) ; plusieurs personnes derrière la même box partagent leurs 3 essais.
-- Après : site, fiche photo (site et ?stand=1) 200, API (base comprise) 200, BO 302 ; code servi sans « Scannez un code » ; fenêtre ouverte dans un Chrome sans écran sur le vrai site : au stand, pas de zone de dépôt, « Choisir une photo » et le relais présents ; sur le site, la zone reste.
-
-### 0.0000000000 EN LIGNE DEPUIS LE 27/11 À 10 H 08 (`aa5ec18`) : affiches IA — ciels hors de la galerie, stand ou site, 3 essais par jour sur le site
-- Demandes d'Alexandra (27/11) : « corrige on ne garde pas les affiches étoile ! », « c'est généré et pas gardé dans le bo sur la partie "affiches" », « enfin je veux dire pas dans affiche IA » ; « faut qu'on puisse identifier si la photo vient du stand ou site et si possible quel stand... sur https://memoryline.fr/bo/ia » ; « bloquer à 3 essais par jour uniquement en mode site pas en mode stand » (« je parle de vos photos en affiche, le truc ia pour les clients ») ; « et met en prod ».
-- **Ciels étoilés** (modèle « ciel ») : hors de la galerie et des chiffres de BO › Affiches IA, et du plafond. Rien n'est supprimé : ils restent dans la table, pour le panier et l'impression.
-- **Stand ou site** : chaque nouvelle affiche dit au BO « Stand · <nom du stand> », « Stand » ou « Site ». La tablette envoie le mode stand, le code du stand qu'elle a retenu (X-Salon-Code) et le numéro de sa page. Migration 0118 : colonnes `origine` et `stand_id`, remplies pour les affiches d'avant d'après leur panier ou leur commande ; une affiche jamais mise au panier reste « Origine inconnue ».
-- **3 essais par jour sur le site** (jour de Paris), par panier, compte ou adresse IP. Les échecs, les affiches du stand et les ciels ne comptent pas. À la 4e : « Vous avez fait vos 3 essais du jour. Revenez demain pour créer d'autres affiches. » (7 langues). La tablette n'a pas de limite si elle a retenu le code du stand, ou si un stand est ouvert. Le mode stand seul (?stand=1) hors ouverture ne suffit pas : il ne donne aucun droit.
-- Le nombre 3 est une constante (`ESSAIS_PAR_JOUR_SITE`, ia.ts) et figure dans les textes du site (`ia.err.quota`). Si Margaux veut le changer : un réglage au BO.
-- À savoir : plusieurs personnes derrière la même box partagent leurs 3 essais (comptés aussi par adresse IP, pour qu'une fenêtre privée ne remette pas le compteur à zéro).
-- Avant : tsc de l'API, 600 tests de l'API (598 réussis, 2 sautés, 0 échec, dont 4 nouveaux : `tests/ia-origine-et-essais-base.test.ts`), 82 tests du BO, astro check sans erreur, tsc du site (les 3 erreurs anciennes de StandSalon.tsx). En local, BO › Affiches IA : 2 « Stand · Marché de Noël Mulhouse », 3 « Stand », 28 « Site », 6 « Origine inconnue », aucun ciel.
-- Après : sauvegarde faite, migrations appliquées, site 200, API (base comprise) 200, BO 302 vers la connexion, le code servi porte « 3 essais du jour » et `limiteDuJour`, conteneurs relancés. Pas vérifié (pas d'accès au BO ni à la base de prod) : la galerie de BO › Affiches IA en prod.
-- Restes : la relecture indépendante de `cb7b282` et `5e3a223` lancée le 26/11 s'est arrêtée avec la session, sans rien corriger ; elle a laissé en local le stand 112 ouvert, avec 15 ventes pas mises en test (local seulement).
-
-### 0.000000000 PRODUIT « CIEL ÉTOILÉ » EN VENTE (26/11, 22 h 45, `ab18a0e`)
-- Produit à part, visible : https://memoryline.fr/affiches/ciel-etoile (créé par la migration 0116 en copie de l'affiche photo : A4 23 €, A3 29 €, mêmes rayons ; visuel d'exemple « Naissance de Mathis » servi par le site, `apps/web/public/ciel/`, à remplacer au BO). `/ciel-etoile` y redirige (301). Plus de `?ciel=1`.
-- Sa fiche demande date, heure, ville (au lieu d'une photo) parce que la case **« Affiche ciel étoilé »** est cochée au BO (bloc IA de la fiche produit, colonne `sky_enabled`). L'affiche photo est inchangée.
-- Le BO a aussi un statut **« Caché »** (`masque`) : en vente par son lien, hors catalogue/recherche/plan du site. Pas utilisé pour le moment (Alexandra : « mets le visible »).
-- Le bloc IA du BO relit désormais aiEnabled / consignes / ciel depuis `/admin/products/:id/config` (avant, la route ne les renvoyait pas).
-- À faire par la boutique : traductions du nom et de la description (en BO), visuel définitif. Premier vrai ciel = premier essai sur la fiche.
-
-### 0.00000000 Ciel étoilé, suite (en ligne le 26/11 à 22 h 37)
-- **Fiche cachée** : `/affiches/affiche-a-partir-de-votre-photo?ciel=1` (ou `/ciel-etoile`, qui y redirige). Date, heure, ville à la place de la photo, puis les textes, personnages, format et panier de la fiche photo. Sans `?ciel=1`, la fiche est inchangée.
-- **Ville libre** : 197 000 lieux GeoNames (toute la France jusqu'aux lieux-dits, CH/BE/LU complets, DE/IT/ES dès 1 000 hab., monde dès 5 000), avec le département, recherche sur notre serveur (`/ia/ciel/villes`, `ciel-villes.tsv.gz`). L'API pèse ~460 Mo en mémoire après chargement (sur 3,7 Go).
-- **Cercle plus bas** : le tiers haut est libre pour le texte.
-- **Menus du haut au survol** de la souris (Base.astro), pas encore vu dans un navigateur.
-- Proto pour Margaux : `Documents/memory-line/protos/proto-naissance-mathis.png` (hors dépôt).
-- Non testé de bout en bout en prod (aucun ciel créé, pas d'écriture en prod) : premier essai réel = celui d'Alexandra / Margaux.
-
-### 0.0000000 EN LIGNE LE 26/11 AU SOIR : « Voir sur un mur » (`e3ef88c`, `5ecac2a`) et le ciel étoilé caché (`98b009d`)
-- **« Voir sur un mur »** : bouton sous l'aperçu du module de personnalisation (site et stand, pas sur l'affiche photo). L'affiche telle que composée, À L'ÉCHELLE (cadre compris), dans un salon (enfilade 120 cm), une chambre d'enfant (lit 90 cm), une entrée (console 90 cm), ou sur la photo du mur du client (reste sur son appareil, on la place au doigt, curseur de taille). A4/A3 se change d'ici. 7 langues. Testé au harnais (bureau et téléphone). **Se coupe au BO › Cadres**, case « Proposer Voir sur un mur » (réglage `configurateur.mur`, absent = proposé) — si ça ne plaît pas à Margaux.
-- **Ciel étoilé, page CACHÉE `/ciel-etoile`** (aucun lien, hors plan du site, noindex ; à montrer à Margaux). Date + heure + ville (liste de 48 villes avec fuseau) → l'API calcule la carte du ciel (`apps/api/src/ciel.ts` ; catalogue d3-celestial BSD-3, 3 232 étoiles, dans `ciel-donnees.ts`) et la range comme une affiche IA (table ai_generation, modèle « ciel », coût 0, aperçu filigrané). « Personnaliser » ouvre l'affiche « à partir de votre photo » sur ce ciel (`?creation=`) : textes, personnages, format, panier, impression = ceux des affiches IA, rien de nouveau côté commandes ni PDF. Prix = celui de l'affiche photo. Tests : `tests/ciel.test.ts` (5, dont l'exemple de Meeus). En prod : page 200, noindex, route vivante (refus 400 d'une requête vide) ; AUCUN ciel créé en prod (pas d'écriture). **À décider avec Margaux** : la garder, son prix, un produit à part, l'ouvrir (lien au menu).
-- Mises en ligne à 22 h 04 et 22 h 40, marché fermé, 0 activité avant. Site, stand, BO, API 200 ; aucune erreur.
-
-### 0.000000 EN LIGNE DEPUIS LE 26/11 À 20 H 46 : `cb7b282` (la liste suit la période) et `5e3a223` (relecture finale du lot 2)
-- Mis en ligne sur « pull et met en prod » d'Alexandra, marché fermé. Avant : tsc de l'API, 589 tests de l'API (0 échec), 82 tests du BO (0 échec). Sauvegarde faite, migrations appliquées. Après : site, stand, caisse 200 ; API (base comprise) 200 ; BO 302 vers la connexion ; aucune ligne « 0114 » au démarrage de l'API ; aucune erreur dans les journaux. Reste, avec l'accord d'Alexandra : les deux lectures ci-dessous (verifier-ventes-stand-26-11.sql, lignes-touchees.ts).
-- **À mettre en ligne sans tarder** (sur un « mets en prod » d'Alexandra) : la prod rejoue encore 0114 à CHAQUE démarrage de l'API (mise en ligne, plantage, redémarrage du serveur). Elle remettrait « À imprimer », sans le dire et avec une ligne de journal datée du 26/11, une vente que Margaux a marquée terminée depuis et qui n'a ni la ligne de 0114 ni celle de la nouvelle validation : une vente « à encaisser » du 17-19/11 encaissée depuis, ou une vente remise « À imprimer » dans l'ancien BO avant 14 h 31. Vérifié à 16 h 36 (`docker inspect`, sans lire la base ni les journaux) : l'API de prod n'a pas redémarré depuis 14 h 31, le rejeu n'a donc tourné qu'une fois, juste après la migration. La mise en ligne de ce lot démarre le nouveau code, qui ne rejoue plus rien.
-- **Relecture indépendante de `cb7b282` et `5e3a223` lancée à 16 h 40** (3 angles, chaque constat contre-vérifié, corrections en local sans commit).
-- **À lire en prod, avec l'accord d'Alexandra** (lecture seule) : `apps/api/scripts/verifier-ventes-stand-26-11.sql`. Requête 1 : les ventes revalidées par l'ancienne API pendant la mise en ligne de 14 h 31, restées « Terminée » (à remettre « À imprimer » si pas imprimées). Requête 2 : les ventes qu'un redémarrage toucherait encore.
-- **`cb7b282`** : la liste des commandes suit la période choisie dans les chiffres (Aujourd'hui, 7, 30, 90 jours). « Du » et « Au » restent vides, une ligne dit les jours montrés, avec « Voir toutes les dates ». « Filtrer » garde le stand et la période. Sans période choisie, la liste garde toutes les dates.
-- **`5e3a223`**, relecture finale du lot 2 (4 relecteurs, chaque constat contre-vérifié ; 11 confirmés, tous corrigés) :
-  - plus de 0114 rejouée au démarrage ;
-  - Ventes stand : « Factures » refuse tant qu'une vente cochée a un total tapé pas enregistré (la facture garderait l'ancien total pour toujours). La barre (« Marquer terminées »…) demande elle-même avant de perdre un total tapé, et ne reste plus bloquée après « Rester ». Sous la ligne de l'Entrée, un cadre redit les totaux partis depuis les autres lignes, refusés d'abord. Le compte rendu compte les ventes déjà terminées au lieu de les nommer une à une ;
-  - fiche d'une vente annulée : plus de « 1 à imprimer » dans l'en-tête ;
-  - IA : la taille « auto » compte comme 1024 × 1536 au plafond (17 c au lieu de 8). Une réponse 200 coupée en route compte comme payée. Une affiche coupée par un redémarrage passe en échec au coût attendu, seulement celles des 2 h d'avant le démarrage : l'historique et la dépense du mois ne bougent pas d'eux-mêmes. Le cadre « Taille maximale refusée » ne disparaît plus quand on enregistre le plafond ;
-  - vignettes : une ligne en « Manuscrite » avec ¢ £ ¤ ¥ ƒ ₤ au milieu du texte change d'adresse et se refait (elle gardait son tampon). Empreinte d'impression inchangée : aucun PDF ne se refait.
-- **Après la mise en ligne, vérifier** : site, API, BO ; au démarrage de l'API, aucune ligne « [stand] … 0114 » dans son journal. Puis, avec l'accord d'Alexandra, `apps/api/scripts/lignes-touchees.ts` dans le conteneur de l'API : les affiches déjà vendues avec un tampon (chiffres et symboles).
-- **Hors de ce lot** :
-  - « Exporter en CSV » n'applique que le canal, le stand, les dates et les tests : ni l'étape, ni les statuts, ni la recherche. Défaut d'avant (20/11), à faire passer par le filtrage de la liste ;
-  - les fiches produit créées depuis une image IA ne sont pas accentuées à l'impression. C'est voulu, à trancher par Alexandra ;
-  - les affiches restées « en cours » avant ce lot restent « En fabrication… » dans la galerie. Une migration ciblée si Alexandra le demande.
-
-### 0.00000 EN LIGNE DEPUIS LE 26/11 À 14 H 31 (`ef7ca1c` : lot 2 des demandes de Margaux du 26/11, `6e5fe48`, et `333df30`)
-- Mis en ligne pendant le marché, à la demande d'Alexandra (« go met en prod stp »), pendant qu'une dernière relecture indépendante du lot tournait encore en local. Si elle trouve quelque chose, ce sera une petite mise en ligne à part.
-- **Vérifié après** : sauvegarde de la base et des fichiers faite avant, migrations appliquées sans erreur, site 200, API (base comprise) 200, BO 302 vers la connexion, le code servi porte « Comptez une à trois minutes » (site et tablette `?stand=1`), tous les conteneurs relancés, charge 1,35 au redémarrage (fichiers d'impression refaits).
-- **Pas vérifié** (Claude n'a pas lu la base ni les journaux de prod) : l'effet de 0114 et de 0115 — voir « Après la mise en ligne, vérifier » plus bas.
-- **Affiches IA en haute qualité** (« il faut que les affiches soient haute qualité ! au moins à l'impression ») :
-  - la qualité « high » part vraiment. gpt-image-2 refusait `input_fidelity` (« For gpt-image-2, omit this parameter »), et le repli retirait AUSSI la qualité : les affiches partaient en « auto ». Les replis sont refaits un par un (taille, fidélité, qualité) et écrits au journal ;
-  - taille 1584 × 2240, la plus grande garantie par OpenAI au format A (migration 0115, seulement si le réglage vaut encore 1024x1536). Coût d'environ 26 c l'image au lieu d'environ 16 c ;
-  - l'image IA est accentuée à l'impression (pdf.ts), pour les commandes comme pour l'atelier du BO ;
-  - les consignes partent en texte et non plus en HTML (consigne-texte.ts) : le gras ne parvient plus au modèle, l'aide du BO le dit ;
-  - délai d'OpenAI porté à 280 s. Une création coupée au délai compte au plafond, car elle est payée. Une ligne de journal par création avec sa durée : « [ia] affiche … prête en N s ». Le site dit « Comptez une à trois minutes » ;
-  - ¢ £ ¤ ¥ ƒ ₤ en Caveat dans « Manuscrite », comme les chiffres ;
-  - option 2416 × 3424 au BO (la plus proche des autres affiches, ~47 c, « expérimentale ») : **ne pas la choisir avant d'avoir lu les durées réelles** dans le journal. Estimation : environ 340 s en « high », au-delà du délai.
-- **Ventes stand** :
-  - une vente validée à la tablette naît payée et « À imprimer », avec son PDF prêt aussitôt. Margaux la marque terminée elle-même : cases et « Marquer terminées » dans Ventes stand, ou « Marquer terminée » sur la fiche. « Remettre à imprimer » défait ;
-  - le total se modifie dans la ligne (champ, Entrée enregistre, plusieurs totaux d'un coup, cadre ambre tant que ce n'est pas enregistré, le navigateur retient la page). Le motif est facultatif ;
-  - migration 0114 : toutes les ventes du stand déjà faites repassent « À imprimer ». Restent dans leur case : tests, annulées, SHOP-, site, colis suivis. L'API la rejoue à chaque démarrage, pour rattraper une vente validée pendant la mise en ligne par l'ancienne API. **Rejeu retiré du code** (`5e3a223`), pas encore en ligne : voir 0.000000 ;
-  - « À préparer » de l'accueil ne compte plus les ventes du stand ; les filtres « Statuts » de la liste trouvent aussi les ventes au-delà des 100 dernières.
-- **`333df30`** : les boutons de période des chiffres (Aujourd'hui, 7, 30, 90 jours) vident « Du » et « Au ».
-- **Empreinte d'impression changée** (pdf.ts, fonts.ts, fichiers-impression.ts) : les fichiers d'impression se refont. Côté stand, seuls ceux des 2 derniers jours se préparent d'avance.
-- **Après la mise en ligne, vérifier** : les ventes SAL sont « À imprimer » (sauf tests et annulées), ia.taille vaut 1584x2240, et la première affiche IA a sa ligne « prête en N s ».
-- **Restent à Margaux** : recharger le crédit OpenAI ; recoller la consigne entière du style « Famille » (coupée à 7 999 caractères) ; recoller « Maison / Bâtiment » depuis sa source (un seul bloc, phrases collées : « MEMORY LINE.OBJECTIF »).
-
-### 0.0000 EN LIGNE DEPUIS LE 26/11 À 11 H 45 (`cd9fcf6`, lot 1 des demandes de Margaux du 26/11)
-- Mise en ligne pendant le marché, à la demande d'Alexandra (« non on met maintenant »). Vérifié après : site 200, API (base comprise) 200, BO 302 vers la connexion, le code servi porte les textes du 25/11, tous les conteneurs relancés, charge normale.
-- **Chiffres en « Manuscrite »** (`3a73fc3`) : seuls sur leur ligne (« 2025 » en ligne 3), ils s'impriment en Caveat ; le PDF et la vignette du BO y mettaient les tampons ronds de la police d'essai. Empreinte d'impression changée : les fichiers d'impression se refont (ceux à expédier d'avance, les autres à la demande). Reste : lancer `lignes-touchees.mts` (scratchpad du 26/11) en prod pour retrouver les affiches déjà vendues avec des tampons.
-- **Ventes stand** (`0e2e09d`) : montant d'une vente corrigeable par la propriétaire (écart au grand livre, journal, facture, compte client) ; colonne « Format et cadre » à la place de « Livraison ».
-- **Réglages IA** (`cd9fcf6`) : le BO montre le modèle et la taille vraiment en service ; consigne d'un style jusqu'à 20 000 caractères (avant : coupée sans prévenir à 8 000 — **le style « Famille » de prod est coupé en pleine phrase : Margaux doit recoller sa consigne entière**) ; enregistrer un style garde ses titres traduits (à vérifier au BO : des enregistrements passés ont pu les effacer).
-- **Lot 2** : en ligne depuis 14 h 31 (voir 0.00000).
-
-### 0.000 EN LIGNE DEPUIS LE 25/11 À 20 H 15 (`00b2d69`) : les affiches IA
-- Plus le message clair « plus de crédit » (site : la cliente ; stand : « Prévenez Margaux »), 7 langues. Alerte par mail seulement (SMS écarté par Alexandra). Vérifié après : pages, API, code servi, aucune erreur.
-- **Le bon prompt** : un style qui a sa consigne part avec elle seule ; la consigne générale (« Prompt universel ») ne sert plus que pour une affiche sans style. ⚠ Une règle qui n'était que dans la consigne générale (pas de texte, format…) doit être recopiée dans la consigne de chaque style, au BO.
-- **Plus d'images d'exemple envoyées au modèle** : seule la photo de la cliente part (les résultats recopiaient d'anciennes créations). Pour revenir en arrière : `ENVOYER_LES_EXEMPLES_DE_STYLE` dans apps/api/src/ia.ts.
-- **Plus de crédit OpenAI** (le 25/11 à 19 h 02) : message clair au site (« momentanément suspendue »), mail d'alerte à la boutique (au plus toutes les 3 h), refus immédiat pendant 5 min.
-- **Vrai coût par image** dans le BO, d'après la consommation renvoyée par OpenAI (gpt-image-2 : 5 / 8 / 30 $ le million de tokens, × 0,9 pour l'euro). Les images d'avant gardent leur estimation de 8 c.
-- **Compte OpenAI** : la clé de la boutique est sur le compte agence.glowup@gmail.com (« Margauxrd »). Margaux a rechargé le 25/11 vers 19 h 10, mais le crédit était presque aussitôt épuisé : à recharger d'un vrai montant, et activer la recharge automatique.
-
-### 0.00 EN LIGNE DEPUIS LE 22/11 À 21 H 15 : `a3bd8e8`
-- BO › Ventes stand : le calendrier d'un stand ne montre plus les jours passés (leurs réglages restent, masqués).
-- Affiche à partir d'une photo : la grille des styles choisit son nombre de colonnes (4 styles : une ligne de 4, ou 2 × 2 sur téléphone).
-- Vérifié : pages du site, du stand et du BO, l'API répond, le code servi porte la grille, aucune erreur dans les journaux.
-
-### 0.0 EN LIGNE DEPUIS LE 21/11 À 21 H 28 : `97434ee` (relais photo du site, couleurs propres des personnages, plus de suggestions pendant la frappe dans la recherche du site)
-- Mise en ligne avancée à 21 h 28 à la demande d'Alexandra (marché fermé, aucune activité). Vérifié après : pages du site, du stand et du BO, API (base comprise), le code servi porte le relais du site, 113 migrations, aucune erreur dans les journaux.
-- Le 21/11 vers 17 h 45, ces deux changements sont partis en prod pendant le marché, puis ont été retirés à la demande d'Alexandra (`cfb4c44`). Elle a demandé de les remettre à 22 h : la mise en ligne de `39b3445` est programmée sur le PC de Claude (archive faite à 17 h 53). La migration 0113 est déjà en prod.
-- **Couleurs des personnages** (BO › Personnages › Dessin) : chaque couleur a sa liste, à laquelle on ajoute ou retire des couleurs (« + Ajouter » part de son nuancier, 10 au plus). Sans liste, c'est le nuancier, comme avant.
-- **Après la mise en ligne, essayer** :
-  - sur un ordinateur, l'affiche photo puis « Envoyer la photo depuis votre téléphone » : le QR code s'affiche sans code de stand, et la photo arrive ;
-  - sur la tablette du stand, le relais comme avant.
-- **Restes mineurs** :
-  - « code inconnu » sur la page du téléphone parle encore de la tablette (l'origine n'est pas connue) ;
-  - une poignée d'adresses IP peut occuper les 60 places du site pendant un quart d'heure. Le stand n'est pas touché.
-
-### 0.1 En ligne
-- **Tout `main` jusqu'à `4b6889d`**, mis en ligne le 21/11 à 5 h 54, marché fermé (aucune commande, création IA ni panier en cours depuis la veille au soir). Pas de migration : la prod reste à 0112.
-  - `4b6889d` : les restes du matin (voir 0.2), demandés par Alexandra (« finis tout », « met en prod »).
-  - Vérifié après : pages du site et du stand 200, pages du BO qui renvoient vers la connexion, `/api/health` répond, base comprise. Le code servi porte le correctif de la fenêtre, et les journaux de l'API, du site et du BO n'ont aucune erreur. Le BO a été reconstruit cette fois.
-- **Mise en ligne de 3 h 16** : tout `main` jusqu'à `0819969`, marché fermé, depuis la dernière vente du stand (SAL-0012, 20/11 à 20 h 25).
-- **Ce qu'elle a ajouté** :
-  - `0819969` : **personnages et muret sur l'affiche « à partir de votre photo »**, au site et sur la tablette. Le détail est dans le message du commit et dans `docs/plan-personnages-affiches-photo.md`.
-    - **Choix faits par défaut, gardés tels quels** (21/11 : Alexandra n'a rien demandé de changer, « finis tout ») :
-      - pas de supplément de prix ;
-      - un seul muret, celui du type d'affiche « De dos » (à défaut `muret_officiel.svg`) ;
-      - deux boutons : « Assis sur le muret » (vus de dos) d'abord, puis « Debout, de face » (sans muret) ;
-      - portrait seulement, placement automatique ;
-      - les personnages suivent « Générer une autre version ».
-    - Sans personnage, la ligne de panier est celle d'avant, au caractère près (vérifié contre HEAD).
-    - Le serveur contrôle les lignes avec personnages (`ia-composition.ts`) et ne touche à aucune autre. L'empreinte d'impression n'a pas bougé : aucune réimpression.
-    - Aussi : `GET /backgrounds` ne propose plus le décor d'une fiche en BROUILLON. Même règle à l'écran « Décors des affiches » et pour les affiches de démo.
-    - Aussi : `mettre-en-ligne.sh` échoue (code 1, fin du journal du service, dernière ligne « le site est EN PANNE ») quand le site ou l'API ne répondent toujours pas après une minute et demie.
-  - `8afd173` : la facture d'une fiche commande ne se NUMÉROTE plus depuis un lien venu d'ailleurs (garde `Sec-Fetch-Site`, comme pour le ZIP). Une facture déjà numérotée se rouvre d'où que ce soit.
-- **Vérifié avant la mise en ligne de 3 h 16** :
-  - tsc de l'API, du module et du site (seulement les 3 erreurs anciennes de StandSalon) ;
-  - tests de l'API : 504 réussis, 0 échec ;
-  - construction de production du site ;
-  - bancs navigateur : module classique identique à HEAD, parcours avec personnages au site et au stand ;
-  - relecture indépendante en 5 angles : aucun constat bloquant ni important ; les 2 mineurs sont corrigés.
-- **Vérifié après la mise en ligne de 3 h 16** :
-  - le script a fini par « Mise en ligne terminée » (code 0), avec la sauvegarde faite avant, et son nouveau contrôle a vu le site et l'API répondre ;
-  - pages : l'accueil, `/affiches`, l'affiche photo (site et `?stand=1`), une affiche classique et `/commande` répondent 200 ; `/panier` renvoie vers `/commande` (302), comme avant ;
-  - API : `/health` répond, base comprise. `/views` donne le muret du type « De dos » (`/assets/muret_officiel.svg`). `/backgrounds` rend 250 décors comme avant (aucune fiche en brouillon n'en a), et 1 pour l'affiche n° 1 ;
-  - le morceau PersonnagesIA est servi (200), et AfficheIA pèse 46,8 Ko, comme la construction locale ;
-  - sans session, l'admin et `facture.pdf` répondent 401 ; les `frame-ancestors` n'ont pas changé ;
-  - les journaux de l'API et du site depuis le redémarrage ne montrent aucune erreur ;
-  - **pas fait** : un ajout au panier avec personnages en prod. Le contrôle de sécurité de Claude a refusé l'appel, alors même qu'il devait être refusé par le serveur sans rien écrire. C'est le premier essai sur la tablette qui le fera.
-- **À vérifier par Alexandra avant l'ouverture du marché** (Claude n'a pas de session au BO) :
-  - **BO** : Créer des fonds s'ouvre ; les deux boutons d'Affiches IA ; « Factures » dans Ventes stand ; « Éditer la facture » sur une fiche commande (le bouton doit toujours marcher) ;
-  - **sur la tablette** : une affiche à partir d'une photo avec « Assis sur le muret » et 1 ou 2 personnages, jusqu'au panier du stand, sans valider la vente ; regarder la vignette. Toucher aussi la zone de dépôt de la photo : la fenêtre ne doit plus sauter ;
-  - **première vraie commande avec personnages** : ouvrir son PDF au BO, et vérifier le muret et les personnages.
-
-### 0.1 bis Mise en ligne précédente
-- **Tout `main` jusqu'à `4eaf9d2`**, mis en ligne le 20/11 à 22 h 35, marché fermé.
-  - Migrations 0111 et 0112 passées.
-  - Proxy relancé pour le nouveau `Caddyfile.prod` : `frame-ancestors 'none'` partout, `'self'` sur `/atelier-affiche` (vérifié).
-- **Ce que ça a ajouté** :
-  - `91e47bd` : dans Ventes stand, les boutons « Factures » (ZIP) et « Ces commandes sont des tests ».
-  - `0024f71` : sur les affiches de démo, la peau va au groupe « Peau ».
-  - `1ad2c31` : BO › Atelier › **Créer des fonds** (nommé « Créer un fond » jusqu'au 20/11 au soir), et dans BO › Affiches IA, « Créer une fiche produit » et « Créer une affiche ».
-  - `4eaf9d2` : les corrections de la relecture.
-    - La date d'une vente du stand est celle de sa DERNIÈRE validation. La migration 0112 corrige les ventes déjà faites ; SAL-0006 avait déjà été corrigée à la main.
-    - Factures en ZIP, numéros :
-      - seules les ventes payées reçoivent un numéro ;
-      - la règle est relue sur la commande verrouillée au moment de numéroter ;
-      - les autres ventes sont citées dans `factures-non-faites.txt`.
-    - Factures en ZIP, téléchargement :
-      - une facture en japonais ou en chinois sort en anglais, sans erreur 500 ni mention vide ;
-      - le GET n'est accepté qu'avec `Sec-Fetch-Site: same-origin` (le bouton du BO télécharge par fetch) ;
-      - une vente facturée ne se rouvre plus à la tablette.
-    - Créer des fonds :
-      - les fonds ont leur propre plafond (`ia.fondPlafondMensuelCents` ; vide, il vaut la moitié de celui des affiches) : un lot ne coupe jamais les affiches des clients ;
-      - le coût d'une version est réservé dès son lancement ;
-      - le fil rappelé au modèle se limite à la lignée de la version de départ.
-- **Vérifié** : le site, l'API, les tables des fonds, 0 erreur dans les journaux de l'API.
-- **Pas vérifié au BO**, faute de session dans le navigateur de Claude :
-  - Créer des fonds s'ouvre ;
-  - les deux boutons d'Affiches IA s'affichent ;
-  - « Factures » apparaît dans Ventes stand.
-
-### 0.2 Restes
-**Faits le 21/11 au matin** (commit et mise en ligne : voir 0.1) :
-- **Fenêtre de l'affiche photo** : elle ne défile plus, et la croix reste visible.
-  - Le champ fichier masqué se rangeait par rapport au fond grisé : jusqu'à plus de 800 px de défilement sur téléphone, et environ 60 px sur la tablette du stand en touchant la zone de dépôt, dès quatre styles.
-  - Vérifié à 390, 768 et 1280 px, au site et au stand : rien d'autre ne bouge, et le corps du POST est identique.
-- **Types du BO** : `plafondFonds` (catalogue des fonds) et `fonds` (stats IA) sont dans `apps/admin/src/lib/api.ts`, et les pages ne les retypent plus (`astro check` du BO : 0 erreur).
-- **Numéros de ligne** à jour dans les commentaires d'`affiches-demo-tirage.ts`.
-- **Tests sur base** : ils tournent pour de vrai, sur une base JETABLE (recette ci-dessous).
-  - Nouveau `apps/api/tests/fonds-ia-base.test.ts` : séparation des dépenses affiches / fonds, coût réservé dès le lancement et sous le verrou, deux lancements simultanés dont un seul passe, plafond des fonds vide = moitié. La route des lots, qui recopie le verrou, n'y est pas couverte.
-  - Les 4 fichiers protégés ensemble : 52 tests sur 52 ; aucune ligne de test restante.
-- **Banc de recette des personnages** (`apps/web/.harnais-persos/`, exclu de git) : son lanceur sait de nouveau monter la version commitée.
-  - On le lance par l'entrée « harnais-persos » de `memory-line/.claude/launch.json`, ou par `node apps/web/.harnais-persos/demarrer.mjs` (port 5199).
-
-**Laissés exprès** (« touche pas aux commandes ») :
-- à la caisse, la phrase d'un refus s'affiche dans la zone d'erreur générale, loin de la ligne, comme les autres erreurs de ligne ;
-- une génération ajoutée depuis un AUTRE panier (nouvel essai « panier_clos ») ne reçoit pas `paidAt` au paiement. C'était déjà le cas avant : le corriger toucherait au paiement.
-
-**À juger, pas du code** :
-- « Debout, de face » : les personnages peuvent sembler flotter sur certaines photos ;
-- avec des personnages, le grand aperçu recadre l'image (environ 6 % de la hauteur), comme l'impression ;
-- pas encore testés : Safari et la vraie tablette ;
-- clé OpenAI partagée par les fonds et les affiches des clients : lancer les gros lots de fonds hors des heures du marché.
-
-**Environnement local** (pas la prod) :
-- La pile Docker locale travaille sur une base Neon HÉBERGÉE (`DATABASE_URL` du `.env`), pas sur le conteneur `memoryline-db`.
-  - Cette base a des migrations de retard (au moins 0092 et 0100) : sur `localhost:8080`, la lecture d'un panier répond 500, et la tâche des stands échoue chaque minute.
-  - À décider par Alexandra : la mettre à jour, ou faire pointer la pile locale sur `memoryline-db`.
-- `memoryline-db` est resté à 9 migrations (juillet) : n'y rien lire.
-- Recette des tests sur base, sans toucher ni au `.env` ni à la pile (Git Bash, racine du dépôt) :
+- La pile Docker locale tourne sur une **copie de la prod** : service `db18` (postgres:18, conteneur `memoryline-db18`, port 5436) dans `docker-compose.override.yml` (exclu de git), base restaurée depuis un dump de prod puis neutralisée (clés de paiement effacées, relances coupées, e-mails en `@exemple.invalid`), images de prod copiées dans `data/assets`. Pour la recharger : `Documents/memory-line/copie-prod/LISEZMOI.txt`.
+- Site `http://localhost:8080`, BO `http://localhost:4322/bo`.
+- L'ancien conteneur `memoryline-db` (9 migrations, juillet) et la base Neon hébergée ne servent plus.
+- Recette des tests sur une base JETABLE (Git Bash, racine du dépôt), à adapter si besoin au conteneur `memoryline-db18` :
   ```
   URL=$(grep -oE 'postgres://memoryline:[^@"]+@db:5432/memoryline' docker-compose.yml)_essais
   docker exec memoryline-db createdb -U memoryline memoryline_essais
@@ -350,9 +39,23 @@ Travail en cours copié dans `travaux/personnages-unifies/` (gabarits SVG, gabar
   MSYS_NO_PATHCONV=1 docker exec -e DATABASE_URL="$URL" -w /app/apps/api memoryline-api sh -c 'npx tsx --test tests/fonds-ia-base.test.ts tests/factures-zip.test.ts tests/cartes-cadeaux-caisse.test.ts tests/ia-composition.test.ts'
   docker exec memoryline-db dropdb -U memoryline memoryline_essais
   ```
-  - La troisième commande doit répondre LOCALE avant d'aller plus loin. La garde des tests (`@db:5432/` et NODE_ENV) ne les laisse jamais tourner sur Neon ni en production.
+  - La troisième commande doit répondre LOCALE avant d'aller plus loin. La garde des tests (`@db:5432/` et NODE_ENV) ne les laisse jamais tourner ailleurs.
+- Ciel étoilé : les ombres sont vectorisées depuis les planches de `Documents/memory-line/protos/ombres*.png` (masque < 110, marching squares, RDP 0,8 px, Catmull-Rom, 90 cm par adulte assis) ; `apps/api/src/ciel-ombres-2.ts` est GÉNÉRÉ (scripts hors dépôt) ; l'URL `/ia/ciel/silhouettes?v=…` doit changer de version quand les ombres changent (cache du navigateur).
 
-### 0.3 Décidé, et encore à décider
+## 0.4 Personnages unifiés des affiches classiques (en dernier)
+Travail en cours copié dans `travaux/personnages-unifies/` (gabarits SVG, gabarits.json, relevé, plan, planches). Décisions d'Alexandra : tous ASSIS et DE DOS (plus jamais debout), même style que les actuels, très variés (plusieurs femmes, hommes, enfants, des PERSONNES ÂGÉES, et animaux : chiens, chats, chevaux, et TOUS les NAC — lapin, cochon d'Inde, hamster, oiseau, tortue, furet…), accessoires très variés, AUCUN calage sur les nouveaux. Ajouter sans supprimer ; quand un nouveau remplace un ancien équivalent, ARCHIVER l'ancien (jamais de suppression), et retirer l'écran de calage du BO (garder les données). Bascule préparée en local, en prod seulement sur son OK.
+À reprendre sur la planche du 27/11 :
+- corps âgés pas assez différents (dos plus voûté, épaules tombantes) ; épaules de l'ado trop raides ;
+- le CHEVAL fait peur (« il fait peur là ») : à redessiner, DEBOUT (pas assis) et DE DOS (« le cheval il faut le faire debout pas assis et de dos ») — seule exception à la règle « tous assis » ;
+- la queue du chat (dos) pend sous la ligne d'assise : tous les personnages doivent être posés sur la même ligne, rien ne dépasse dessous (« je parle des personnages pas alignés », « regarde la queue ») — la queue s'enroule sur le côté, au niveau de l'assise ;
+- puis la garde-robe (hauts, bas, coiffures, accessoires) et les NAC.
+
+## 0.5 Idées de Noël en réserve (seulement si Alexandra les demande)
+- **Le calendrier 2027 de la famille** : une affiche avec le titre en haut, les 12 mois, les personnages en bas, les anniversaires marqués d'un cœur ; même mécanique que le ciel (fond calculé, thèmes, aucun appel à OpenAI). Environ une journée.
+- **« Nous au marché de Noël »** : une affiche personnalisable classique, les personnages en bonnet devant un marché de Noël alsacien. Rien à coder : Margaux dessine les fonds et un bonnet, et crée le produit au BO.
+- **Un prénom sous chaque personnage** (« Les petits-enfants de Mamie Jo ») : touche au moteur d'impression, donc après le marché.
+
+## 0.6 Décidé, et encore à décider
 - **Décidé le 21/11** (Alexandra : « touche pas aux commandes ») : **on ne touche à aucune commande**, ni à leurs données, ni à leur logique, ni à la caisse.
   - **SAL-0006** : validée à 11 h 32 (29 €), rouverte à 11 h 37, jamais revalidée, puis revalidée à 20 h 03 pour un autre client (35 €). La vente du matin reste hors des comptes, et une vente rouverte NE se referme PAS d'elle-même.
   - Écartées pour la même raison : garder une trace de chaque suppression de vente ; n'autoriser la suppression d'une vente payée que si elle est annulée ou en test.
@@ -360,13 +63,7 @@ Travail en cours copié dans `travaux/personnages-unifies/` (gabarits SVG, gabar
   - pas de bandeau cookies sur la tablette ;
   - en-tête compact sous 1280 px.
 
-### 0.4 Personnages sur l'affiche photo : FAIT et en ligne (21/11)
-Voir 0.1 : les choix faits par défaut (prix, muret, boutons) sont gardés. Pour les changer plus tard :
-- Changer les boutons ne touche que le site (AfficheIA, PersonnagesIA).
-- Un autre muret doit être celui d'un type d'affiche ou de la fiche, sinon le serveur le retire (`ia-composition.ts`, décors permis).
-- Un supplément de prix demanderait aussi le serveur, qui calcule le prix de la ligne (`resolvePrixLigne`).
-
-### 0.5 Après la mise en ligne
+## 0.7 À faire avec Margaux
 - **Premier vrai essai de « Créer des fonds » avec Margaux** (le faux dessinateur est ignoré en production) :
   - vérifier que le modèle accepte plusieurs images et le format 1024 × 1536 ;
   - juger le rendu avec son style « bâtiment / paysage » ;
@@ -378,105 +75,13 @@ Voir 0.1 : les choix faits par défaut (prix, muret, boutons) sont gardés. Pour
   - rattacher leur décor aux 6 affiches grisées ;
   - imprimer une A4 d'essai en « Taille réelle ».
 
-### 0.6 Restés ouverts
+## 0.8 Restés ouverts
 - **Chiffres dans le PDF** : « ça met erreur, uniquement au téléchargement du PDF, pas avec toutes les polices ».
   - Pas reproduit en local : 100 rendus (10 polices × 5 formes de lignes), en aperçu et en PDF.
   - Les journaux de l'API de prod se perdent à chaque mise en ligne. Il faut refaire le téléchargement qui échoue, PUIS lire les journaux (accord d'Alexandra donné) avec le numéro de la commande.
 - **Ventes du stand disparues** : SAL-0001, 0002, 0003, 0004 et 0007 ont été SUPPRIMÉES définitivement entre 10 h 50 et 15 h 16, sans trace de qui.
   - SAL-0001 était la vente d'essai, supprimée à la demande d'Alexandra.
   - Pour les autres, à voir avec Margaux. Si c'étaient de vraies ventes : SAL-0002 et 0003 se restaurent (sauvegarde « avant-restauration » de 10 h) ; SAL-0004 et 0007 sont perdues.
-
-## 1. Où on en est
-
-- **19/11, vers 19 h : ventes du stand payées et terminées dès la validation à la tablette** (`3ec85e6`, `5f2730b`, en ligne).
-  - **À la tablette** : écriture « stand » au grand livre, plus une remise complète. Le PDF se télécharge tout de suite et il n'y a plus de « Marquer payée ».
-  - **Annulation** : depuis la fiche ou la ligne de Ventes stand, avec un motif. Pas de courriel ; l'encaissement passe « annule », puis une écriture « void ».
-  - **Suppression définitive sans archiver** : une vente de la tablette part même payée. Elle reste gardée si elle a une facture ou une étiquette SendCloud active.
-  - **Restent toujours gardées** : les reprises Shopify `SHOP-` et les commandes du site payées, ainsi que celles dont le paiement en ligne est ouvert depuis moins de 48 h.
-  - **Onglets du stand** : « Toutes » et « Annulées ».
-  - **« Revenir à ma commande »** : 15 minutes, stand ouvert, avec confirmation sur la flèche retour. Retiré puis remis le 20/11 (Margaux le garde) ; le bouton « Client suivant » s'appelle désormais « Terminé ».
-  - **Relecture adverse faite**, ses constats corrigés.
-- **19/11, vers 18 h 15 : la tablette des stands est le site entier** (`745eb10`, en ligne). Elle affiche le menu complet avec la page du stand en tête, la recherche, le pied de page, la bannière d'annonce et les bandeaux visuels. **Seules différences : pas de prix, la caisse du stand, et les cadres toujours proposés.** L'accueil de la tablette (`/?stand=1`) mène à la page du stand : c'est là que revient l'application de Margaux, qui recharge la page toutes les 10 minutes. Sur tablette, il y a 4 affiches par ligne dans toutes les grilles. Le compte client et la vente de cartes cadeaux restent absents au stand (ils dépendent de la caisse du site). Remplace le verrou « la tablette n'affiche que sa page » du 18/11. Vers 18 h 20 (`eaac392`) : plus de bande « ● Mode stand » en haut de la tablette ; « Stand fermé » reste, seulement quand le stand est fermé. La carte cadeau reste au menu du stand (Alexandra : « non enlève pas »).
-- **memoryline.fr est servi par le VPS** (OVH, `debian@51.255.34.187`) depuis la bascule du 17/11. www, http et l'ancien nom `vps-5c917e9d.vps.ovh.net` redirigent vers https://memoryline.fr.
-- **La boutique encaisse pour de vrai depuis le 16/11 à 22 h 29.** Stripe live (compte « Vestiairesauvage »), PayPal live, vrais courriels par Resend (`commandes@memoryline.fr`), bordereaux SendCloud facturés. **Aucune commande d'essai sur le VPS : c'est de l'argent réel.**
-- **Marché de Noël de Mulhouse : du vendredi 20/11 au 27/12** (11:00–12:30 / 13:00–20:00).
-- 18/11 : tous les écrans clients contrôlés en ligne sur tablette (768 × 1024 et 1024 × 768, 16 pages) : rien ne déborde, aucune image cassée.
-- **Mise en ligne seulement sur le feu vert d'Alexandra** (18/11 : « je veux pas perturber Margaux »).
-- **Le code « Continuer avec Google » est RANGÉ hors de `main`** (18/11, Alexandra : « go prod tout sauf le truc google »). Il a été écrit dans le commit `15256b4`, puis retiré par le revert `4748977`. `main` reste donc égal à la prod. Pour le remettre le jour venu : `git revert 4748977`.
-- En ligne le 18/11 au matin : écran d'accueil (logo et barre, au premier affichage de la visite, de 0,5 à 2,5 s) ; barre de chargement quand on change de page ; reflet d'attente sur les images ; polices des affiches en `font-display: block`, celles de départ chargées avec le module ; nettoyage de la mise en ligne et journaux Docker limités.
-- **18/11, vers 9 h : Inter servie par le site** (« ML Inter », `apps/web/public/fonts/Inter-*.woff2`, préchargée, `font-display: block`). Avant, le site nommait Inter sans la fournir : dans le Chrome d'Alexandra, Inter arrivait 0,6 s après le reste et le texte passait de Segoe UI à Inter en se remettant en page (vidéo du 18/11 ; Firefox n'avait pas le défaut). Le module de personnalisation suit aussi la police du site.
-- **18/11, vers 10 h 15** :
-  - l'écran d'accueil attend la police du site (6 s au plus) au lieu des images : jamais de Segoe UI, même en 4G lente ;
-  - le code de test « tout gratuit » V7X9-KQ4M-Z8WP-3N6R est SUPPRIMÉ (migration 0089) ;
-  - **carte cadeau** :
-    - montant libre de 5 € au moins, sans plafond annoncé (garde-fou invisible à 10 000 €), et plus de phrase « de 10 à 300 € » ;
-    - l'image « Gift Card » d'Alexandra sur la page (déclinée dans `apps/web/public/carte-cadeau/`, partage compris) ;
-    - une vignette « CARTE CADEAU, dès 5 € » en dernière place de la première page de chaque rayon, sauf au stand et avec un lieu choisi (`VignetteCarteCadeau.astro`) ;
-    - un lien « Carte cadeau » dans le pied de page (migration 0090).
-  - Les images d'origine (`Memory Line Gift Card.png`, `Memory Line Carte Cadeau.png`) sont à la racine du dépôt, hors git.
-- **18/11, vers 10 h 45** :
-  - « Carte cadeau » en dernière entrée du menu du haut (migration 0091) ;
-  - BO › Menu du site, **liens directs**. La liste « Page » propose aussi :
-    - la carte cadeau et « Mon compte » ;
-    - chaque affiche en vente (« Une affiche (sa fiche) ») ;
-    - « Lien vers un autre site… », qui ouvre le champ Adresse (`https://…` ou `mailto:`).
-    Les pages du site, elles, se choisissent toujours.
-  - Avec 4 entrées, l'en-tête tient en 1024 px pour une visiteuse ; pour une administratrice connectée, le bouton « Back-office » le fait déborder à cette largeur.
-  - En local, le BO s'essaie sur `http://localhost:4322/bo` : par le proxy du port 8080, ses scripts de développement (`/src/…`) partent vers le site et répondent 500.
-- **18/11, vers 11 h 15, carte cadeau** :
-  - au récapitulatif de la caisse : l'image de la carte, plus de « Envoyée par e-mail… », et le montant se change dans la ligne (PUT `carteCadeau`, revérifié par le serveur ; message sous le champ s'il ne va pas) ;
-  - BO › Contenu du site › **Carte cadeau** : montants proposés (`carte_cadeau.montants`, celui du milieu choisi d'avance), nom dans les rayons, titre, introduction, les 3 points et la description Google, en 5 langues (vide = texte de la boutique).
-- **18/11, vers 12 h 15, carnet d'adresses et facturation** (`apps/api/src/adresses-client.ts`, migration 0092) :
-  - **Compte › Mes adresses** : une seule case « adresse par défaut ». C'est l'adresse de facturation, proposée d'abord pour la livraison. La première adresse l'est d'office ; si on la supprime, une autre la remplace. La migration a fondu les deux anciens drapeaux.
-  - **Caisse** :
-    - un bloc « Adresse de facturation » avec l'adresse par défaut et « La changer dans mon compte » ;
-    - la livraison se fait à cette adresse (premier choix, marqué), à une autre du carnet ou à une nouvelle ;
-    - une nouvelle adresse a la case « Garder cette adresse dans mon compte », cochée d'avance ; avec un carnet vide, elle y entre d'office et devient l'adresse de facturation.
-  - **Serveur** : il relit lui-même l'adresse par défaut et la fige sur la commande (`billing_*`). La facture la met dans « Facturé à » ; les commandes d'avant gardent la livraison. Le BO la montre dans le bloc Client de la fiche commande.
-- **18/11, commande SANS COMPTE (en invitée)** :
-  - la caisse montre le formulaire à toutes ; en haut, « Me connecter ou continuer en tant qu'invité » (mot pour mot, demandé par Alexandra ; seul « Me connecter » est un lien) ;
-  - le serveur rattache la commande à la fiche qui porte l'e-mail, ou en crée une : jamais une fiche par achat ;
-  - une invitée n'a pas de carnet : sa facturation est l'adresse saisie ;
-  - une commande à 0 € se valide avec la preuve du panier (`cartId`) ;
-  - l'ancien rangement systématique de l'adresse dans le carnet, après la caisse, est retiré : il ignorait la case « Garder… » et rangeait l'adresse d'une invitée chez la fiche du même e-mail.
-- **18/11, vers 12 h 45, suppressions au BO** :
-  - **Commandes et ventes du stand, onglet « Archivées »** : « Supprimer définitivement » par sélection. Les règles sont celles de la fiche (`motifCommandeAGarder`) : ce qui a été payé, facturé, remboursé, encaissé, expédié ou réglé en carte cadeau reste archivé, et le message dit pourquoi.
-  - **Clients** : « Supprimer définitivement » par sélection (`POST /admin/customers/supprimer`). Une fiche qui a une commande payée ou facturée est gardée et nommée. Les autres partent avec leurs adresses, sessions et jetons ; leurs paniers et commandes jamais payées restent, détachés d'elles.
-- **18/11, après-midi** :
-  - **Les clients au masculin** : plus de « clientes » ni de « la cliente » dans le BO, les messages de l'API qu'il affiche, le motif d'annulation (« Demande du client ») et l'export (`clients.csv`).
-  - **Catalogue traduit en anglais, allemand, italien et espagnol** (migration 0094, faite à partir du site en ligne le 18/11) : les 8 catégories de personnages, les 70 personnages, les 3 cadres et les 257 fiches actives (nom court, description, et titre et description Google quand la fiche en a). Les titres des affiches prêtes à imprimer restent en français : c'est le texte imprimé sur l'affiche. Rien n'est écrasé : ce que Margaux avait déjà traduit reste. Une ligne dont le nom ou la description française a changé avant la mise en ligne est laissée telle quelle. Margaux relit dans le BO ; les fiches créées après le 18/11 se traduisent à la main.
-  - Fautes repérées dans le français, à corriger par Margaux : « Segrada familia » (écrit « Sagrada Família » dans les traductions), « Montage neige » (pour « Montagne »), « Aslace », « Epagnol ».
-  - **Clients suisses** : hors de l'Union européenne (Suisse, Royaume-Uni…), la caisse ne propose plus de point relais, puisqu'aucun réseau n'y livre (0 point trouvé à Bâle). Il reste l'envoi à domicile (douane déclarée sur l'étiquette SendCloud) et le retrait au stand (`passeLaDouane`, packages/types).
-  - **Restes de français dans les 4 langues** (migration 0095, relevé page par page du site en ligne) : les 10 rayons (« Thèmes & paysages »…), les 4 modes de livraison, le lieu du marché de Noël, la promotion « 3 achetées = 1 A4 offerte », « TOUT VOIR » dans le menu, et les 4 pages légales. Chaque page légale traduite commence par un avertissement : la version française fait foi.
-  - ⚠ Les pages légales contiennent encore des « À COMPLÉTER » (médiateur, durées de conservation), traduits tels quels. Le jour où Margaux les complète en français, il faut aussi mettre à jour les traductions.
-- **18/11, fin d'après-midi, japonais et chinois simplifié** (touristes du marché de Noël ; Alexandra a choisi « l'interface d'abord ») :
-  - **Fait** :
-    - les 639 textes du site, les 175 textes des e-mails, la page contact, les horaires du stand et la page de désinscription des relances ;
-    - sélecteur à 7 langues ; le Japon et la Chine dans la liste des pays, avec leur code postal ;
-    - libellés de la base (migration 0096) : menu, rayons, catégories et personnages du module, cadres, livraison, promotion, bandeau ;
-    - la traduction automatique du BO couvre aussi ja et zh.
-  - **Repli** : un texte qui manque en japonais ou en chinois s'affiche en anglais, puis en français (`LANGUE_REPLI` dans ui.ts, `traductionDe` dans traductions.ts, `tc` pour les e-mails).
-  - **Factures** : celle d'un client japonais ou chinois sort en anglais, car les polices standard du PDF n'ont pas les caractères.
-  - **Reste à faire** :
-    - les 257 fiches et les 4 pages légales en japonais et en chinois (même méthode que la 0094) ;
-    - la recherche dans ces langues ;
-    - un texte japonais ou chinois tapé SUR une affiche : les polices d'impression n'ont pas ces caractères.
-- **18/11** : « TOUT VOIR » en double dans le menu du haut : l'entrée de premier niveau est masquée (migration 0097), celle du menu déroulant reste.
-- **18/11, soir** :
-  - les 257 fiches existent maintenant en japonais et en chinois (migration 0099) ;
-  - les pages légales sont traduites bloc pour bloc avec le français (migration 0098, correctif de la 0095).
-- **18/11, soir, une page par stand** (migrations 0100 et 0101, packages/types/src/tablette-stand.ts) :
-  - **Réglage dans BO › Ventes stand** : chaque stand a UNE page, choisie dans « Page de la tablette » (`stand.page_id`), avec un lien pour choisir ses affiches. Un avertissement apparaît si le stand n'a pas de page, ou si sa page n'est pas en ligne.
-  - **Adresse de la tablette** : `?stand=` porte maintenant le NUMÉRO du stand ; le 1 est le marché de Noël de Mulhouse. L'aperçu depuis le BO utilise `?stand=apercu`.
-  - **Ce que montre la tablette** : seulement sa page. L'accueil, le catalogue, la recherche, le compte, la carte cadeau, le contact et les pages légales y ramènent. Restent ouverts : la fiche d'une affiche de la page, le panier et la vente. Sur la page, le client cherche par nom ou lieu, et filtre par lieu ou par collection.
-  - **BO › Pages › [page]** :
-    - un tableau de toutes les affiches, avec recherche et filtres (collection, genre, dans la page ou non) ;
-    - on coche une affiche, tout ce qui est filtré, ou une collection entière ;
-    - l'ordre se règle par glisser-déposer (flèches sur écran tactile), avec des tris rapides ;
-    - un mode « groupées par collection » ;
-    - un plafond de 200 affiches.
-  - **Page /mulhouse** : 64 affiches d'Alsace, Mulhouse en tête, posées par la 0101 si la page n'avait pas encore de grille. Laissées dehors : Bâle, Fribourg, La Bresse-Hohneck, les Vosges, Metz, Nancy.
-  - **Correctif au passage** : enregistrer une traduction de page dans le BO effaçait sa grille d'affiches. Ce n'est plus le cas.
 
 ## 2. Dans le code (Claude)
 
@@ -589,46 +194,10 @@ ssh -n -i ~/.ssh/memoryline_deploiement debian@51.255.34.187 "tar -xzf ~/memoryl
 
 **Règles**
 - Ne jamais lire ni afficher un `.env`. Les clés de prod, Alexandra les saisit elle-même.
-- Ne jamais commiter `.env`, `data/`, `sauvegardes/`, les polices AnotherShabby, ni `.claude/launch.json`.
+- Ne jamais commiter `.env`, `data/`, `sauvegardes/`, les polices AnotherShabby, `.claude/launch.json` ni `docker-compose.override.yml`.
 - Ne plus jamais lancer `vider-donnees-test.sh`.
 - Pas de branche de travail : tout va dans `main`, et ce qui reste à faire va dans ce fichier.
 - On archive d'abord. La suppression définitive ne vaut que pour un élément déjà archivé (`apps/api/src/suppression.ts`). Une commande payée ou facturée n'est jamais supprimée.
-- Textes pour Margaux au tutoiement, BO au vouvoiement, textes du site dans `apps/web/src/i18n/ui.ts` en 5 langues.
+- Textes pour Margaux au tutoiement, BO au vouvoiement, textes du site dans `apps/web/src/i18n/ui.ts` en 7 langues (fr, en, de, it, es, ja, zh).
 - Sous Windows, les antislashs sont mangés dans `node -e '…'` et dans certains heredocs : écrire le code dans un fichier.
 - Des commentaires du code citent `AUDIT-SEO.md` (repères CNT-3, VIT-2…) ou `MISE-EN-PROD.md`. Ces fichiers ont été supprimés le 18/11 ; on les relit dans l'historique : `git show 1fdff55:AUDIT-SEO.md`.
-
-
-## 00. POUR LE CLAUDE DE CHEZ ALEXANDRA — reprise du 27/11 au soir (écrit à 17 h 15)
-
-Tout est commité et poussé sur `main`. MIS EN LIGNE le 27/11 vers 17 h 15 (`3545237`, sur le « met direct en prod » d'Alexandra) : tout ce qui est listé en 00.0, plus les ombres chinoises tirées de son image. Si la mise en ligne a échoué, le journal est dans le scratchpad de la session du bureau : refaire §5 depuis `main`. Prochaine mise en ligne : SEULEMENT sur un nouveau « met en prod ».
-
-
-
-
-
-
-### 00.0 Mis en ligne le 27/11 vers 17 h 15
-
-
-
-
-
-
-
-### 00.D Nouvelles ombres chinoises à découper (Alexandra, 27/11 vers 20 h 45 : « tiens les nouveaux trucs à découper, reconnais les et classe les »)
-- Image envoyée dans la conversation, PAS encore sur le disque : lui demander de l'enregistrer dans `Documents/memory-line/protos/ombres-2.png`, puis la vectoriser comme la première (voir l'en-tête de `apps/api/src/ciel-ombres.ts` : masque, marching squares, RDP 0,8 px, Catmull-Rom ; 90 cm pour un adulte assis ; base sur y = 0). Image 1536 × 1024 environ, 4 rangées, silhouettes noires sur damier, herbe au pied (à retirer du masque : couper sous la ligne d'assise).
-- Classement reconnu (ids proposés) :
-  - Rangée 1, seuls (10) : `femme-ondulee`, `femme-bouclee-courte`, `femme-carre`, `femme-tres-longs-boucles`, `femme-chignon-haut`, `enfant-boucle`, `homme-boucle`, `homme-capuche`, `homme-court`, `homme-casquette`.
-  - Rangée 2, couples (6) : `couple-homme-femme`, `couple-femmes-queue`, `couple-hommes-epaule`, `couple-hommes-front`, `couple-femmes-chignon`, `couple-frises`.
-  - Rangée 3, familles (6) : `famille-epaules-bebe` (enfant sur les épaules qui montre le ciel + bébé), `famille-femme-enfant`, `famille-homme-deux-bebes`, `famille-homme-bebe-femme`, `famille-deux-hommes-enfant`, `enfant-chien` (chien un peu plus petit → « petit chien »).
-  - Rangée 4, animaux (6) : `femme-chien` (chien plus grand → « grand chien »), `homme-chat`, `femme-lapin`, `homme-cheval` (cheval DEBOUT, tête penchée), `femme-longs` (seule), `homme-deux-lapins`.
-- À décider avec elle : les groupes (couples, familles, personne + animal) se proposent-ils comme des silhouettes toutes faites, à côté des personnes seules ? Recommandé : oui, une rangée « Couples et familles » à part dans l'étape Personnages, chacun compte pour sa largeur (le maximum de 8 se compte en places).
-- Les animaux seuls (petit chien, grand chien, chat, lapin, cheval) : les détacher de leur groupe si la découpe le permet (chien de `enfant-chien` et de `femme-chien`, chat, lapin, cheval) — c'est la réponse au « petit et grand chien » (00.A point 1).
-
-### 00.A Ciel étoilé — ce qui RESTE (état à 17 h 15, en ligne)
-
-
-
-
-3. 8 personnages : vérifier au rendu que 8 tiennent dans la largeur une fois centrés (sinon réduire l'écart, puis l'échelle) — toujours pas vérifié.
-4. FAIT (`3545237`) : en « Texte en haut », la constellation remonte quand il y a des personnages (nuit : cy 0,49 H, R 0,31 W) et pour signe / sans cercle / couple ; le ciel de la nuit sans personnage est inchangé au caractère près. Ombres chinoises : remplacées par les 10 silhouettes vectorisées de l'image d'Alexandra (apps/api/src/ciel-ombres.ts, généré ; scripts de vectorisation non gardés dans le dépôt). « Montre le ciel » retiré (un ancien réglage qui l'envoie est ignoré). Restes : libellés du site à aligner (« Homme en manteau » → l'image montre un homme en sweat ; « Homme au bonnet »), clés ui.ts `ciel.silh.montre-le-ciel` et `ciel.silh.mettre` inutilisées à retirer, code mort des silhouettes debout et dessinées (ciel-silhouettes.ts, petites fonctions de ciel-silhouettes-assises.ts) à nettoyer. Le petit et le grand chien (point 1) : l'image d'Alexandra n'a qu'un chien → lui demander une image avec un petit chien, ou en tirer un en réduisant le chien actuel.
