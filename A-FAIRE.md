@@ -34,7 +34,7 @@ RESTE, dans cet ordre :
 Vérifier en local (Chrome sans écran + CDP), captures à montrer à Alexandra.
 
 ### 00.B Trois tailles de texte par ligne — FAIT pour les affiches personnalisables, RESTE la photo IA et le ciel
-> 27/11, 17 h 25 — Alexandra, devant l’étape « 2. Texte » du ciel étoilé EN LIGNE : « la taille des textes sur les lignes ça se met où je vois rien ». Un agent a été lancé au bureau à 17 h 25 pour l’ajouter à AfficheIA.tsx (photo IA + ciel). S’il a abouti, c’est commité sur `main` juste après cette note (message « Trois tailles de texte … affiche photo IA et ciel ») et PAS en ligne ; sinon, c’est le point 1 ci-dessous. Vérifier aussi l’impression de ces affiches avec une taille choisie. À mettre en ligne sur son « met en prod ».
+> 27/11, 17 h 25 — Alexandra, devant l’étape « 2. Texte » du ciel étoilé EN LIGNE : « la taille des textes sur les lignes ça se met où je vois rien ». L’agent lancé à 17 h 25 a été ARRÊTÉ à 17 h 35 sans rien modifier (Alexandra partait) : RIEN n’est fait, c’est le point 1 « Reste » ci-dessous, à faire EN PREMIER à la reprise (avec le couple en paysage, 00.A point 6). Vérifier aussi l’impression de ces affiches avec une taille choisie. À mettre en ligne sur son « met en prod ».
 >
 > Autre remarque de 17 h 20, non résolue : « encore le message rouge problème de crédit ». Vérifié en prod en lecture seule : aucun refus OpenAI pour crédit depuis le 25/11 19 h 15, les créations aboutissent (17 h 15). Lui demander OÙ elle le voit (capture) ; ne rien changer sans ça.
 
