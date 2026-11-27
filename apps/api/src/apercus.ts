@@ -182,7 +182,20 @@ export function versionApercu(config: unknown): string {
   // PDF, refait, montrait le symbole (relecture finale du 26/11). Elles
   // changent d'adresse, donc se refont ; les autres gardent la leur.
   if (lignesAvecSymbolesEnSecours(config).length) h.update("symboles-en-caveat");
+  // Les chiffres et symboles de la Manuscrite passent de Caveat à Kaushan
+  // Script le 27/11 (fonts.ts, « j'aime pas les chiffres en manuscrite ») :
+  // toute vignette d'une ligne dont UN morceau s'écrit en police de secours
+  // (« 2 décembre 2026 ») change d'adresse, donc se refait. Les autres
+  // gardent la leur.
+  if (lignesAvecUnMorceauDeSecours(config).length) h.update("secours-kaushan");
   return h.digest("base64url").slice(0, 10);
+}
+
+/** Les lignes dont au moins un bout s'écrit dans une autre police que la sienne. */
+function lignesAvecUnMorceauDeSecours(config: unknown): { rang: number; texte: string }[] {
+  return lignesDontUnBout(config, (morceaux, police) =>
+    morceaux.some((m) => m.police.famille !== police.famille),
+  );
 }
 
 /**

@@ -235,6 +235,14 @@ h4 {
   src: url("/fonts/Caveat-Regular.ttf") format("truetype");
   font-display: block;
 }
+/* Les chiffres et symboles de la Manuscrite depuis le 27/11 (fonts.ts,
+   ID_POLICE_DE_SECOURS) : même nom de famille que sur le serveur
+   d'impression. */
+@font-face {
+  font-family: "Kaushan Script";
+  src: url("/fonts/KaushanScript-Regular.ttf") format("truetype");
+  font-display: block;
+}
 @font-face {
   font-family: "Dancing Script";
   src: url("/fonts/DancingScript.ttf") format("truetype");
@@ -1845,7 +1853,7 @@ html[data-stand="1"] .ml-modal-panel {
   gap: 0.6rem;
   width: 15rem;
   max-width: 100%;
-  min-height: 4rem;
+  min-height: 3.25rem;
   padding: 0 1rem 0 2.75rem;
   color: #fff6e5;
   background: transparent;

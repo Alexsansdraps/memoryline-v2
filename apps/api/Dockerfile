@@ -27,7 +27,9 @@ RUN corepack enable
 # (recette du 17/11). Vérifié : 16 rendus existants identiques au pixel près.
 RUN apk add --no-cache fontconfig font-dejavu
 COPY apps/api/fonts/ /usr/share/fonts/memoryline/
-RUN fc-cache -f && fc-list | grep -Ei "dm serif" && fc-list | grep -Ei "abril fatface" && fc-list | grep -Ei "league spartan" && fc-list | grep -Ei "another shabby" && fc-list | grep -Ei "dejavu sans"
+# Kaushan Script (27/11) : les chiffres et symboles de la Manuscrite
+# (packages/types/src/fonts.ts) ; sans elle, ils sortiraient en repli.
+RUN fc-cache -f && fc-list | grep -Ei "dm serif" && fc-list | grep -Ei "abril fatface" && fc-list | grep -Ei "league spartan" && fc-list | grep -Ei "another shabby" && fc-list | grep -Ei "kaushan script" && fc-list | grep -Ei "dejavu sans"
 
 WORKDIR /app
 

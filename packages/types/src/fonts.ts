@@ -127,6 +127,23 @@ export const POLICES_AFFICHE: readonly PoliceAffiche[] = [
     descendante: 300 / 1000,
   },
   {
+    /*
+     * Les chiffres et les symboles de la Manuscrite (27/11, Alexandra : « j'aime
+     * pas les chiffres en manuscrite », « trouve une autre police très proche
+     * qui fait les chiffres bien », puis « oui oui mets cette police à la
+     * place de l'autre ») : un pinceau, comme another shabby, là où Caveat,
+     * plus fine, se voyait au milieu du mot. Jamais proposée sur une ligne :
+     * elle ne sert qu'aux caractères que la police d'essai n'a pas
+     * (CARACTERES_ABSENTS). Licence OFL (apps/api/fonts/KaushanScript-OFL.txt).
+     */
+    id: "kaushan",
+    libelle: "Manuscrite (chiffres)",
+    famille: "Kaushan Script",
+    repli: REPLI_SUR,
+    ascendante: 1084 / 1000,
+    descendante: 367 / 1000,
+  },
+  {
     id: "dancing",
     libelle: "Anglaise",
     famille: "Dancing Script",
@@ -194,8 +211,9 @@ const POLICES_PAR_LIGNE: readonly (readonly string[])[] = [
  * « 24/12/2025 » en sous-titre obtenait huit ronds, à l'écran comme sur le
  * papier, sans que rien ne la prévienne.
  *
- * Ces caractères-là sont donc écrits en Caveat, l'autre manuscrite de la
- * maison, déjà installée des deux côtés. Le jour où la licence complète sera
+ * Ces caractères-là sont donc écrits dans une autre manuscrite, installée des
+ * deux côtés : Kaushan Script depuis le 27/11 (Caveat jusque-là, voir
+ * ID_POLICE_DE_SECOURS). Le jour où la licence complète sera
  * achetée, il suffira de vider cette liste.
  *
  * ¢ £ ¤ ¥ ƒ ₤ aussi (26/11, relecture de « qualité affiches IA pas top ») :
@@ -211,8 +229,13 @@ const CARACTERES_ABSENTS: Readonly<Record<string, RegExp>> = {
   shabby: /[0-9€$&@#¢£¤¥ƒ₤]/,
 };
 
-/** La police qui prend le relais sur ces caractères-là. */
-const ID_POLICE_DE_SECOURS = "caveat";
+/**
+ * La police qui prend le relais sur ces caractères-là : Kaushan Script depuis
+ * le 27/11 (Caveat jusque-là). Sauf « ₤ », que Kaushan Script n'a pas
+ * (vérifié sur son jeu de caractères) : lui reste en Caveat.
+ */
+const ID_POLICE_DE_SECOURS = "kaushan";
+const SECOURS_PAR_CARACTERE: Readonly<Record<string, string>> = { "₤": "caveat" };
 
 /** Un bout de ligne à écrire d'une seule police. */
 export interface MorceauDeTexte {
@@ -239,7 +262,10 @@ export function morceauxDeTexte(
 
   const morceaux: MorceauDeTexte[] = [];
   for (const caractere of texte) {
-    const voulue = absents.test(caractere) ? secours : police;
+    const propre = SECOURS_PAR_CARACTERE[caractere];
+    const voulue = absents.test(caractere)
+      ? (propre && POLICES_AFFICHE.find((p) => p.id === propre)) || secours
+      : police;
     const dernier = morceaux[morceaux.length - 1];
     if (dernier && dernier.police === voulue) dernier.texte += caractere;
     else morceaux.push({ texte: caractere, police: voulue });
