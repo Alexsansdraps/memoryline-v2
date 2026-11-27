@@ -926,12 +926,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       "femme-tres-longs-boucles",
       "femme-bouclee-courte",
       "femme-chignon-haut",
+      "femme-queue-de-cheval",
       "homme-court",
       "homme-boucle",
       "homme-capuche",
       "homme-casquette",
       "homme-bonnet-laine",
       "enfant-boucle",
+      "enfant-casquette",
+      "fillette-couettes",
+      "fillette-cheveux-longs",
+      "fillette-chignon",
     ],
     couple: [
       "couple-homme-femme",
@@ -944,22 +949,34 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     famille: [
       "famille-homme-bebe-femme",
       "famille-papa-bebe",
+      "famille-quatre",
+      "famille-maman-montre-ciel",
+      "famille-papa-ado",
       "famille-epaules-bebe",
       "famille-femme-enfant",
       "famille-homme-deux-bebes",
       "famille-deux-hommes-enfant",
     ],
+    // Une seule femme avec un cheval (27/11 au soir, Alexandra : « je parle
+    // surtout de la femme avec les chevaux, ça sert à rien d'en avoir plein ») :
+    // « femme-cheval-couche » n'est plus proposée (l'API la connaît encore).
     animal: [
       "femme-chien",
       "homme-chien",
+      "femme-petit-chien",
+      "homme-petit-chien",
+      "homme-grand-chien",
       "enfant-chien",
+      "deux-enfants-chien",
       "femme-chat",
       "homme-chat",
+      "femme-chat-chien",
       "femme-lapin",
       "homme-deux-lapins",
-      "femme-cheval-couche",
       "femme-cheval-debout",
       "homme-cheval",
+      "fillette-cheval",
+      "chien-et-cheval",
     ],
   } as const;
   type GroupeSilhouettes = keyof typeof GROUPES_SILHOUETTES;
@@ -2024,7 +2041,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     // nouvelles ombres). Avant, `?v=assises` (les vignettes montraient encore les
     // silhouettes debout) : la réponse reste une heure en cache, l'adresse
     // neuve passe outre l'ancienne liste.
-    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=ombres-groupes-2`)
+    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=ombres-groupes-3`)
       .then((r) => r.json())
       .then((data: { silhouettes?: { id: string; d: string; gauche: number; droite: number; haut: number }[] }) =>
         setFormesSilhouettes(Object.fromEntries((data.silhouettes ?? []).map((s) => [s.id, s]))),
