@@ -270,8 +270,6 @@ export const ui = {
     /* Le relais de photo, au stand : la photo part du téléphone du client et
        arrive sur la tablette (RelaisPhoto.tsx). */
     "ia.relais.ouvrir": "Envoyer la photo depuis votre téléphone",
-    "ia.relais.ouvrir_aide":
-      "Votre photo est dans votre téléphone ? Scannez un code : elle arrive ici.",
     "ia.relais.code_stand_aide":
       "Pour afficher le code, saisissez d'abord le code du stand. La tablette le retient ensuite.",
     "ia.relais.preparation": "Préparation du code…",
@@ -1167,8 +1165,6 @@ export const ui = {
     "ia.refus.panier":
       "The quantity of this poster can't be changed right now. Try again in a moment; if it keeps happening, remove it from your basket, then create it again from its page.",
     "ia.relais.ouvrir": "Send the photo from your phone",
-    "ia.relais.ouvrir_aide":
-      "Is your photo on your phone? Scan a code and it arrives here.",
     "ia.relais.code_stand_aide":
       "To show the code, first enter the stand code. The tablet then remembers it.",
     "ia.relais.preparation": "Preparing the code…",
@@ -2018,8 +2014,6 @@ export const ui = {
     "ia.refus.panier":
       "Die Menge dieses Posters kann gerade nicht geändert werden. Versuchen Sie es gleich noch einmal; wenn es weiterhin nicht klappt, entfernen Sie es aus dem Warenkorb und erstellen Sie es auf seiner Seite neu.",
     "ia.relais.ouvrir": "Foto vom Handy senden",
-    "ia.relais.ouvrir_aide":
-      "Ist Ihr Foto auf Ihrem Handy? Scannen Sie einen Code – es erscheint hier.",
     "ia.relais.code_stand_aide":
       "Um den Code anzuzeigen, geben Sie zuerst den Stand-Code ein. Das Tablet merkt ihn sich danach.",
     "ia.relais.preparation": "Code wird vorbereitet…",
@@ -2873,8 +2867,6 @@ export const ui = {
     "ia.refus.panier":
       "Per ora non è possibile cambiare la quantità di questo poster. Riprova tra un istante; se continua, rimuovilo dal carrello, poi ricrealo dalla sua pagina.",
     "ia.relais.ouvrir": "Invia la foto dal tuo telefono",
-    "ia.relais.ouvrir_aide":
-      "La tua foto è sul telefono? Scansiona un codice: arriva qui.",
     "ia.relais.code_stand_aide":
       "Per mostrare il codice, inserisci prima il codice dello stand. Poi il tablet lo ricorda.",
     "ia.relais.preparation": "Preparazione del codice…",
@@ -3721,8 +3713,6 @@ export const ui = {
     "ia.refus.panier":
       "Ahora mismo no se puede cambiar la cantidad de esta lámina. Vuelve a intentarlo en un momento; si sigue pasando, quítala de la cesta y vuelve a crearla desde su página.",
     "ia.relais.ouvrir": "Enviar la foto desde tu móvil",
-    "ia.relais.ouvrir_aide":
-      "¿Tu foto está en el móvil? Escanea un código: llegará aquí.",
     "ia.relais.code_stand_aide":
       "Para mostrar el código, introduce primero el código del puesto. Después la tableta lo recuerda.",
     "ia.relais.preparation": "Preparando el código…",
@@ -4536,7 +4526,6 @@ export const ui = {
     "ia.refus.personnages_paysage": "キャラクターは縦向きのポスターにのみ追加できます。キャラクターを削除するか、縦向きのバージョンを作ってください。",
     "ia.refus.panier": "現在、このポスターの数量を変更できません。しばらくしてからもう一度お試しください。解決しない場合は、カートから削除し、ポスターのページで作り直してください。",
     "ia.relais.ouvrir": "スマートフォンから写真を送る",
-    "ia.relais.ouvrir_aide": "写真はスマートフォンの中ですか？コードを読み取ると、ここに届きます。",
     "ia.relais.code_stand_aide": "コードを表示するには、先にスタンドのコードを入力してください。以後はタブレットが記憶します。",
     "ia.relais.preparation": "コードを準備中…",
     "ia.relais.scanner": "スマートフォンのカメラでこのコードを読み取ってください",
@@ -5244,7 +5233,6 @@ export const ui = {
     "ia.refus.personnages_paysage": "人物只能添加到竖版海报上。请移除人物，或生成竖版版本。",
     "ia.refus.panier": "暂时无法更改此海报的数量。请稍后重试；如果仍然不行，请将其从购物车中移除，再到海报页面重新制作。",
     "ia.relais.ouvrir": "从手机发送照片",
-    "ia.relais.ouvrir_aide": "照片在手机里？扫描二维码，照片就会传到这里。",
     "ia.relais.code_stand_aide": "要显示二维码，请先输入摊位代码，平板之后会记住它。",
     "ia.relais.preparation": "正在生成二维码…",
     "ia.relais.scanner": "请用手机相机扫描此二维码",

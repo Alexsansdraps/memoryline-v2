@@ -388,7 +388,9 @@ export default function RelaisPhoto(props: {
           </svg>
           {tr("ia.relais.ouvrir")}
         </button>
-        <p class="mt-1.5 text-center text-xs text-ink-soft">{tr("ia.relais.ouvrir_aide")}</p>
+        {/* Plus de phrase d'aide sous le bouton (27/11, Alexandra : « enlève
+            phrase Votre photo est dans votre téléphone ? Scannez un code :
+            elle arrive ici. ») : le bouton se suffit à lui-même. */}
       </Show>
 
       <Show when={etat() !== "ferme"}>
