@@ -827,6 +827,13 @@
       "when": 1795280000000,
       "tag": "0118_ia_origine_stand_ou_site",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1795290000000,
+      "tag": "0119_ciel_etoile_en_vente",
+      "breakpoints": true
     }
   ]
 }
