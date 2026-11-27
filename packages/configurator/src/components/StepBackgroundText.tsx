@@ -31,6 +31,8 @@ export function StepBackgroundText(props: {
   ) => void;
   /** Police d'UNE ligne : chacune choisit la sienne. */
   onTextFont: (ligne: number, font: string) => void;
+  /** 27/11 : taille d'UNE ligne, petit / moyen / grand. */
+  onTextTaille?: (ligne: number, taille: "s" | "m" | "l") => void;
   messages: MessagesConfigurateur;
 }) {
   const m = () => props.messages;
@@ -234,6 +236,39 @@ export function StepBackgroundText(props: {
               style={{ ...inputStyle, resize: "none", "line-height": "1.4" }}
             />
             <ChoixPolice ligne={i()} />
+            {/* 27/11, Alexandra : « faudrait que ça propose 3 tailles de texte
+                à chaque fois sur chaque ligne 1, 2, 3 ». Trois « A » de tailles
+                croissantes ; moyen = la taille d'avant. */}
+            <Show when={props.onTextTaille}>
+              <div role="group" aria-label={m().tailleLigne} style={{ display: "flex", gap: "6px", "margin-top": "6px", "align-items": "flex-end" }}>
+                <For each={[["s", 12], ["m", 15], ["l", 19]] as const}>
+                  {([t, px], k) => {
+                    const actif = () => (ligne.taille ?? "m") === t;
+                    return (
+                      <button
+                        type="button"
+                        aria-pressed={actif()}
+                        aria-label={m().taillesLigne[k()]}
+                        title={m().taillesLigne[k()]}
+                        onClick={() => props.onTextTaille?.(i(), t)}
+                        style={{
+                          "font-size": `${px}px`,
+                          "min-width": "32px",
+                          padding: "2px 8px",
+                          "border-radius": "6px",
+                          border: actif() ? "2px solid currentColor" : "1px solid rgba(0,0,0,0.25)",
+                          background: "transparent",
+                          cursor: "pointer",
+                          "font-weight": actif() ? "700" : "400",
+                        }}
+                      >
+                        A
+                      </button>
+                    );
+                  }}
+                </For>
+              </div>
+            </Show>
           </Field>
         )}
       </For>

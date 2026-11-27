@@ -75,6 +75,7 @@ import {
   INTERLIGNE_LIGNE_POSEE,
   LARGEUR_DU_TEXTE,
   tailleDeLigne,
+  facteurTailleLigne,
 } from "@memoryline/types";
 import type { PosterConfig, PosterFormat } from "@memoryline/types";
 import {
@@ -946,7 +947,10 @@ async function buildTextSvg(
       );
       // Rapportée au PETIT côté : c'est la largeur en portrait, la hauteur en
       // paysage — sinon le titre d'une affiche couchée grossirait de 41 %.
-      const voulue = Math.min(width, height) * tailleDeLigne(i) * facteur;
+      // 27/11 : × la taille choisie sur la ligne (petit / moyen / grand) ;
+      // 1 exactement quand la ligne n'en porte pas.
+      const voulue =
+        Math.min(width, height) * tailleDeLigne(i) * facteur * facteurTailleLigne(ligne.taille);
       // On ne réduit QUE ce qui dépasserait la place du bloc, et d'autant
       // qu'il dépasse : l'aperçu fait la même chose (reductionDesLignes).
       // Les morceaux d'une ligne coupée gardent la même taille entre eux :

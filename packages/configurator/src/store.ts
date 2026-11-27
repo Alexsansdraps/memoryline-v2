@@ -335,6 +335,8 @@ const DEFAULT_TEXT_SIZE = 1;
 export interface LigneTexte {
   value: string;
   font: string;
+  /** 27/11 : petit / moyen / grand, propre à la ligne ; absent = moyen. */
+  taille?: "s" | "m" | "l";
 }
 
 /**
@@ -392,6 +394,7 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
   base.lignes = lignesDuTexte(cfg.texts).map((bloc, i) => ({
     value: bloc?.value ?? "",
     font: bloc?.font ?? policeDefautLigne(i),
+    ...(bloc?.taille && bloc.taille !== "m" ? { taille: bloc.taille } : {}),
   }));
   // Style partagé, lu sur la première ligne remplie. Une couleur libre choisie
   // avant le passage aux deux pastilles est CONSERVÉE telle quelle : la
@@ -612,6 +615,9 @@ function lignesEnregistrees(state: ConfiguratorState): TextBlock[] {
       font: l.font,
       color: state.textStyle.color,
       size: state.textStyle.size,
+      // 27/11 : la taille de la ligne n'est écrite que si elle n'est pas
+      // « moyen » — une ligne d'avant garde ainsi la même empreinte.
+      ...(l.taille && l.taille !== "m" ? { taille: l.taille } : {}),
     }));
   // Passage par textesDepuisLignes() : c'est lui qui dit la forme enregistrée,
   // et il borne au passage le nombre de lignes.

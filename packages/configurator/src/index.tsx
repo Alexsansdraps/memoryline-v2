@@ -405,6 +405,16 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     });
   }
 
+  /** 27/11 : taille d'UNE ligne (petit / moyen / grand). */
+  function setTextTaille(ligne: number, taille: "s" | "m" | "l") {
+    mutate((s) => {
+      const l = s.lignes[ligne];
+      if (!l) return;
+      if (taille === "m") delete l.taille;
+      else l.taille = taille;
+    });
+  }
+
   /** Met à jour le STYLE PARTAGÉ (couleur/taille) de toutes les lignes. */
   function setTextStyle(
     patch: Partial<{ font: string; color: string; size: number }>,
@@ -1000,6 +1010,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onTextValue={setTextValue}
             onTextStyle={setTextStyle}
             onTextFont={setTextFont}
+            onTextTaille={setTextTaille}
             messages={msg()}
           />
         </Show>

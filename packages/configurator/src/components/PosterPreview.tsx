@@ -24,6 +24,7 @@ import {
   policeParId,
   sousLignes,
   tailleDeLigneCqw,
+  facteurTailleLigne,
   urlAsset,
   aLaLargeur,
 } from "@memoryline/types";
@@ -712,7 +713,8 @@ export function PosterPreview(props: {
                     // polices d'affiche n'a de graisse, et le gras qu'imitait
                     // le navigateur n'avait pas l'épaisseur de celui
                     // qu'imitait le PDF.
-                    "font-size": `${tailleDeLigneCqw(rang()) * reductionDeLigne(rang())}cqw`,
+                    // 27/11 : × la taille choisie sur la ligne (1 si moyen/absente).
+                    "font-size": `${tailleDeLigneCqw(rang()) * reductionDeLigne(rang()) * facteurTailleLigne(ligne.taille)}cqw`,
                     "line-height": String(interligneDeLigne(rang())),
                     "letter-spacing": `${espacementDeLigne(rang())}em`,
                     "margin-top": `${espaceAvantLigne(rang())}em`,

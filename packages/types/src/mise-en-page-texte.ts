@@ -67,6 +67,16 @@ export function tailleDeLigne(rang: number): number {
   return (tailleDeLigneCqw(rang) / 100) * LARGEUR_DU_TEXTE;
 }
 
+/**
+ * Multiplicateur de la taille choisie sur une ligne (27/11, Alexandra : « 3
+ * tailles de texte à chaque fois sur chaque ligne »). Moyen ou absent = 1
+ * exactement : rien ne bouge pour une ligne d'avant. L'aperçu et le PDF
+ * lisent tous deux cette fonction.
+ */
+export function facteurTailleLigne(taille: string | null | undefined): number {
+  return taille === "s" ? 0.8 : taille === "l" ? 1.25 : 1;
+}
+
 /** Interligne (`line-height`) : serré sur la ligne de tête, plus aéré ensuite. */
 export function interligneDeLigne(rang: number): number {
   return rang === 0 ? 1.05 : 1.15;

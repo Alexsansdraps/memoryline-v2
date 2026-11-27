@@ -92,6 +92,13 @@ export const textBlockSchema = z.object({
   /** Facteur de taille relatif (1 = défaut). Partagé titre/sous-titre. */
   size: z.number().optional(),
   /**
+   * Taille propre à CETTE ligne : petit, moyen ou grand (27/11, Alexandra :
+   * « faudrait que ça propose 3 tailles de texte à chaque fois sur chaque
+   * ligne 1, 2, 3 »). Absente = moyen = la taille d'avant, et rien n'est
+   * enregistré : une ligne d'avant garde exactement son rendu et son empreinte.
+   */
+  taille: z.enum(["s", "m", "l"]).optional(),
+  /**
    * Position du CENTRE de la ligne, en fractions de la largeur et de la
    * hauteur de l'affiche (0..1). Absente, la ligne suit la mise en page
    * automatique : empilée en haut, centrée. Elle n'apparaît que lorsque le

@@ -14,6 +14,9 @@ export interface MessagesConfigurateur {
   etapeFormat: string;
   /** Libellé de chaque ligne de texte, dans l'ordre (« Ligne 1 »…). */
   champsLignes: string[];
+  /** 27/11 : libellé du choix de taille d'une ligne, et ses trois positions. */
+  tailleLigne: string;
+  taillesLigne: string[];
   /** Exemple montré en filigrane dans chaque champ, dans l'ordre. */
   exemplesLignes: string[];
   /**
@@ -153,6 +156,8 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   etapePersonnages: "Personnages",
   etapeFormat: "Format",
   champsLignes: ["Ligne 1", "Ligne 2", "Ligne 3"],
+  tailleLigne: "Taille du texte",
+  taillesLigne: ["Petit", "Moyen", "Grand"],
   exemplesLignes: ["MERS-LES-BAINS", "la maison bleue", "été 2019"],
   quantite: "Nombre d'exemplaires",
   quantiteMoins: "Un exemplaire de moins",

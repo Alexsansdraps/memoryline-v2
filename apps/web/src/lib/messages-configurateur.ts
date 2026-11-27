@@ -22,6 +22,9 @@ export function messagesDuConfigurateur(
     etapeFond: tr("cfg.etape.fond"),
     etapePersonnages: tr("cfg.etape.personnages"),
     etapeFormat: tr("cfg.etape.format"),
+    // 27/11 : les trois tailles par ligne (petit / moyen / grand).
+    tailleLigne: tr("cfg.taille_ligne"),
+    taillesLigne: [tr("cfg.taille_s"), tr("cfg.taille_m"), tr("cfg.taille_l")],
     champsLignes: [
       tr("cfg.ligne1_champ"),
       tr("cfg.ligne2_champ"),
