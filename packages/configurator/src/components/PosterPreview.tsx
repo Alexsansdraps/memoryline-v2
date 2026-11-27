@@ -223,7 +223,9 @@ export function PosterPreview(props: {
   /** Une ligne trop longue pour le bloc est réduite, comme à l'impression. */
   const reductionDeLigne = createReductionDesLignes(
     () => [coucheTexte],
-    () => lignesADessiner().map((l) => `${l.font}\u0000${l.value}`).join("\n"),
+    // La taille choisie compte (27/11) : passer en « grand » peut faire
+    // déborder une ligne qui tenait, il faut alors la remesurer.
+    () => lignesADessiner().map((l) => `${l.font}\u0000${l.value}\u0000${l.taille ?? "m"}`).join("\n"),
   );
 
   /** La couleur du cadre, ou rien du tout s'il n'y en a pas. */
