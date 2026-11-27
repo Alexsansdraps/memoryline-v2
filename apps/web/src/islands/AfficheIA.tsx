@@ -919,6 +919,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       "homme-boucle",
       "homme-capuche",
       "homme-casquette",
+      "homme-bonnet-laine",
       "enfant-boucle",
     ],
     couple: [
@@ -931,12 +932,24 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     ],
     famille: [
       "famille-homme-bebe-femme",
+      "famille-papa-bebe",
       "famille-epaules-bebe",
       "famille-femme-enfant",
       "famille-homme-deux-bebes",
       "famille-deux-hommes-enfant",
     ],
-    animal: ["femme-chien", "enfant-chien", "homme-chat", "femme-lapin", "homme-cheval", "homme-deux-lapins"],
+    animal: [
+      "femme-chien",
+      "homme-chien",
+      "enfant-chien",
+      "femme-chat",
+      "homme-chat",
+      "femme-lapin",
+      "homme-deux-lapins",
+      "femme-cheval-couche",
+      "femme-cheval-debout",
+      "homme-cheval",
+    ],
   } as const;
   type GroupeSilhouettes = keyof typeof GROUPES_SILHOUETTES;
   type SceneSilhouette = (typeof GROUPES_SILHOUETTES)[GroupeSilhouettes][number];
