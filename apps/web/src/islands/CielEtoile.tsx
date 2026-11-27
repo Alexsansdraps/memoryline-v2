@@ -90,6 +90,11 @@ export interface MiseDuCiel {
   personnages?: boolean;
   /** Le fond du thème est clair (« Crème ») : le texte passe en anthracite (27/11). */
   clair?: boolean;
+  /**
+   * Le ciel est dessiné EN PAYSAGE (le couple, depuis le 27/11 au soir). Absent
+   * sur les couples créés avant : ils gardent leur mise en page de portrait.
+   */
+  paysage?: boolean;
 }
 
 /**
@@ -99,8 +104,17 @@ export interface MiseDuCiel {
  * (apps/api/src/ciel.ts) : si l'un change, changer l'autre.
  */
 export function zoneDuDessin(
-  m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages">,
+  m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages" | "paysage">,
 ): { haut: number; bas: number } {
+  // Le couple en paysage (27/11 au soir) : feuille couchée, 3508 × 2480.
+  // MÊMES valeurs que dispositionDuCiel (apps/api/src/ciel.ts).
+  if (m.style === "couple" && m.paysage) {
+    const Wp = 3508;
+    const Hp = 2480;
+    const cy = Hp * (m.texte === "haut" ? 0.6 : 0.36);
+    const R = Wp * 0.17;
+    return { haut: (cy - R * 1.14) / Hp, bas: (cy + R + 12) / Hp };
+  }
   const W = 2480;
   const H = 3508;
   // Texte en haut, le dessin remonte et rapetisse un peu (27/11, Alexandra :
@@ -131,7 +145,7 @@ export function zoneDuDessin(
  * garde les têtes 1,5 % plus bas (plafondDesSilhouettes, apps/api/src/ciel.ts).
  * Si l'un change, changer l'autre.
  */
-export function basDuTexte(m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages">): number {
+export function basDuTexte(m: Pick<MiseDuCiel, "style" | "texte" | "ville" | "personnages" | "paysage">): number {
   if (m.texte !== "bas" || !m.personnages) return 0.97;
   return zoneDuDessin({ ...m, texte: "bas" }).bas + 0.03 + 0.18;
 }
@@ -458,6 +472,9 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
       signes: signesEffectifs(),
       personnages: (props.silhouettes ?? []).length > 0,
       clair: fondClair(themes().find((t) => t.id === theme())?.fond ?? ""),
+      // Le couple se dessine en paysage (27/11, Alexandra : « pour les couples
+      // il faut impérativement avoir le format paysage sinon c'est laid »).
+      ...(s === "couple" ? { paysage: true } : {}),
     };
     setOccupe(true);
     setErreur(null);

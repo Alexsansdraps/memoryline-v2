@@ -746,16 +746,20 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    */
   const modeCiel = () => props.ciel === true;
   function cielCree(c: { publicId: string; apercuChemin: string; apercu: string; mise: MiseDuCiel }) {
+    // Le couple arrive en paysage (27/11 au soir) : l'aperçu se couche, et la
+    // ligne de panier part en paysage (orientation de la config), comme une
+    // affiche photo en paysage.
+    const sens = c.mise.paysage ? "paysage" : "portrait";
     setEchec(null);
     setChemin(null);
     setPublicId(c.publicId);
     setApercuChemin(c.apercuChemin);
-    setOrientationApercu("portrait");
+    setOrientationApercu(sens);
     setApercu(c.apercu);
     setEtape("pret");
     memoriserCreations([
       ...creations().filter((x) => x.publicId !== c.publicId),
-      { ...c, sens: "portrait", source: "" },
+      { ...c, sens, source: "" },
     ]);
   }
 
@@ -844,8 +848,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     const remplies = lignesRemplies();
     const mise = miseMontree();
     const zone = zoneDuDessin(mise);
-    // Taille d'une ligne en fraction de la HAUTEUR (portrait, rapport √2).
-    const taille = (rang: number) => ((tailleDeLigneCqw(rang) / 100) * (1 - 2 * MARGE_DU_TEXTE)) / Math.SQRT2;
+    // Taille d'une ligne en fraction de la HAUTEUR : en portrait, la largeur
+    // est 1/√2 de la hauteur ; en paysage (le couple, 27/11), la ligne se
+    // mesure sur le petit côté, qui EST la hauteur (comme le fichier
+    // d'impression, pdf.ts : Math.min(width, height)).
+    const taille = (rang: number) =>
+      ((tailleDeLigneCqw(rang) / 100) * (1 - 2 * MARGE_DU_TEXTE)) / (mise.paysage ? 1 : Math.SQRT2);
     const boites = remplies.map((l, rang) => {
       const police = policeDeLigne(l.font, rang);
       // × la taille choisie sur la ligne (27/11) : une grande ligne pousse

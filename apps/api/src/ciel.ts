@@ -68,6 +68,17 @@ export const CENTRE_Y_CIEL = 0.55;
 export const LARGEUR_CIEL = 2480;
 export const HAUTEUR_CIEL = 3508;
 
+/**
+ * Le couple se dessine EN PAYSAGE (27/11, Alexandra : « pour les couples il
+ * faut impérativement avoir le format paysage sinon c'est laid », « les
+ * signes en couple c'est en paysage pas portrait ») : la même feuille,
+ * couchée. Les autres styles restent en portrait.
+ */
+export const estEnPaysage = (style: StyleCiel): boolean => style === "couple";
+export function dimensionsDuCiel(style: StyleCiel): { W: number; H: number } {
+  return estEnPaysage(style) ? { W: HAUTEUR_CIEL, H: LARGEUR_CIEL } : { W: LARGEUR_CIEL, H: HAUTEUR_CIEL };
+}
+
 const RAD = Math.PI / 180;
 
 /** Jour julien d'un instant. */
@@ -385,10 +396,14 @@ export function dispositionDuCiel(
     return { cy, R, haut: (cy - R - 93) / H, bas: (cy + R + (ville ? 257 : 192)) / H };
   }
   if (style === "couple") {
-    const cy = H * (texte === "haut" ? 0.46 : 0.36);
-    const R = W * 0.205;
-    // La date du cercle de gauche monte en arc au-dessus de lui.
-    return { cy, R, haut: (cy - R * 1.14) / H, bas: (cy + R + 12) / H };
+    // En paysage (27/11) : la feuille couchée, 3508 × 2480. Deux cercles côte
+    // à côte de 0,17 de la largeur chacun ; le texte au-dessus (cercles à
+    // 0,60 de la hauteur) ou dessous (à 0,36). La date du cercle de gauche
+    // monte en arc au-dessus de lui.
+    const { W: Wp, H: Hp } = dimensionsDuCiel("couple");
+    const cy = Hp * (texte === "haut" ? 0.6 : 0.36);
+    const R = Wp * 0.17;
+    return { cy, R, haut: (cy - R * 1.14) / Hp, bas: (cy + R + 12) / Hp };
   }
   const cy = H * (texte === "haut" ? 0.48 : 0.33);
   const R = W * (texte === "haut" ? 0.32 : 0.34);
@@ -496,8 +511,8 @@ function silhouettesDuCiel(
   // 27/11, Alexandra : « supp ça » — pas de teinte automatique, les
   // personnages gardent la couleur de la colline (une couleur réglable par
   // thème est à faire : A-FAIRE §00).
-  const W = LARGEUR_CIEL;
-  const H = HAUTEUR_CIEL;
+  // La feuille du style : couchée pour le couple (27/11).
+  const { W, H } = dimensionsDuCiel(m.style);
   let plafond: { y: number; x0?: number; x1?: number } | undefined;
   if (m.texte === "bas") plafond = { y: plafondDesSilhouettes(m.style, m.ville) * H };
   else if (m.style === "nuit" || m.style === "couple")
@@ -561,8 +576,8 @@ export function svgDuSigne(
   theme: Pick<ThemeCiel, "fond" | "etoiles" | "dorures"> = THEMES_CIEL_DE_BASE[0]!,
 ): string {
   const c = teintesDuTheme(theme);
-  const W = LARGEUR_CIEL;
-  const H = HAUTEUR_CIEL;
+  // Couchée pour le couple (27/11).
+  const { W, H } = dimensionsDuCiel(reglages.style);
   const cx = W / 2;
   const { cy, R } = dispositionDuCiel(reglages.style, reglages.texte);
   const date = (i: number) => dateEcrite(reglages.dates[i], reglages.langue);
@@ -961,7 +976,8 @@ export function mountCielRoutes(app: Hono): void {
       // Le filigrane se cale sur le centre du dessin, où qu'il soit.
       // Remonté avec des personnages, texte en haut (27/11) : le même calcul que le dessin.
       const { cy } = dispositionDuCiel(reglages.style, reglages.texte, !!ville, reglages.silhouettes.length > 0);
-      const centreY = cy / HAUTEUR_CIEL;
+      const feuille = dimensionsDuCiel(reglages.style);
+      const centreY = cy / feuille.H;
       // Sans anneau pour un couple ou un signe sans cercle (27/11) : il ne
       // suivrait pas le dessin.
       const anneau = reglages.style === "nuit" || reglages.style === "signe";
@@ -986,7 +1002,9 @@ export function mountCielRoutes(app: Hono): void {
         }),
         // Hors de BO › Affiches IA et du plafond (filtreDuPerimetre, ia.ts, 27/11).
         model: MODELE_CIEL,
-        size: `${LARGEUR_CIEL}x${HAUTEUR_CIEL}`,
+        // « 3508x2480 » pour un couple (27/11) : c'est cette taille qui dit
+        // « paysage » au fichier d'impression et à ia-composition.ts.
+        size: `${feuille.W}x${feuille.H}`,
         status: "prete",
         previewPath: apercu,
         fullPath: `ia/${nomPleine}`,
