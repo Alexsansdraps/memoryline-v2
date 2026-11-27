@@ -144,7 +144,10 @@ function dispositionCentree(
   const dispo = B - A - h - g;
   const R = Math.max(Rdefaut * 0.6, Math.min(Rdefaut, (dispo - e.b) / e.a));
   const D = e.a * R + e.b;
-  const debut = A + Math.max(0, dispo - D) / 2;
+  // Le vide se partage 1.0 au-dessus, le reste dessous (27/11 au soir,
+  // Alexandra : « naturellement il est trop haut le cercle constellation ») :
+  // centré pile, le dessin paraissait flotter haut au-dessus des collines.
+  const debut = A + Math.max(0, dispo - D) * 1.0;
   const haut = m.texte === "haut" ? debut + h + g : debut;
   return { haut: haut / H, bas: (haut + D) / H };
 }
