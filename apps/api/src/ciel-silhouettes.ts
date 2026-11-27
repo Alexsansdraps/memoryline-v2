@@ -1034,6 +1034,9 @@ export function poserSilhouettes(choix: readonly string[], o: PoseSilhouettes): 
     });
   };
   let s = (o.taillePx ?? o.hauteur * 0.145) / 175;
+  // Plusieurs scènes côte à côte (27/11 au soir, jusqu'à 4, chevaux compris) :
+  // le groupe tient toujours dans 92 % de la largeur.
+  if (total * s > 0.92 * o.largeur) s = (0.92 * o.largeur) / total;
   // Sous un plafond (27/11) : on rapetisse jusqu'à ce que plus aucune tête
   // concernée ne le passe. Un groupe plus petit est plus étroit, et peut
   // sortir de la bande : quelques tours suffisent, l'échelle ne fait que
