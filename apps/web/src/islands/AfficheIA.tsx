@@ -50,6 +50,7 @@ import {
 } from "@memoryline/types";
 import { createReductionDesLignes, ZoneDefilante } from "@memoryline/configurator";
 import { PUBLIC_API_URL, assetUrl, browserApi, formatPrice, getCartId, versLePanier } from "../lib/api.ts";
+import { lirePanier } from "../lib/api-navigateur.ts";
 import {
   apercuAbsolu,
   attendreApercu,
@@ -63,6 +64,7 @@ import {
   type EchecIA,
 } from "../lib/ia.ts";
 import RelaisPhoto from "./RelaisPhoto.tsx";
+import type { ReglagesCielLus } from "./CielEtoile.tsx";
 import CielEtoile, {
   zoneDuDessin,
   basDuTexte,
@@ -1302,6 +1304,17 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     setAjout(true);
     setEchec(null);
     try {
+      // Rouverte depuis le panier : on remplace SA ligne par l'affiche montrée.
+      const ligne = ligneModifiee();
+      if (ligne != null) {
+        const id = publicId();
+        if (id) await ajouterUneAffiche({ publicId: id, apercuChemin: apercuChemin(), sens: orientationApercu() }, ligne);
+        window.location.href = versLePanier(
+          lien(props.langue ?? LANGUE_DEFAUT, "/commande"),
+          lien(props.langue ?? LANGUE_DEFAUT, "/panier"),
+        );
+        return;
+      }
       // Les mêmes textes, le même format et le même nombre d'exemplaires pour
       // chacune : c'est le réglage qu'on voit à l'écran au moment d'ajouter.
       // L'une après l'autre, pour que le panier les garde dans cet ordre ; si
@@ -1327,11 +1340,15 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   }
 
   /** Une ligne de panier pour UNE affiche obtenue. */
-  async function ajouterUneAffiche(a: {
-    publicId: string;
-    apercuChemin: string | null;
-    sens: "portrait" | "paysage";
-  }) {
+  async function ajouterUneAffiche(
+    a: {
+      publicId: string;
+      apercuChemin: string | null;
+      sens: "portrait" | "paysage";
+    },
+    /** Rouverte depuis le panier (27/11 au soir) : la ligne à remplacer. */
+    ligneAModifier?: number,
+  ) {
     // Les personnages de CETTE création (20/11), en portrait seulement. Sans
     // eux, la ligne est exactement celle d'avant, au caractère près : vue de
     // face, aucun personnage, aucun décor.
@@ -1372,6 +1389,18 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       // contrôle (20/11) ; sans, celle d'avant, inchangée.
       aiApercuUrl: compo ? `/ia/apercu/${a.publicId}` : (a.apercuChemin ?? undefined),
     };
+    if (ligneAModifier != null) {
+      // La même ligne, revalidée (27/11 au soir, Alexandra : « la modifier
+      // pour la revalider et la remettre modifiée ») : le serveur la
+      // recontrôle comme à l'ajout.
+      await browserApi.updateCartItem(getCartId(), ligneAModifier, {
+        config,
+        unitPriceCents: prixCourant(),
+        quantity: quantite(),
+        langue: props.langue ?? LANGUE_DEFAUT,
+      });
+      return;
+    }
     await browserApi.addCartItem(getCartId(), {
       productId: props.product.id,
       unitPriceCents: prixCourant(),
@@ -1680,6 +1709,98 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     );
   /** L'étape montrée. Pas `etape`, qui dit autre chose (depot, envoi, generation, pret). */
   const [volet, setVolet] = createSignal<Onglet>("source");
+
+  /*
+   * Rouvrir une affiche depuis le panier (27/11 au soir, Alexandra : « quand
+   * on est dans le panier, on puisse modifier une affiche, la modifier pour la
+   * revalider et la remettre modifiée ») : la fiche reçoit `?edit=ID_DE_LIGNE`,
+   * comme les affiches personnalisables. La fenêtre s'ouvre sur l'affiche de
+   * la ligne — sa création, ses textes, ses personnages, son format, son
+   * nombre — et, pour un ciel, sur son formulaire tel qu'il était. Le bouton
+   * final remplace la ligne au lieu d'en ajouter une.
+   */
+  const [ligneModifiee, setLigneModifiee] = createSignal<number | null>(null);
+  const [reglagesCielInitiaux, setReglagesCielInitiaux] = createSignal<ReglagesCielLus | null>(null);
+  onMount(async () => {
+    const editId = new URLSearchParams(window.location.search).get("edit");
+    if (!editId) return;
+    try {
+      type LignePanier = { id: number; quantity?: number; config?: PosterConfig | null };
+      const panier = await lirePanier<{ status?: string | null; items: LignePanier[] }>(getCartId());
+      const item = panier?.items.find((i) => String(i.id) === editId);
+      const cfg = item?.config;
+      if (!item || !cfg?.aiPublicId) return;
+      const id = cfg.aiPublicId;
+      const sens: "portrait" | "paysage" = cfg.orientation === "paysage" ? "paysage" : "portrait";
+      const chemin = cfg.aiApercuUrl ?? `/ia/apercu/${id}`;
+      let mise: MiseDuCiel | undefined;
+      if (modeCiel()) {
+        const r = await fetch(`${PUBLIC_API_URL}/ia/ciel/reglages/${encodeURIComponent(id)}`);
+        if (r.ok) {
+          const lu = ((await r.json()) as { reglages?: ReglagesCielLus }).reglages ?? {};
+          const style = lu.style ?? "nuit";
+          const texte = lu.texte ?? (style === "nuit" ? "haut" : "bas");
+          styleCielVu = style;
+          setStyleCiel(style);
+          setTexteCiel(texte);
+          setChoixSilhouettes(lu.silhouettes ?? []);
+          setSilhouettesCiel(lu.silhouettes ?? []);
+          setTailleSilhouettes(lu.tailleSilhouettes ?? "m");
+          setReglagesCielInitiaux(lu);
+          mise = {
+            style,
+            texte,
+            ville: !!lu.afficherVille,
+            signes: lu.signes ?? [],
+            personnages: (lu.silhouettes ?? []).length > 0,
+            ...(style === "couple" && sens === "paysage" ? { paysage: true } : {}),
+            ...(typeof lu.hauteurTexte === "number" ? { hauteurTexte: lu.hauteurTexte } : {}),
+          };
+        }
+      }
+      // Les lignes de texte, dans l'ordre ; sur un ciel, leurs places se
+      // recalculent (elles suivent le dessin), sur une photo elles restent.
+      const lues = cfg.texts && "lines" in cfg.texts ? (cfg.texts.lines ?? []) : [];
+      setLignes((l) =>
+        l.map((x, i) => {
+          const b = lues[i];
+          if (!b) return { ...x, value: "" };
+          return {
+            value: b.value ?? "",
+            font: b.font ?? x.font,
+            ...(b.taille === "s" || b.taille === "l" ? { taille: b.taille } : {}),
+            ...(!modeCiel() && typeof b.x === "number" && typeof b.y === "number" ? { x: b.x, y: b.y } : {}),
+          };
+        }),
+      );
+      const premiereCouleur = lues.find((b) => b?.color)?.color;
+      if (premiereCouleur) {
+        setCouleur(premiereCouleur);
+        couleurChoisie = true;
+      }
+      if (cfg.format) setFormat(cfg.format);
+      if (item.quantity) setQuantite(bornerQuantite(item.quantity));
+      const compo =
+        !modeCiel() && (cfg.characters?.length ?? 0) > 0
+          ? ({ vue: cfg.view === "back" ? "back" : "front", personnages: cfg.characters ?? [], decor: cfg.foregroundUrl ?? null } as CompositionIA)
+          : undefined;
+      const apercuVu = apercuAbsolu(chemin);
+      memoriserCreations([
+        ...creations().filter((c) => c.publicId !== id),
+        { publicId: id, apercuChemin: chemin, apercu: apercuVu, sens, source: "", ...(compo ? { compo } : {}), ...(mise ? { mise } : {}) },
+      ]);
+      setPublicId(id);
+      setApercuChemin(chemin);
+      setOrientationApercu(sens);
+      setApercu(apercuVu);
+      setEtape("pret");
+      setLigneModifiee(item.id);
+      ouvrir();
+      setVolet("texte");
+    } catch {
+      /* rien de grave : la fiche s'ouvre comme d'habitude */
+    }
+  });
   const idEtape = (o: Onglet) => `ml-ia-${props.product.id}-etape-${o}`;
   let rangeeOnglets: HTMLDivElement | undefined;
 
@@ -2275,9 +2396,11 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           </>
         }
       >
-        {affichesAAjouter().length > 1
-          ? tr("ia.ajouter_n").replace("{n}", String(affichesAAjouter().length))
-          : tr("produit.ajouter")}
+        {ligneModifiee() != null
+          ? tr("cfg.valider_affiche")
+          : affichesAAjouter().length > 1
+            ? tr("ia.ajouter_n").replace("{n}", String(affichesAAjouter().length))
+            : tr("produit.ajouter")}
       </Show>
     </button>
   );
@@ -2742,6 +2865,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   texte={texteCiel()}
                   silhouettes={silhouettesCiel()}
                   tailleSilhouettes={tailleSilhouettes()}
+                  initial={reglagesCielInitiaux()}
                   hauteurTexte={hauteurTexteCiel()}
                   onReglage={reglageCiel}
                   onIncomplet={setCielIncomplet}

@@ -484,9 +484,13 @@ export default function CheckoutIsland(props: {
     const n = it.config?.aiPublicId ? (it.config.characters?.length ?? 0) : 0;
     return n > 0 ? ` · ${n} ${n > 1 ? tr("panier.personnages") : tr("panier.personnage")}` : "";
   };
-  /** « Modifier » rouvre la composition sur la fiche ; pas pour une carte, une IA, une affiche prête. */
+  /**
+   * « Modifier » rouvre la composition sur la fiche ; pas pour une carte ni
+   * une affiche prête. Une affiche IA aussi, depuis le 27/11 au soir : sa
+   * fenêtre se rouvre sur elle (AfficheIA.tsx, `?edit=`).
+   */
   const lienModifier = (it: OrderItem): string | null => {
-    if (it.giftCard || !it.config || it.config.aiPublicId) return null;
+    if (it.giftCard || !it.config) return null;
     if (estPretAImprimer(fiches(), it)) return null;
     const slug = it.productId != null ? fiches()?.get(it.productId)?.slug : null;
     return slug ? `${lien(langue, `/affiches/${slug}`)}?edit=${it.id}` : null;

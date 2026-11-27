@@ -268,6 +268,30 @@ function VignetteStyle(props: { style: StyleCiel }): JSX.Element {
   );
 }
 
+/**
+ * Les réglages d'un ciel déjà dessiné, relus par l'API (GET
+ * /ia/ciel/reglages/:publicId) pour le rouvrir depuis le panier (27/11 au
+ * soir, Alexandra : « quand on est dans le panier, on puisse modifier une
+ * affiche, la modifier pour la revalider et la remettre modifiée »).
+ */
+export interface ReglagesCielLus {
+  style?: StyleCiel;
+  signes?: IdSigne[];
+  dates?: (string | null)[];
+  date?: string;
+  heure?: string;
+  fuseau?: string;
+  lieu?: string;
+  lat?: number;
+  lon?: number;
+  afficherVille?: boolean;
+  texte?: PlaceTexte;
+  silhouettes?: string[];
+  hauteurTexte?: number;
+  tailleSilhouettes?: "s" | "m" | "l";
+  theme?: string;
+}
+
 export interface CielEtoileProps {
   langue: Langue;
   /** L'affiche « à partir d'une photo » qui accueille le ciel. */
@@ -305,6 +329,11 @@ export interface CielEtoileProps {
    * la fenêtre le redit à l'étape Personnages (27/11).
    */
   onIncomplet?: (oui: boolean) => void;
+  /**
+   * Rouvert depuis le panier : le formulaire reprend ces réglages, et le
+   * ciel compte comme déjà dessiné (le moindre changement le redessine).
+   */
+  initial?: ReglagesCielLus | null;
 }
 
 export default function CielEtoile(props: CielEtoileProps): JSX.Element {
@@ -432,7 +461,36 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
     } catch {
       /* sans la liste, le serveur prend le premier thème */
     }
+    reprendreInitial();
   });
+  /** Rouvert depuis le panier : le formulaire tel qu'il était au dessin. */
+  function reprendreInitial() {
+    const i = props.initial;
+    if (!i) return;
+    if (i.style) setStyle(i.style);
+    if (i.date) setDate(i.date);
+    if (i.heure) setHeure(i.heure);
+    if (typeof i.lat === "number" && typeof i.lon === "number" && i.lieu) {
+      const morceaux = i.lieu.split(",").map((m) => m.trim());
+      const v: Ville = {
+        nom: morceaux[0] ?? i.lieu,
+        region: morceaux.length > 2 ? morceaux[1]! : "",
+        pays: morceaux.length > 1 ? morceaux[morceaux.length - 1]! : "",
+        lat: i.lat,
+        lon: i.lon,
+        fuseau: i.fuseau ?? "Europe/Paris",
+      };
+      setVille(v);
+      setSaisie(v.nom);
+    }
+    if (i.afficherVille) setAfficherVille(true);
+    if (i.dates) setNaissances([i.dates[0] ?? "", i.dates[1] ?? ""]);
+    if (i.signes) setCorriges([i.signes[0] ?? "", i.signes[1] ?? ""]);
+    if (i.theme && themes().some((t) => t.id === i.theme)) setTheme(i.theme);
+    hauteurDessinee = i.hauteurTexte ?? 0;
+    // Après les réglages : leur changement ne doit pas relancer un dessin.
+    queueMicrotask(() => setDejaDessine(true));
+  }
   /**
    * Le message d'un échec. Un refus pour trop de demandes (429) dit de
    * patienter une minute (27/11) : il disait « vérifiez la date », ce qui

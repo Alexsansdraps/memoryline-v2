@@ -1017,6 +1017,36 @@ export function mountCielRoutes(app: Hono): void {
   );
 
   /**
+   * GET /ia/ciel/reglages/:publicId → les réglages d'un ciel déjà dessiné
+   * (27/11 au soir, Alexandra : « quand on est dans le panier, on puisse
+   * modifier une affiche […] et la remettre modifiée ») : la fiche rouvre son
+   * formulaire tel qu'il était. Lecture seule ; rien d'autre que ce que la
+   * cliente a elle-même saisi (pas d'adresse IP, pas de panier). Le publicId
+   * est un identifiant tiré au hasard, celui de la ligne de son panier.
+   */
+  app.get("/ia/ciel/reglages/:publicId", async (c: Context) => {
+    const [g] = await db
+      .select({ prompt: schema.aiGenerations.prompt, model: schema.aiGenerations.model, size: schema.aiGenerations.size })
+      .from(schema.aiGenerations)
+      .where(eq(schema.aiGenerations.publicId, c.req.param("publicId") ?? ""));
+    if (!g || g.model !== MODELE_CIEL) return c.notFound();
+    let lu: Record<string, unknown> = {};
+    try {
+      lu = JSON.parse(g.prompt ?? "{}") as Record<string, unknown>;
+    } catch {
+      lu = {};
+    }
+    const garde = [
+      "style", "signes", "dates", "date", "heure", "fuseau", "lieu", "lat", "lon", "afficherVille",
+      "texte", "silhouettes", "hauteurTexte", "tailleSilhouettes",
+    ];
+    const reglages: Record<string, unknown> = Object.fromEntries(garde.filter((k) => k in lu).map((k) => [k, lu[k]]));
+    const t = lu.theme as { id?: unknown } | undefined;
+    if (t && typeof t.id === "string") reglages.theme = t.id;
+    return c.json({ reglages, size: g.size }, 200, { "Cache-Control": "no-store" });
+  });
+
+  /**
    * GET /ia/ciel/themes → les thèmes proposés aux clientes (actifs), avec
    * les teintes de leur dégradé pour dessiner la pastille de chacun.
    */
@@ -1142,7 +1172,18 @@ export function mountCielRoutes(app: Hono): void {
         prompt: JSON.stringify({
           ciel: true,
           ...(nuit
-            ? { date: b.date, heure: b.heure, fuseau, lieu, lat, lon, utc: instant.toISOString() }
+            ? {
+                date: b.date,
+                heure: b.heure,
+                fuseau,
+                lieu,
+                lat,
+                lon,
+                utc: instant.toISOString(),
+                // La ville écrite sous le cercle (27/11 au soir) : relue pour
+                // rouvrir le ciel depuis le panier.
+                ...(ville ? { afficherVille: true } : {}),
+              }
             : { style: reglages.style, signes: reglages.signes, dates: reglages.dates }),
           // Seulement s'ils changent quelque chose (27/11) : la ligne d'un
           // ciel de cette nuit sans rien reste celle d'avant.

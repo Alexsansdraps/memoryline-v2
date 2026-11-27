@@ -374,10 +374,10 @@ export default function CartIsland(props: {
     // Une carte cadeau ne se modifie pas : elle se retire, et s'en ajoute une
     // autre.
     if (it.giftCard || !it.config) return null;
-    // Une affiche IA ne se « modifie » pas : on en regénère une autre depuis la
-    // fiche produit. Proposer « Modifier » ouvrirait un configurateur qui n'a
-    // rien à éditer.
-    if (it.config.aiPublicId) return null;
+    // Une affiche IA (photo ou ciel) se rouvre aussi depuis le 27/11 au soir
+    // (Alexandra : « on puisse modifier une affiche, la modifier pour la
+    // revalider et la remettre modifiée ») : sa fiche lit `?edit=` et rouvre
+    // la fenêtre IA sur elle (AfficheIA.tsx).
     // Une affiche prête à imprimer ne se compose pas : « Modifier » ouvrirait
     // un configurateur vide, et la cliente y perdrait son temps.
     if (pretAImprimer(it)) return null;
