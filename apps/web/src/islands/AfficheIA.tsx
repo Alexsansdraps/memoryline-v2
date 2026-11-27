@@ -782,13 +782,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    */
   const [texteCiel, setTexteCiel] = createSignal<PlaceTexte>("haut");
   /**
-   * Le calage du bloc de texte dans sa place (27/11 au soir, Alexandra : « tu
-   * as oublié de faire en sorte qu'on puisse caler le texte centré haut,
-   * centré bas ou centré milieu ») : collé au haut de sa place, centré, ou
-   * collé à son bas. Sa place : entre le haut de l'affiche et le dessin (texte
-   * en haut), ou entre le dessin et la bande des personnages (texte en bas).
+   * Le bloc de texte dans sa place : entre le haut de l'affiche et le dessin
+   * (texte en haut), ou entre le dessin et la bande des personnages (texte en
+   * bas), toujours centré.
    */
-  const [calageTexte, setCalageTexte] = createSignal<"haut" | "milieu" | "bas">("milieu");
+  // Plus de choix : le bloc se centre TOUJOURS dans sa place, une ligne ou
+  // trois (27/11 au soir, Alexandra : « si je ne remplis que la ligne 1, elle
+  // doit se centrer au milieu de la place disponible et basta »).
+  const calageTexte = (): "haut" | "milieu" | "bas" => "milieu";
   /** Le style du formulaire, pour la place du texte par défaut. */
   let styleCielVu: StyleCiel | null = null;
   /** Le même, à suivre : l'étape Personnages n'existe que pour « nuit » (27/11). */
@@ -1816,26 +1817,6 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
                   <circle cx="8" cy={place === "haut" ? 13 : 8.5} r="3.6" />
                 </svg>
                 {tr(place === "haut" ? "ciel.texte_haut" : "ciel.texte_bas")}
-              </button>
-            )}
-          </For>
-        </div>
-        {/* Le calage dans sa place : en haut, au milieu, en bas (27/11 au soir). */}
-        <div role="group" aria-label={tr("ciel.calage")} class="flex flex-wrap items-center gap-2.5">
-          <span class="text-sm text-ink-soft">{tr("ciel.calage")}</span>
-          <For each={["haut", "milieu", "bas"] as const}>
-            {(c) => (
-              <button
-                type="button"
-                aria-pressed={calageTexte() === c}
-                onClick={() => setCalageTexte(c)}
-                class="ml-choix inline-flex items-center gap-2 border border-ink/20 px-3 py-1.5 text-sm hover:border-ink/45"
-              >
-                <svg viewBox="0 0 16 16" class="h-4 w-4 text-ink/70" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
-                  <rect x="0.7" y="0.7" width="14.6" height="14.6" rx="1" />
-                  <path d={c === "haut" ? "M4 4h8M5 6.5h6" : c === "bas" ? "M4 9.5h8M5 12h6" : "M4 6.8h8M5 9.3h6"} />
-                </svg>
-                {tr(`ciel.calage_${c}`)}
               </button>
             )}
           </For>
