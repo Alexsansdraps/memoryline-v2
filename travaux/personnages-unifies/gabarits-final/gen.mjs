@@ -236,6 +236,62 @@ const CHEVAL = [
   P("M256,566C266,604 270,654 270,704C270,752 278,792 296,820C284,792 276,752 276,704C276,654 270,604 262,566Z", "opacity:0.15;"),
   P("M246,640C244,690 240,750 228,814L236,814C246,754 250,694 250,642Z", "opacity:0.15;"),
 ];
+// 27/11 au soir, Alexandra : « le cheval il faut le faire debout pas assis et de dos »
+// (le couché « fait peur »). Vu de dos, debout : la croupe ronde en deux lobes, la queue
+// qui tombe au milieu, les deux postérieurs jusqu'au sol (sabots sombres, même ligne de
+// sol que les personnages assis : 874), et au-dessus de la croupe le dos, l'encolure et
+// l'arrière de la tête, plus petits (ils sont plus loin). Mêmes teintes que le couché.
+// Le seul personnage DEBOUT (exception voulue par Alexandra) : à la création au BO, lui
+// donner un facteur de taille d'environ 2 pour qu'il soit à l'échelle des humains assis.
+const CHEVAL_DEBOUT = [
+  // postérieurs (sous la croupe) : cuisse, jarret, canon, sabot
+  P("M126,620C132,680 150,720 170,752C178,770 180,800 178,840L176,852L218,852L216,840C214,800 216,774 222,754C232,720 236,680 236,640Z", "fill:#C57745;"),
+  P("M374,620C368,680 350,720 330,752C322,770 320,800 322,840L324,852L282,852L284,840C286,800 284,774 278,754C268,720 264,680 264,640Z", "fill:#C57745;"),
+  P("M330,752C322,770 320,800 322,840L324,852L308,852C306,800 306,772 312,752C324,720 336,690 344,650C352,690 344,726 330,752Z", "opacity:0.15;"),
+  P("M222,754C216,774 214,800 216,840L218,852L204,852C202,800 204,772 208,752C216,724 224,694 230,660C236,694 232,728 222,754Z", "opacity:0.15;"),
+  P("M172,850L222,850L226,874L168,874Z", "fill:#5B392E;"),
+  P("M278,850L328,850L332,874L274,874Z", "fill:#5B392E;"),
+  // encolure, plus loin, au-dessus de la croupe
+  P("M200,420C204,370 212,320 220,272C234,264 266,264 280,272C288,320 296,370 300,420Z", "fill:#C57745;"),
+  P("M280,272C288,320 296,370 300,420L280,420C282,370 280,320 272,276Z", "opacity:0.15;"),
+  // crinière sur le côté gauche de l'encolure
+  P("M236,206C246,200 256,200 262,206C256,232 246,256 236,280C228,300 222,322 218,344C214,368 208,394 204,420L188,420C192,404 186,394 192,380C196,364 192,352 198,338C204,320 204,306 212,288C220,262 228,236 236,206Z", "fill:#865F4A;"),
+  // arrière de la tête, oreilles, toupet
+  P("M250,196C272,196 286,204 290,222C293,242 298,262 298,276C298,292 284,300 250,300C216,300 202,292 202,276C202,262 207,242 210,222C214,204 228,196 250,196Z", "fill:#C57745;"),
+  P("M278,202C288,210 290,222 290,222C293,242 298,262 298,276C298,292 284,300 264,300C280,286 284,252 278,202Z", "opacity:0.15;"),
+  P("M216,214C211,192 212,170 221,154C231,168 239,186 241,204Z", "fill:#C57745;"),
+  P("M284,214C289,192 288,170 279,154C269,168 261,186 259,204Z", "fill:#C57745;"),
+  P("M284,214C289,192 288,170 279,154C282,176 281,194 274,208Z", "opacity:0.15;"),
+  P("M238,208C240,196 245,189 250,187C255,189 260,196 262,208C255,205 245,205 238,208Z", "fill:#865F4A;"),
+  // croupe : deux lobes larges et le sillon
+  P("M250,420C232,404 210,396 184,396C134,396 100,436 96,490C92,540 98,600 116,640C134,680 168,700 206,700L294,700C332,700 366,680 384,640C402,600 408,540 404,490C400,436 366,396 316,396C290,396 268,404 250,420Z", "fill:#C57745;"),
+  P("M316,396C366,396 400,436 404,490C408,540 402,600 384,640C366,680 332,700 294,700C338,676 364,620 364,560C364,488 350,430 316,396Z", "opacity:0.15;"),
+  P("M250,420C240,434 236,458 240,490C244,468 248,448 250,436C252,448 256,468 260,490C264,458 260,434 250,420Z", "opacity:0.15;"),
+  // queue : crins qui partent du haut du sillon et tombent entre les jarrets
+  P("M238,416C230,456 226,510 226,566C226,620 220,670 210,716C228,722 272,722 290,716C280,670 274,620 274,566C274,510 270,456 262,416C256,408 244,408 238,416Z", "fill:#5B392E;"),
+  P("M256,416C266,456 270,510 270,566C270,620 276,670 290,716C280,670 274,620 274,566C274,510 270,456 262,416Z", "opacity:0.15;"),
+  P("M246,490C244,560 240,640 226,708L234,708C246,642 250,562 250,492Z", "opacity:0.15;"),
+];
+// 27/11 au soir, Alexandra (planche du chat de dos) : « regarde la queue », « tous les
+// personnages doivent être posés sur la même ligne, rien ne dépasse dessous ». Ici la
+// queue part du bas du dos et s'enroule SUR LE SOL, sur le côté droit, sans descendre
+// sous l'assise (625, celle du lapin). Chat noir, comme le chat de dos actuel.
+const CHAT = [
+  // oreilles
+  P("M214,488C210,466 212,446 220,432C232,442 242,458 246,474Z", "fill:#2F2A2B;"),
+  P("M286,488C290,466 288,446 280,432C268,442 258,458 254,474Z", "fill:#2F2A2B;"),
+  P("M286,488C290,466 288,446 280,432C282,452 280,468 272,480Z", "opacity:0.15;"),
+  // tête
+  P("M250,462C278,462 294,480 294,502C294,524 276,538 250,538C224,538 206,524 206,502C206,480 222,462 250,462Z", "fill:#2F2A2B;"),
+  // corps en poire, assis
+  P("M250,520C286,520 306,546 312,578C316,600 312,618 296,624L204,624C188,618 184,600 188,578C194,546 214,520 250,520Z", "fill:#2F2A2B;"),
+  // queue : du bas du dos, posée au sol, enroulée vers la droite, le bout relevé
+  P("M268,612C292,618 320,620 344,614C362,608 372,596 370,584C368,574 358,572 352,580C348,592 338,600 322,604C302,608 284,606 268,604Z", "fill:#2F2A2B;"),
+  // ombres
+  P("M250,520C286,520 306,546 312,578C316,600 312,618 296,624L282,624C300,600 300,562 288,542C280,530 266,522 250,520Z", "opacity:0.15;"),
+  P("M272,468C286,476 294,488 294,502C294,524 276,538 250,538C268,528 280,508 272,468Z", "opacity:0.15;"),
+  P("M268,604C284,606 302,608 322,604C338,600 348,592 352,580C356,598 344,614 322,618C302,622 284,622 268,620Z", "opacity:0.15;"),
+];
 const LAPIN = [
   // oreilles (derrière la tête)
   P("M231,470C222,440 214,404 218,384C221,372 232,372 238,384C246,404 248,440 246,470Z", "fill:#C9B39A;"),
@@ -273,7 +329,9 @@ gab({ ...F, nom: "Femme fine", morpho: "fine", fichier: "gabarit-dos-femme-fine.
 gab({ ...F, nom: "Femme ronde", morpho: "ronde", fichier: "gabarit-dos-femme-ronde.svg", idSvg: "Gabarit_Dos_Femme_Ronde", idGroupe: "Female_Base_1003", couleurs: { "#F8AA4C": "#C87446" },
   warp: largeur([[0.13, 690, 320], [0.04, 810, 70]]), entete: "femme ronde : dos, bras et hanches elargis, tete, cou et assise inchanges" });
 gab({ ...F, nom: "Femme âgée", morpho: "agee", fichier: "gabarit-dos-femme-agee.svg", idSvg: "Gabarit_Dos_Femme_Agee", idGroupe: "Female_Base_1004", couleurs: { "#F8AA4C": "#E7965A" },
-  warp: compose(vieillir({ h: 14, yTeteBas: 318, yCou: 384, yFin: 560, rx: 150, chute: 18, yEp: 425, wEp: 80, rentre: 8 }), largeur([[0.05, 470, 90], [-0.03, 660, 120]])), entete: "femme agee : dos un peu voute, cou rentre, epaules tombantes" });
+  // 27/11 au soir, Alexandra : « corps âgés pas assez différents (dos plus voûté, épaules
+  // tombantes) » : bosse du dos ×2, épaules qui tombent ×2 et rentrent, dos rond.
+  warp: compose(vieillir({ h: 22, yTeteBas: 318, yCou: 388, yFin: 590, rx: 165, chute: 28, yEp: 432, wEp: 90, rentre: 12 }), largeur([[0.07, 485, 100], [0.03, 680, 140]])), entete: "femme agee : dos voute, cou rentre, epaules tombantes" });
 
 // Hommes : corps de Male_2 (crâne 161, cou ≈ 321, assise 864)
 const H = { source: "Male_2.svg", groupeSource: "Male_Base_2", famille: "homme" };
@@ -283,7 +341,8 @@ gab({ ...H, nom: "Homme mince", morpho: "mince", fichier: "gabarit-dos-homme-min
 gab({ ...H, nom: "Homme rond", morpho: "rond", fichier: "gabarit-dos-homme-rond.svg", idSvg: "Gabarit_Dos_Homme_Rond", idGroupe: "Male_Base_1003", couleurs: { "#F8AA4C": "#E38242" },
   warp: largeur([[0.13, 700, 300]]), entete: "homme rond : ventre et bras elargis, tete, cou et assise inchanges" });
 gab({ ...H, nom: "Homme âgé", morpho: "age", fichier: "gabarit-dos-homme-age.svg", idSvg: "Gabarit_Dos_Homme_Age", idGroupe: "Male_Base_1004", couleurs: { "#F8AA4C": "#E7965A" },
-  warp: compose(vieillir({ h: 14, yTeteBas: 296, yCou: 356, yFin: 540, rx: 150, chute: 18, yEp: 405, wEp: 80, rentre: 8 }), largeur([[0.045, 450, 90], [0.04, 680, 140]])), entete: "homme age : dos un peu voute, cou rentre, epaules tombantes, petit ventre" });
+  // 27/11 au soir : même reprise que la femme âgée, plus un petit ventre.
+  warp: compose(vieillir({ h: 22, yTeteBas: 296, yCou: 360, yFin: 570, rx: 165, chute: 28, yEp: 412, wEp: 90, rentre: 12 }), largeur([[0.06, 465, 100], [0.07, 690, 150]])), entete: "homme age : dos voute, cou rentre, epaules tombantes, petit ventre" });
 
 // Enfants : corps de Boys_2 (crâne 257, assise 777) ; ado : Teenage_Boys_1 ; bébé : Baby_Boy
 const E = { source: "Boys_2.svg", groupeSource: "Boy_Base_2", famille: "enfant" };
@@ -293,11 +352,17 @@ gab({ ...E, nom: "Enfant fin", morpho: "fin", fichier: "gabarit-dos-enfant-fin.s
 gab({ ...E, nom: "Enfant rond", morpho: "rond", fichier: "gabarit-dos-enfant-rond.svg", idSvg: "Gabarit_Dos_Enfant_Rond", idGroupe: "Boy_Base_1003", couleurs: { "#F09A2C": "#EF9F56" },
   warp: largeur([[0.15, 610, 160]]), entete: "enfant rond : ventre et bras elargis" });
 const A = { source: "Teenage_Boys_1.svg", groupeSource: "Teenage_Boy_Base_1", famille: "ado" };
+// 27/11 au soir, Alexandra : « épaules de l'ado trop raides » : une légère chute des
+// épaules (sans voûte), sur l'ado fin ; le standard reste le dessin actuel.
+const epaulesSouples = vieillir({ h: 0, yTeteBas: 300, yCou: 370, yFin: 560, rx: 150, chute: 16, yEp: 420, wEp: 80, rentre: 6 });
 gab({ ...A, reference: true, nom: "Ado", morpho: "standard", fichier: "gabarit-dos-ado-standard.svg", idSvg: "Gabarit_Dos_Ado_Standard", idGroupe: "Teenage_Boy_Base_1001", entete: "ado (12-16 ans), corps de Teenage_Boys_1 tel quel" });
 gab({ ...A, nom: "Ado fin", morpho: "fin", fichier: "gabarit-dos-ado-fin.svg", idSvg: "Gabarit_Dos_Ado_Fin", idGroupe: "Teenage_Boy_Base_1002", couleurs: { "#F8AA4C": "#E38242" },
-  warp: largeur([[-0.07, 590, 170]]), entete: "ado fin : taille resserree" });
+  warp: compose(epaulesSouples, largeur([[-0.07, 590, 170]])), entete: "ado fin : taille resserree, epaules souples" });
 
 // Animaux
+gab({ paths: CHEVAL_DEBOUT, famille: "cheval", nom: "Cheval debout", morpho: "debout", fichier: "gabarit-dos-cheval-debout.svg", idSvg: "Gabarit_Dos_Cheval_Debout", idGroupe: "Horse_Base_1002", entete: "cheval debout de dos (la seule exception a la regle tous assis)" });
+gab({ paths: CHAT, famille: "chat", nom: "Chat", morpho: "standard", fichier: "gabarit-dos-chat.svg", idSvg: "Gabarit_Dos_Chat", idGroupe: "Cat_Base_1001", entete: "chat assis de dos, la queue enroulee au sol sur le cote, rien sous l'assise" });
+// Le couché (« il fait peur ») : gardé pour la planche, à ne pas proposer.
 gab({ paths: CHEVAL, famille: "cheval", nom: "Cheval couché", morpho: "couche", fichier: "gabarit-dos-cheval.svg", idSvg: "Gabarit_Dos_Cheval", idGroupe: "Horse_Base_1001", entete: "cheval couche de dos, pattes repliees (un cheval ne s'assoit pas)" });
 gab({ paths: LAPIN, famille: "lapin", nom: "Lapin", morpho: "standard", fichier: "gabarit-dos-lapin.svg", idSvg: "Gabarit_Dos_Lapin", idGroupe: "Rabbit_Base_1001", entete: "lapin assis de dos, a l'echelle du chat" });
 

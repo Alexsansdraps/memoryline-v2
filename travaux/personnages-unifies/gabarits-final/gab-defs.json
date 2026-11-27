@@ -60,7 +60,7 @@
     "couleurs": {
       "#F8AA4C": "#E7965A"
     },
-    "entete": "femme agee : dos un peu voute, cou rentre, epaules tombantes",
+    "entete": "femme agee : dos voute, cou rentre, epaules tombantes",
     "zones": {
       "st0": "#E7965A"
     }
@@ -126,7 +126,7 @@
     "couleurs": {
       "#F8AA4C": "#E7965A"
     },
-    "entete": "homme age : dos un peu voute, cou rentre, epaules tombantes, petit ventre",
+    "entete": "homme age : dos voute, cou rentre, epaules tombantes, petit ventre",
     "zones": {
       "st0": "#E7965A"
     }
@@ -210,9 +210,35 @@
     "couleurs": {
       "#F8AA4C": "#E38242"
     },
-    "entete": "ado fin : taille resserree",
+    "entete": "ado fin : taille resserree, epaules souples",
     "zones": {
       "st0": "#E38242"
+    }
+  },
+  {
+    "famille": "cheval",
+    "nom": "Cheval debout",
+    "morpho": "debout",
+    "fichier": "gabarit-dos-cheval-debout.svg",
+    "idSvg": "Gabarit_Dos_Cheval_Debout",
+    "idGroupe": "Horse_Base_1002",
+    "entete": "cheval debout de dos (la seule exception a la regle tous assis)",
+    "zones": {
+      "st0": "#C57745",
+      "st2": "#5B392E",
+      "st3": "#865F4A"
+    }
+  },
+  {
+    "famille": "chat",
+    "nom": "Chat",
+    "morpho": "standard",
+    "fichier": "gabarit-dos-chat.svg",
+    "idSvg": "Gabarit_Dos_Chat",
+    "idGroupe": "Cat_Base_1001",
+    "entete": "chat assis de dos, la queue enroulee au sol sur le cote, rien sous l'assise",
+    "zones": {
+      "st0": "#2F2A2B"
     }
   },
   {
