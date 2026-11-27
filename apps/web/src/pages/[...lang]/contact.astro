@@ -80,91 +80,81 @@ type Cle =
   | "errIllisible"
   | "confidentialite";
 
+/* Allégés le 27/11 (Alexandra : « supprimer les phrases côté client qui sont
+   inutiles », « ça fait bcop trop IA ») : l'intro, les aides et les erreurs
+   disent l'essentiel, sans expliquer pourquoi. */
 const TEXTES: Record<Langue, Record<Cle, string>> = {
   fr: {
     titre: "Nous écrire",
-    intro:
-      "Une question sur une affiche, une commande en cours, une personnalisation à corriger ? Écrivez-nous, nous répondons sous deux jours ouvrés.",
+    intro: "Une question ? Écrivez-nous, nous répondons sous deux jours ouvrés.",
     nom: "Votre nom",
-    email: "Votre adresse électronique",
+    email: "Votre e-mail",
     sujet: "Sujet",
     message: "Votre message",
     commande: "Numéro de commande (facultatif)",
-    commandeAide:
-      "Il figure dans le courrier de confirmation. Il nous fait gagner du temps, mais n'est pas obligatoire.",
+    commandeAide: "Il figure dans l'e-mail de confirmation.",
     envoyer: "Envoyer le message",
     envoiEnCours: "Envoi…",
     merciTitre: "Message envoyé",
-    merciTexte:
-      "Merci. Votre message est parti, et un accusé de réception vient de vous être envoyé. Nous vous répondons sous deux jours ouvrés.",
+    merciTexte: "Merci ! Nous vous répondons sous deux jours ouvrés.",
     autreMessage: "Écrire un autre message",
-    errNom: "Écrivez votre nom, pour que nous sachions à qui répondre.",
-    errEmail:
-      "Écrivez une adresse électronique valable : c'est là que partira notre réponse.",
+    errNom: "Indiquez votre nom.",
+    errEmail: "Cette adresse e-mail n'est pas valable.",
     errSujet: "Donnez un sujet à votre message.",
-    errMessage: "Écrivez votre message, en quelques mots au moins.",
+    errMessage: "Votre message est trop court.",
     errEnvoi:
       "Votre message n'a pas pu être envoyé. Réessayez dans quelques minutes.",
-    errTrop:
-      "Vous nous avez déjà écrit plusieurs fois. Laissez-nous le temps d'y répondre, puis réessayez dans une heure.",
+    errTrop: "Vous nous avez déjà écrit plusieurs fois. Réessayez dans une heure.",
     errIllisible: "Votre message n'a pas pu être lu. Réessayez.",
     confidentialite:
       "Vos coordonnées ne servent qu'à vous répondre. Voir la politique de confidentialité.",
   },
   en: {
     titre: "Contact us",
-    intro:
-      "A question about a poster, an order on its way, a personalisation to correct? Write to us — we reply within two working days.",
+    intro: "A question? Write to us, we reply within two working days.",
     nom: "Your name",
-    email: "Your email address",
+    email: "Your email",
     sujet: "Subject",
     message: "Your message",
     commande: "Order number (optional)",
-    commandeAide:
-      "You will find it in your confirmation email. It saves us time, but it is not required.",
+    commandeAide: "You'll find it in your confirmation email.",
     envoyer: "Send message",
     envoiEnCours: "Sending…",
     merciTitre: "Message sent",
-    merciTexte:
-      "Thank you. Your message is on its way, and a confirmation email has just been sent to you. We reply within two working days.",
+    merciTexte: "Thank you! We'll reply within two working days.",
     autreMessage: "Write another message",
-    errNom: "Please write your name, so we know who to reply to.",
-    errEmail: "Please write a valid email address: that is where our reply will go.",
+    errNom: "Please enter your name.",
+    errEmail: "This email address isn't valid.",
     errSujet: "Please give your message a subject.",
-    errMessage: "Please write your message, at least a few words.",
+    errMessage: "Your message is too short.",
     errEnvoi: "Your message could not be sent. Please try again in a few minutes.",
-    errTrop:
-      "You have already written to us several times. Give us time to reply, then try again in an hour.",
+    errTrop: "You've already written to us several times. Try again in an hour.",
     errIllisible: "Your message could not be read. Please try again.",
     confidentialite:
       "Your details are used only to reply to you. See the privacy policy.",
   },
   de: {
     titre: "Schreiben Sie uns",
-    intro:
-      "Eine Frage zu einem Poster, zu einer laufenden Bestellung oder eine Personalisierung, die korrigiert werden soll? Schreiben Sie uns — wir antworten innerhalb von zwei Werktagen.",
+    intro: "Eine Frage? Schreiben Sie uns, wir antworten innerhalb von zwei Werktagen.",
     nom: "Ihr Name",
-    email: "Ihre E-Mail-Adresse",
+    email: "Ihre E-Mail",
     sujet: "Betreff",
     message: "Ihre Nachricht",
     commande: "Bestellnummer (optional)",
-    commandeAide:
-      "Sie steht in Ihrer Bestellbestätigung. Sie spart uns Zeit, ist aber nicht verpflichtend.",
+    commandeAide: "Sie steht in Ihrer Bestellbestätigung.",
     envoyer: "Nachricht senden",
     envoiEnCours: "Wird gesendet…",
     merciTitre: "Nachricht gesendet",
-    merciTexte:
-      "Vielen Dank. Ihre Nachricht ist unterwegs, und eine Empfangsbestätigung wurde Ihnen soeben zugeschickt. Wir antworten innerhalb von zwei Werktagen.",
+    merciTexte: "Danke! Wir antworten innerhalb von zwei Werktagen.",
     autreMessage: "Eine weitere Nachricht schreiben",
-    errNom: "Bitte schreiben Sie Ihren Namen, damit wir wissen, wem wir antworten.",
-    errEmail:
-      "Bitte geben Sie eine gültige E-Mail-Adresse an: dorthin geht unsere Antwort.",
+    errNom: "Bitte geben Sie Ihren Namen an.",
+    errEmail: "Diese E-Mail-Adresse ist ungültig.",
     errSujet: "Bitte geben Sie Ihrer Nachricht einen Betreff.",
-    errMessage: "Bitte schreiben Sie Ihre Nachricht, wenigstens ein paar Worte.",
+    errMessage: "Ihre Nachricht ist zu kurz.",
     errEnvoi:
       "Ihre Nachricht konnte nicht gesendet werden. Bitte versuchen Sie es in einigen Minuten erneut.",
     errTrop:
-      "Sie haben uns bereits mehrfach geschrieben. Geben Sie uns Zeit zu antworten und versuchen Sie es in einer Stunde erneut.",
+      "Sie haben uns bereits mehrmals geschrieben. Versuchen Sie es in einer Stunde erneut.",
     errIllisible:
       "Ihre Nachricht konnte nicht gelesen werden. Bitte versuchen Sie es erneut.",
     confidentialite:
@@ -172,113 +162,98 @@ const TEXTES: Record<Langue, Record<Cle, string>> = {
   },
   it: {
     titre: "Scrivici",
-    intro:
-      "Una domanda su un poster, un ordine in corso, una personalizzazione da correggere? Scrivici: rispondiamo entro due giorni lavorativi.",
+    intro: "Una domanda? Scrivici, rispondiamo entro due giorni lavorativi.",
     nom: "Il tuo nome",
-    email: "Il tuo indirizzo email",
+    email: "La tua email",
     sujet: "Oggetto",
     message: "Il tuo messaggio",
     commande: "Numero d'ordine (facoltativo)",
-    commandeAide:
-      "Lo trovi nell'email di conferma. Ci fa risparmiare tempo, ma non è obbligatorio.",
+    commandeAide: "Lo trovi nell'email di conferma.",
     envoyer: "Invia il messaggio",
     envoiEnCours: "Invio in corso…",
     merciTitre: "Messaggio inviato",
-    merciTexte:
-      "Grazie. Il tuo messaggio è partito e ti abbiamo appena inviato una conferma di ricezione. Rispondiamo entro due giorni lavorativi.",
+    merciTexte: "Grazie! Rispondiamo entro due giorni lavorativi.",
     autreMessage: "Scrivere un altro messaggio",
-    errNom: "Scrivi il tuo nome, così sappiamo a chi rispondere.",
-    errEmail:
-      "Scrivi un indirizzo email valido: è lì che arriverà la nostra risposta.",
+    errNom: "Indica il tuo nome.",
+    errEmail: "Questo indirizzo email non è valido.",
     errSujet: "Indica l'oggetto del messaggio.",
-    errMessage: "Scrivi il tuo messaggio, almeno qualche parola.",
+    errMessage: "Il tuo messaggio è troppo corto.",
     errEnvoi:
       "Non è stato possibile inviare il messaggio. Riprova tra qualche minuto.",
-    errTrop:
-      "Ci hai già scritto più volte. Dacci il tempo di risponderti, poi riprova tra un'ora.",
+    errTrop: "Ci hai già scritto più volte. Riprova tra un'ora.",
     errIllisible: "Non è stato possibile leggere il tuo messaggio. Riprova.",
     confidentialite:
       "I tuoi dati servono soltanto a risponderti. Vedi l'informativa sulla privacy.",
   },
   es: {
     titre: "Escríbenos",
-    intro:
-      "¿Una pregunta sobre una lámina, un pedido en curso o una personalización que corregir? Escríbenos: respondemos en dos días laborables.",
+    intro: "¿Una pregunta? Escríbenos, respondemos en dos días laborables.",
     nom: "Tu nombre",
-    email: "Tu correo electrónico",
+    email: "Tu correo",
     sujet: "Asunto",
     message: "Tu mensaje",
     commande: "Número de pedido (opcional)",
-    commandeAide:
-      "Aparece en el correo de confirmación. Nos ahorra tiempo, pero no es obligatorio.",
+    commandeAide: "Aparece en el correo de confirmación.",
     envoyer: "Enviar el mensaje",
     envoiEnCours: "Enviando…",
     merciTitre: "Mensaje enviado",
-    merciTexte:
-      "Gracias. Tu mensaje ha salido y acabamos de enviarte un acuse de recibo. Respondemos en dos días laborables.",
+    merciTexte: "¡Gracias! Respondemos en dos días laborables.",
     autreMessage: "Escribir otro mensaje",
-    errNom: "Escribe tu nombre, para que sepamos a quién responder.",
-    errEmail:
-      "Escribe un correo electrónico válido: ahí es donde llegará nuestra respuesta.",
+    errNom: "Indica tu nombre.",
+    errEmail: "Este correo electrónico no es válido.",
     errSujet: "Indica el asunto de tu mensaje.",
-    errMessage: "Escribe tu mensaje, aunque sean unas pocas palabras.",
+    errMessage: "Tu mensaje es demasiado corto.",
     errEnvoi:
       "No hemos podido enviar tu mensaje. Inténtalo de nuevo dentro de unos minutos.",
-    errTrop:
-      "Ya nos has escrito varias veces. Danos tiempo para responderte y vuelve a intentarlo dentro de una hora.",
+    errTrop: "Ya nos has escrito varias veces. Vuelve a intentarlo dentro de una hora.",
     errIllisible: "No hemos podido leer tu mensaje. Inténtalo de nuevo.",
     confidentialite:
       "Tus datos solo sirven para responderte. Consulta la política de privacidad.",
   },
   ja: {
     titre: "お問い合わせ",
-    intro:
-      "ポスターについてのご質問、配送中のご注文、パーソナライズの修正など、お気軽にご連絡ください。2営業日以内にご返信いたします。",
+    intro: "ご質問はお気軽にどうぞ。2営業日以内にご返信します。",
     nom: "お名前",
     email: "メールアドレス",
     sujet: "件名",
     message: "メッセージ",
     commande: "注文番号（任意）",
-    commandeAide:
-      "注文確認メールに記載されています。必須ではありませんが、より早く対応できます。",
+    commandeAide: "注文確認メールに記載されています。",
     envoyer: "送信する",
     envoiEnCours: "送信中…",
     merciTitre: "メッセージを送信しました",
-    merciTexte:
-      "ありがとうございます。メッセージは送信され、確認メールをお送りしました。2営業日以内にご返信いたします。",
+    merciTexte: "ありがとうございます。2営業日以内にご返信します。",
     autreMessage: "別のメッセージを書く",
-    errNom: "返信先がわかるよう、お名前をご記入ください。",
-    errEmail: "有効なメールアドレスをご記入ください。返信はこちらにお送りします。",
+    errNom: "お名前をご記入ください。",
+    errEmail: "メールアドレスが正しくありません。",
     errSujet: "メッセージの件名をご記入ください。",
-    errMessage: "メッセージをご記入ください（数語でもかまいません）。",
+    errMessage: "メッセージが短すぎます。",
     errEnvoi: "メッセージを送信できませんでした。数分後にもう一度お試しください。",
-    errTrop:
-      "すでに何度かご連絡いただいています。返信までお待ちいただき、1時間後にもう一度お試しください。",
+    errTrop: "すでに何度かご連絡いただいています。1時間後にもう一度お試しください。",
     errIllisible: "メッセージを読み取れませんでした。もう一度お試しください。",
     confidentialite:
       "ご入力いただいた情報は返信のためにのみ使用します。プライバシーポリシーをご覧ください。",
   },
   zh: {
     titre: "联系我们",
-    intro:
-      "关于海报的问题、正在配送的订单、需要修改的个性化内容？请给我们留言，我们会在两个工作日内回复。",
+    intro: "有问题？请给我们留言，我们会在两个工作日内回复。",
     nom: "您的姓名",
     email: "您的电子邮箱",
     sujet: "主题",
     message: "您的留言",
     commande: "订单号（选填）",
-    commandeAide: "您可以在订单确认邮件中找到它。填写后我们能更快处理，但不是必填项。",
+    commandeAide: "可在订单确认邮件中找到。",
     envoyer: "发送留言",
     envoiEnCours: "正在发送…",
     merciTitre: "留言已发送",
-    merciTexte: "谢谢！您的留言已发出，确认邮件也已发送给您。我们会在两个工作日内回复。",
+    merciTexte: "谢谢！我们会在两个工作日内回复。",
     autreMessage: "再写一条留言",
-    errNom: "请填写您的姓名，以便我们回复。",
-    errEmail: "请填写有效的电子邮箱地址：我们会回复到这里。",
+    errNom: "请填写您的姓名。",
+    errEmail: "此电子邮箱地址无效。",
     errSujet: "请为您的留言填写主题。",
-    errMessage: "请填写留言内容，几句话即可。",
+    errMessage: "您的留言太短了。",
     errEnvoi: "留言未能发送，请几分钟后再试。",
-    errTrop: "您已经给我们写过几次了。请稍候我们的回复，一小时后再试。",
+    errTrop: "您已给我们写过几次。请一小时后再试。",
     errIllisible: "无法读取您的留言，请重试。",
     confidentialite: "您的信息仅用于回复您。请参阅隐私政策。",
   },

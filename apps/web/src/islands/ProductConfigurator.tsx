@@ -54,7 +54,6 @@ export const LIBELLES_CONFIGURATEUR = [
   "panier.quantite",
   "cfg.chargement",
   "produit.personnaliser",
-  "produit.aide",
   "cfg.titre",
   "cfg.video.titre",
   "cfg.video.lancer",
@@ -402,9 +401,9 @@ export default function ProductConfigurator(
           )}
         </button>
       </div>
-      <p class="mt-3 text-sm text-ink-soft">
-        {tr("produit.aide")}
-      </p>
+      {/* Plus de « Choisissez le fond, le texte et vos personnages. » sous le
+          bouton (27/11, Alexandra : « supprimer les phrases côté client qui
+          sont inutiles ») : les étapes de la fenêtre le disent. */}
 
       <Show when={monte()}>
         {/* Cachée et non démontée quand elle est fermée (voir `monte`). Pas de

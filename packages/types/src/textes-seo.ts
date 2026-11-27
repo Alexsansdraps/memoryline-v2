@@ -240,8 +240,10 @@ export const TEXTES_REFERENCEMENT_FR: TextesReferencement = {
     "{nom} : affiche personnalisée à composer en ligne. Ajoutez vos personnages et votre texte en quelques minutes. Impression en A4 ou A3.",
   reprisPrete:
     "{nom} : affiche décorative prête à imprimer, à accrocher chez soi ou à offrir. Impression en A4 ou A3.",
-  introIa:
-    "Envoyez une photo : nous en tirons une affiche. Regardez le résultat, relancez autant de fois que vous voulez, et gardez celle qui vous plaît.",
+  // Le même mot pour mot que ia.intro dans ui.ts (test textes-seo) ; raccourci
+  // le 27/11 (Alexandra : « ça fait bcop trop IA »), et sans le « relancez
+  // autant de fois que vous voulez » : les essais sont comptés par jour.
+  introIa: "Envoyez une photo, nous en faisons une affiche. Vous la voyez avant de commander.",
 };
 
 /**

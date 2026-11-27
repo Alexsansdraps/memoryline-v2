@@ -222,10 +222,12 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   murPhoto: "Mon mur",
   murPhotoChoisir: "Prendre ou choisir une photo de votre mur",
   murPhotoAutre: "Autre photo",
-  murPhotoAide: "Faites glisser l'affiche pour la placer, et réglez sa taille.",
+  // Raccourcis comme cfg.mur.* dans ui.ts (27/11, Alexandra : « supprimer les
+  // phrases côté client qui sont inutiles »).
+  murPhotoAide: "Glissez l'affiche pour la placer.",
   murPhotoPrivee: "Votre photo reste sur votre appareil.",
   murTaille: "Taille",
-  murEchelle: "À l'échelle : affiche {affiche}, meuble de {meuble} cm de large.",
+  murEchelle: "Affiche {affiche}, meuble de {meuble} cm de large.",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

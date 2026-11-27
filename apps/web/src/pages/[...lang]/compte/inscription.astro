@@ -101,7 +101,8 @@ const champ =
   chemin="/compte/inscription"
   menu={false}
 >
-  <p class="text-ink-soft">{tr("compte.inscription.intro")}</p>
+  {/* Plus de phrase d'introduction sous le titre (27/11, Alexandra :
+      « supprimer les phrases côté client qui sont inutiles »). */}
 
   {
     erreur && (
@@ -191,9 +192,7 @@ const champ =
           </option>
         ))}
       </select>
-      <span class="mt-1 block text-xs text-ink-soft">
-        {tr("compte.langue_courriels_aide")}
-      </span>
+      {/* Le libellé « Langue de mes e-mails » suffit (27/11). */}
     </label>
     <label class="flex items-start gap-3 text-sm">
       <input

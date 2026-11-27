@@ -88,7 +88,11 @@ const onglets = [
           </div>
         </div>
       ) : (
-        <div class="max-w-md">
+        <div class="max-w-md [&>:first-child]:mt-0">
+          {/* Le premier bloc colle au titre : les pages de connexion n'ont
+              plus de phrase d'introduction (27/11, Alexandra : « supprimer
+              les phrases côté client qui sont inutiles ») ; le mt-6 de
+              leur formulaire est annulé quand il vient en premier. */}
           <slot />
         </div>
       )
