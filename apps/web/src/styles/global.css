@@ -1484,6 +1484,21 @@ body:has(.ml-stand-fin) > footer {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Sur la tablette du stand, la fenêtre de personnalisation prend TOUT l'écran,
+   quelle que soit sa taille (27/11, Alexandra : « tu peux grandir la popup
+   pour qu'elle fasse toute la taille de l'écran », « sur tablette stand »).
+   Le site garde sa fenêtre centrée sur un ordinateur. */
+html[data-stand="1"] .ml-modal-overlay {
+  padding: 0;
+}
+html[data-stand="1"] .ml-modal-panel {
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  height: 100% !important;
+  border-radius: 0;
+}
+
 /* Plein écran sur mobile/tablette : la perso prend tout l'espace. */
 @media (max-width: 768px) {
   .ml-modal-overlay {
