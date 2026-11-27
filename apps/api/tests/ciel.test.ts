@@ -83,3 +83,15 @@ test("thèmes : trois couleurs donnent tout le dégradé, « Nuit » retrouve le
   // Le rendu porte bien la couleur choisie.
   assert.ok(svgDuCiel(47.75, 7.34, new Date(), lus[0]).includes("#8877aa"));
 });
+
+test("garde-fou : 120 créations par minute et par adresse passent, la 121e non ; deux compteurs ne se gênent pas (27/11)", async () => {
+  const { compteurParMinute, CIELS_PAR_MINUTE } = await import("../src/ciel.ts");
+  assert.equal(CIELS_PAR_MINUTE, 120);
+  const ciels = compteurParMinute(CIELS_PAR_MINUTE);
+  const apercus = compteurParMinute(CIELS_PAR_MINUTE);
+  for (let i = 0; i < 120; i++) assert.equal(ciels("203.0.113.9"), false, `appel ${i + 1}`);
+  assert.equal(ciels("203.0.113.9"), true, "le 121e est refusé");
+  // Un autre compteur, ou une autre adresse : rien de partagé.
+  assert.equal(apercus("203.0.113.9"), false);
+  assert.equal(ciels("203.0.113.10"), false);
+});

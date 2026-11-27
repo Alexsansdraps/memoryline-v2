@@ -469,17 +469,39 @@ export function chercherVilles(q: string, max = 8): Omit<Ville, "cles">[] {
     .map(({ v: { cles: _c, ...reste } }) => reste);
 }
 
-/** Cadence : un ciel se calcule en une seconde, pas besoin de plus de 10 par minute. */
-const appels = new Map<string, number[]>();
-function tropDAppels(ip: string): boolean {
-  const maintenant = Date.now();
-  const recents = (appels.get(ip) ?? []).filter((t) => maintenant - t < 60_000);
-  recents.push(maintenant);
-  appels.set(ip, recents);
-  if (appels.size > 5000)
-    for (const [k, v] of appels) if (!v.some((t) => maintenant - t < 60_000)) appels.delete(k);
-  return recents.length > 10;
+/**
+ * Un compteur par minute et par adresse, à part pour chaque route (27/11).
+ *
+ * Alexandra, en essayant la fiche (thème « encre ») : « Trop de demandes
+ * d'affilée » — « Pour ÇA il faut pas de limite ! parce que ça consomme pas
+ * de token. » Il y avait 10 appels par minute, et ce compteur était PARTAGÉ
+ * entre la création d'un ciel et les aperçus de thèmes du BO : ouvrir BO ›
+ * Ciel étoilé : couleurs en usait déjà six. Désormais aucune limite qu'une
+ * personne puisse atteindre : seulement un garde-fou contre les robots, à
+ * 120 par minute, chaque route le sien. Un ciel ne coûte aucun jeton, mais
+ * environ 0,3 s de processeur et près de 1 Mo de disque gardé 30 jours s'il
+ * n'est pas acheté : sans rien, un script remplirait le disque.
+ *
+ * Rend une fonction qui compte l'appel de cette adresse et dit s'il dépasse.
+ * Exportée pour les essais (tests/ciel.test.ts).
+ */
+export function compteurParMinute(max: number): (ip: string) => boolean {
+  const appels = new Map<string, number[]>();
+  return (ip: string) => {
+    const maintenant = Date.now();
+    const recents = (appels.get(ip) ?? []).filter((t) => maintenant - t < 60_000);
+    recents.push(maintenant);
+    appels.set(ip, recents);
+    if (appels.size > 5000)
+      for (const [k, v] of appels) if (!v.some((t) => maintenant - t < 60_000)) appels.delete(k);
+    return recents.length > max;
+  };
 }
+
+/** Le garde-fou de chaque route : 120 par minute et par adresse. */
+export const CIELS_PAR_MINUTE = 120;
+const tropDeCiels = compteurParMinute(CIELS_PAR_MINUTE);
+const tropDApercusDeThemes = compteurParMinute(CIELS_PAR_MINUTE);
 
 export function mountCielRoutes(app: Hono): void {
   /** GET /ia/ciel/villes?q=mulh → les villes proposées sous le champ. */
@@ -521,7 +543,7 @@ export function mountCielRoutes(app: Hono): void {
     const cle = `${theme.fond}${theme.etoiles}${theme.dorures}`;
     let png = apercusThemes.get(cle);
     if (!png) {
-      if (tropDAppels(ipDeLaRequete(c))) return c.json({ error: "Trop de demandes" }, 429);
+      if (tropDApercusDeThemes(ipDeLaRequete(c))) return c.json({ error: "Trop de demandes" }, 429);
       const svg = svgDuCiel(47.75, 7.34, new Date(Date.UTC(2025, 5, 14, 21, 10)), theme).replace(
         `width="${LARGEUR_CIEL}" height="${HAUTEUR_CIEL}"`,
         `width="600" height="${Math.round((600 * HAUTEUR_CIEL) / LARGEUR_CIEL)}"`,
@@ -543,7 +565,7 @@ export function mountCielRoutes(app: Hono): void {
    */
   app.post("/ia/ciel", async (c: Context) => {
     const ip = ipDeLaRequete(c);
-    if (tropDAppels(ip))
+    if (tropDeCiels(ip))
       return c.json({ error: "Trop de demandes d'affilée, réessayez dans une minute" }, 429);
     const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
     const productId = Number(b.productId);

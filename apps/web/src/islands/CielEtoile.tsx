@@ -163,7 +163,12 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
       /* sans la liste, le serveur prend le premier thème */
     }
   });
-  const [erreur, setErreur] = createSignal(false);
+  /**
+   * Le message d'un échec. Un refus pour trop de demandes (429) dit de
+   * patienter une minute (27/11) : il disait « vérifiez la date », ce qui
+   * était faux. Tout autre échec garde ciel.erreur.
+   */
+  const [erreur, setErreur] = createSignal<"ciel.erreur" | "ia.err.rafale" | null>(null);
   const [creation, setCreation] = createSignal<{ publicId: string; apercuChemin: string; apercu: string } | null>(null);
 
   async function dessiner(e: Event) {
@@ -175,7 +180,7 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
       return;
     }
     setOccupe(true);
-    setErreur(false);
+    setErreur(null);
     try {
       const r = await fetch(`${PUBLIC_API_URL}/ia/ciel`, {
         method: "POST",
@@ -193,12 +198,16 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
         }),
       });
       const data = (await r.json().catch(() => null)) as { publicId?: string; apercu?: string } | null;
+      if (r.status === 429) {
+        setErreur("ia.err.rafale");
+        return;
+      }
       if (!r.ok || !data?.publicId || !data.apercu) throw new Error(String(r.status));
       const cree = { publicId: data.publicId, apercuChemin: data.apercu, apercu: apercuAbsolu(data.apercu) };
       if (props.onCree) props.onCree(cree);
       else setCreation(cree);
     } catch {
-      setErreur(true);
+      setErreur("ciel.erreur");
     } finally {
       setOccupe(false);
     }
@@ -337,9 +346,11 @@ export default function CielEtoile(props: CielEtoileProps): JSX.Element {
           {occupe() ? tr("ciel.calcul") : creation() ? tr("ciel.redessiner") : tr("ciel.dessiner")}
         </button>
         <Show when={erreur()}>
-          <p role="status" class="border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep">
-            {tr("ciel.erreur")}
-          </p>
+          {(cle) => (
+            <p role="status" class="border border-terracotta/40 bg-terracotta/10 px-4 py-3 text-sm text-terracotta-deep">
+              {tr(cle())}
+            </p>
+          )}
         </Show>
       </form>
 
