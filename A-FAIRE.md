@@ -1,8 +1,32 @@
-# À faire — Memory Line (à jour le 21/11)
+# À faire — Memory Line (à jour le 27/11)
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 27/11, 11 h 50 : tout `main` est en ligne (`0a01048`) ; les étapes à onglets de la fenêtre IA sont en construction (pas commitées)
+## 0. État au 27/11, 13 h 50 : en ligne jusqu'à `c75d866` ; 3 commits prêts mais PAS en ligne (`7c211ce`, `0d3ccef`, `171c887`) ; les étapes de la fenêtre IA restent À FAIRE
+
+### 0.0000000000000 À FAIRE EN PREMIER : des étapes dans la fenêtre « Personnaliser » des affiches IA (photo ET ciel étoilé)
+- Demande d'Alexandra (27/11, vers 13 h 40), sur la fiche Ciel étoilé puis sur l'affiche à partir d'une photo : « pareil ici on met des steps car la page est trop longue », « quand on ouvre c'est trop long faut des steps ». Elle a arrêté la session (« mets dans à faire je continue après à mon taf ») : **rien n'est commencé ici**, AfficheIA.tsx a seulement été lu.
+- **Attention au doublon** : ce fichier disait à 11 h 50 « étapes à onglets de la fenêtre IA en construction (pas commitées) ». Ce travail n'est dans aucun commit et pas sur le PC de la maison (aucune modification locale, aucune autre session). S'il existe sur l'autre poste, le reprendre LÀ, après `git pull` — AfficheIA.tsx a bougé depuis (mode ciel `props.ciel`, rangée des styles en ZoneDefilante, titre de la fenêtre). Sinon, partir du plan ci-dessous. Ne pas faire les deux.
+- Plan retenu (même fenêtre pour les deux produits, `apps/web/src/islands/AfficheIA.tsx`, colonne « Commandes ») :
+  - **4 étapes**, en pastilles en haut de la colonne des réglages, comme le module des affiches personnalisables (`.ml-cfg-etapes` / `.ml-cfg-etape`, global.css) : « 1. Photo » (style, photo, relais du téléphone, sens, précision, « Créer mon affiche », puis « Générer une autre version » et « Recommencer » une fois l'affiche obtenue) ou « 1. Ciel » (le formulaire CielEtoile : date, heure, ville, couleurs, « Dessiner mon ciel ») ; « 2. Texte » (les 3 lignes, leurs polices, la couleur) ; « 3. Personnages » (portrait seulement ; sans affiche : dire de la créer d'abord) ; « 4. Format » (format, quantité, « Ajouter au panier », éteint tant qu'aucune affiche n'existe).
+  - Les étapes se **masquent** (classe `hidden`), elles ne se démontent pas : le formulaire du ciel (date et ville saisies), le champ fichier (`champFichier`), le relais photo et les repères (`blocStyle`, `boutonCreer`) doivent rester montés.
+  - En bas, « Retour » / « Continuer », barre collée sur le modèle de `BarreActions` (`.ml-cfg-pied`, packages/configurator/src/components/Defilement.tsx — pas encore exportée du paquet). À l'étape 1, « Continuer » en bouton secondaire tant qu'aucune affiche n'existe : l'action principale reste « Créer mon affiche ».
+  - Un envoi de photo ou une création qui échoue, ou une photo qui arrive du téléphone, ramène à l'étape 1 (le message d'erreur y est) ; un refus du panier s'affiche à l'étape 4.
+  - L'aperçu (colonne de gauche) et « Vos créations » ne changent pas. Libellés des étapes dans ui.ts, 7 langues.
+  - **Stand compris** : c'est l'écran de la tablette du marché. L'essayer au harnais (`apps/web/.harnais-persos`, `/affiches/affiche-photo?styles=7`, mode stand) avant toute mise en ligne, et mettre en ligne marché fermé. Le harnais est hors de git : sur ce PC, `demarrer.mjs` réécrit maintenant aussi l'import `./CielEtoile.tsx` (ligne à recopier sur l'autre poste, sinon il refuse de démarrer).
+
+### 0.000000000000 COMMITÉ ET POUSSÉ, PAS EN LIGNE (à mettre en ligne sur un « met en prod » d'Alexandra, marché fermé de préférence)
+- `7c211ce` : la fenêtre du ciel s'appelle « Votre ciel étoilé » (plus « Votre affiche à partir de votre photo ») et son aperçu vide montre une carte du ciel au lieu d'une photo ; 7 langues.
+- `0d3ccef` : BO › Ciel étoilé : couleurs — « Activé / Désactivé » au lieu de « Proposé » sur chaque thème (« tu mets activé/désactivé plutôt que proposé »).
+- `171c887` : affiche photo, « Quel genre d'affiche ? » — les styles tiennent sur UNE rangée qui défile de côté, avec les flèches et la barre des listes du site (ZoneDefilante) : « ça doit tjs rester scroll horizontal », « le scroll doit être visible aussi ». Essayé au harnais avec 7 styles : défilement aux flèches, barre visible, coche du style choisi entière.
+- Vérifié : tsc du site sans erreur nouvelle (les 3 de StandSalon.tsx sont anciennes), astro check du BO 0 erreur. La mise en ligne de `7c211ce` a été refusée par le contrôle de sécurité (3e de la journée, marché ouvert, pas demandée) : ne pas la forcer, attendre son feu vert.
+
+### 0.00000000000 (suite) EN LIGNE DEPUIS LE 27/11 À 13 H 25 (`c75d866`) : thèmes de couleurs du ciel, produit Ciel étoilé remis en vente
+- Mises en ligne à 13 h 13 (`2fb40fd`) et 13 h 25 (`c75d866`, migration 0119) sur « met le en ligne » puis « le produit tu le met en ligne » d'Alexandra : marché ouvert, mais 0 activité sur 15 minutes avant chacune ; sauvegarde faite.
+- **Thèmes** : 3 couleurs par thème (fond, étoiles, dorures), tout le reste calculé — dégradé du ciel, dôme, collines, constellations (`teintesDuTheme`, apps/api/src/ciel.ts). 6 thèmes de base (Nuit, Encre, Sapin, Bordeaux, Rose poudré, Crème), réglage `ciel.themes`. BO › Atelier › Affiches IA › « Ciel étoilé : couleurs » (`/bo/ciel`) : créer, renommer, recolorer avec aperçu (`/ia/ciel/apercu-theme`), désactiver, supprimer. Sur la fiche, rangée « Couleurs du ciel » (`/ia/ciel/themes`). Tests : `tests/ciel.test.ts`, 8/8.
+- Vérifié en prod : fiche 200 et dans le catalogue ; « Personnaliser » montre les 6 thèmes, Nuit choisi ; l'aperçu d'un thème est servi. PAS vu : la page `/bo/ciel` (je ne me connecte pas au BO). Aucun ciel créé en prod de mon côté : le parcours complet jusqu'au panier reste à essayer par Alexandra.
+- **Produit** : `/affiches/ciel-etoile`, désactivé le 26/11 au soir (0117, « genre desactiver »), remis en vente le 27/11 (0119). Le statut « Caché » existe au BO (en vente par son lien, hors listes). « Vos créations » n'apparaît pas sur cette fiche (`66e6c00`). Filigrane centré sur la carte (`ebc9332`). Reste à la boutique : traductions du nom et de la description, visuel définitif (celui en place est l'exemple « Naissance de Mathis »).
+- Protos pour Margaux, hors dépôt : `Documents/memory-line/protos/` (proto-naissance-mathis.png, proto-mathis-2-lignes.png).
 
 ### 0.00000000000 EN LIGNE DEPUIS LE 27/11 À 11 H 49 (`0a01048`, avec `8f166ac` et `591ee54`)
 - Sur « met en prod » d'Alexandra. Avant : tsc de l'API, 601 tests de l'API (599 réussis, 2 sautés, 0 échec), 82 tests du BO, astro check et tsc du site sans erreur nouvelle. Pas de migration.
