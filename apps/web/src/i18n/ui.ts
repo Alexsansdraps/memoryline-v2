@@ -921,10 +921,8 @@ export const ui = {
     "ciel.texte_place": "Place du texte",
     "ciel.texte_haut": "Texte en haut",
     "ciel.texte_bas": "Texte en bas",
-    "ciel.silh.mettre": "Mettre sur mon ciel",
     "ciel.silh.retirer": "Retirer",
     // 27/11, Alexandra : « non on interverti au drag and drop »
-    "ciel.silh.glisser": "Glissez pour changer l'ordre",
     "ciel.silh.inverser": "Retourner",
     "ciel.silh.taille": "Taille des personnages",
     "ciel.groupe.seul": "Seul·e",
@@ -992,7 +990,6 @@ export const ui = {
     "ciel.silh.enfant": "Enfant",
     "ciel.silh.enfant-sur-epaules": "Enfant sur les épaules",
     "ciel.silh.adulte-bebe": "Adulte et bébé",
-    "ciel.silh.montre-le-ciel": "Montre le ciel",
     "ciel.silh.chien": "Chien",
 
     "ciel.silh.chat": "Chat",
@@ -1864,10 +1861,8 @@ export const ui = {
     "ciel.texte_place": "Text position",
     "ciel.texte_haut": "Text at top",
     "ciel.texte_bas": "Text at bottom",
-    "ciel.silh.mettre": "Add to my sky",
     "ciel.silh.retirer": "Remove",
     // 27/11, Alexandra : « non on interverti au drag and drop »
-    "ciel.silh.glisser": "Drag to change the order",
     "ciel.silh.inverser": "Flip",
     "ciel.silh.taille": "Size of the figures",
     "ciel.groupe.seul": "On my own",
@@ -1935,7 +1930,6 @@ export const ui = {
     "ciel.silh.enfant": "Child",
     "ciel.silh.enfant-sur-epaules": "Child on shoulders",
     "ciel.silh.adulte-bebe": "Adult with baby",
-    "ciel.silh.montre-le-ciel": "Pointing at the sky",
     "ciel.silh.chien": "Dog",
 
     "ciel.silh.chat": "Cat",
@@ -2823,10 +2817,8 @@ export const ui = {
     "ciel.texte_place": "Textposition",
     "ciel.texte_haut": "Text oben",
     "ciel.texte_bas": "Text unten",
-    "ciel.silh.mettre": "Auf meinen Himmel setzen",
     "ciel.silh.retirer": "Entfernen",
     // 27/11, Alexandra : « non on interverti au drag and drop »
-    "ciel.silh.glisser": "Ziehen, um die Reihenfolge zu ändern",
     "ciel.silh.inverser": "Umdrehen",
     "ciel.silh.taille": "Größe der Figuren",
     "ciel.groupe.seul": "Allein",
@@ -2894,7 +2886,6 @@ export const ui = {
     "ciel.silh.enfant": "Kind",
     "ciel.silh.enfant-sur-epaules": "Kind auf den Schultern",
     "ciel.silh.adulte-bebe": "Erwachsener mit Baby",
-    "ciel.silh.montre-le-ciel": "Zeigt zum Himmel",
     "ciel.silh.chien": "Hund",
 
     "ciel.silh.chat": "Katze",
@@ -3763,10 +3754,8 @@ export const ui = {
     "ciel.texte_place": "Posizione del testo",
     "ciel.texte_haut": "Testo in alto",
     "ciel.texte_bas": "Testo in basso",
-    "ciel.silh.mettre": "Metti sul mio cielo",
     "ciel.silh.retirer": "Rimuovi",
     // 27/11, Alexandra : « non on interverti au drag and drop »
-    "ciel.silh.glisser": "Trascinate per cambiare l'ordine",
     "ciel.silh.inverser": "Capovolgere",
     "ciel.silh.taille": "Dimensione dei personaggi",
     "ciel.groupe.seul": "Da solo",
@@ -3834,7 +3823,6 @@ export const ui = {
     "ciel.silh.enfant": "Bambino",
     "ciel.silh.enfant-sur-epaules": "Bambino sulle spalle",
     "ciel.silh.adulte-bebe": "Adulto con neonato",
-    "ciel.silh.montre-le-ciel": "Indica il cielo",
     "ciel.silh.chien": "Cane",
 
     "ciel.silh.chat": "Gatto",
@@ -4702,10 +4690,8 @@ export const ui = {
     "ciel.texte_place": "Posición del texto",
     "ciel.texte_haut": "Texto arriba",
     "ciel.texte_bas": "Texto abajo",
-    "ciel.silh.mettre": "Poner en mi cielo",
     "ciel.silh.retirer": "Quitar",
     // 27/11, Alexandra : « non on interverti au drag and drop »
-    "ciel.silh.glisser": "Arrastre para cambiar el orden",
     "ciel.silh.inverser": "Voltear",
     "ciel.silh.taille": "Tamaño de los personajes",
     "ciel.groupe.seul": "Solo",
@@ -4773,7 +4759,6 @@ export const ui = {
     "ciel.silh.enfant": "Niño",
     "ciel.silh.enfant-sur-epaules": "Niño a hombros",
     "ciel.silh.adulte-bebe": "Adulto con bebé",
-    "ciel.silh.montre-le-ciel": "Señala el cielo",
     "ciel.silh.chien": "Perro",
 
     "ciel.silh.chat": "Gato",
@@ -5530,10 +5515,8 @@ export const ui = {
     "ciel.texte_place": "文字の位置",
     "ciel.texte_haut": "文字を上に",
     "ciel.texte_bas": "文字を下に",
-    "ciel.silh.mettre": "星空に配置する",
     "ciel.silh.retirer": "外す",
     // 27/11, Alexandra : « non on interverti au drag and drop »
-    "ciel.silh.glisser": "ドラッグで順番を変更",
     "ciel.silh.inverser": "向きを反転",
     "ciel.silh.taille": "人物の大きさ",
     "ciel.groupe.seul": "ひとり",
@@ -5601,7 +5584,6 @@ export const ui = {
     "ciel.silh.enfant": "子ども",
     "ciel.silh.enfant-sur-epaules": "肩車",
     "ciel.silh.adulte-bebe": "赤ちゃんを抱く人",
-    "ciel.silh.montre-le-ciel": "空を指さす人",
     "ciel.silh.chien": "犬",
 
     "ciel.silh.chat": "猫",
@@ -6358,10 +6340,8 @@ export const ui = {
     "ciel.texte_place": "文字位置",
     "ciel.texte_haut": "文字在上",
     "ciel.texte_bas": "文字在下",
-    "ciel.silh.mettre": "放到我的星空上",
     "ciel.silh.retirer": "移除",
     // 27/11, Alexandra : « non on interverti au drag and drop »
-    "ciel.silh.glisser": "拖动以调整顺序",
     "ciel.silh.inverser": "翻转",
     "ciel.silh.taille": "人物大小",
     "ciel.groupe.seul": "一个人",
@@ -6429,7 +6409,6 @@ export const ui = {
     "ciel.silh.enfant": "孩子",
     "ciel.silh.enfant-sur-epaules": "骑在肩上的孩子",
     "ciel.silh.adulte-bebe": "抱婴儿的大人",
-    "ciel.silh.montre-le-ciel": "指向天空",
     "ciel.silh.chien": "狗",
 
     "ciel.silh.chat": "猫",
