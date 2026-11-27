@@ -471,7 +471,7 @@ export const ui = {
     "stand.code_injoignable":
       "Le stand n'a pas répondu. Vérifiez la connexion, puis réessayez.",
     "stand.nom": "Votre nom",
-    "stand.email": "Votre adresse e-mail",
+    "stand.email": "Votre adresse e-mail (facultatif)",
     "stand.nom_vide": "Indiquez votre nom.",
     "stand.email_invalide": "Cette adresse e-mail est incomplète.",
     "stand.valider_une": "Valider mon affiche",
@@ -1386,7 +1386,7 @@ export const ui = {
     "stand.code_injoignable":
       "The stand did not respond. Check the connection, then try again.",
     "stand.nom": "Your name",
-    "stand.email": "Your email address",
+    "stand.email": "Your email address (optional)",
     "stand.nom_vide": "Please enter your name.",
     "stand.email_invalide": "This email address is incomplete.",
     "stand.valider_une": "Confirm my poster",
@@ -2278,7 +2278,7 @@ export const ui = {
     "stand.code_injoignable":
       "Der Stand antwortet nicht. Prüfen Sie die Verbindung und versuchen Sie es erneut.",
     "stand.nom": "Ihr Name",
-    "stand.email": "Ihre E-Mail-Adresse",
+    "stand.email": "Ihre E-Mail-Adresse (optional)",
     "stand.nom_vide": "Bitte geben Sie Ihren Namen ein.",
     "stand.email_invalide": "Diese E-Mail-Adresse ist unvollständig.",
     "stand.valider_une": "Mein Poster bestätigen",
@@ -3169,7 +3169,7 @@ export const ui = {
     "stand.code_injoignable":
       "Lo stand non ha risposto. Controlla la connessione e riprova.",
     "stand.nom": "Il tuo nome",
-    "stand.email": "Il tuo indirizzo e-mail",
+    "stand.email": "Il tuo indirizzo e-mail (facoltativo)",
     "stand.nom_vide": "Inserisci il tuo nome.",
     "stand.email_invalide": "Questo indirizzo e-mail è incompleto.",
     "stand.valider_une": "Conferma il mio poster",
@@ -4047,7 +4047,7 @@ export const ui = {
     "stand.code_injoignable":
       "El puesto no ha respondido. Comprueba la conexión y vuelve a intentarlo.",
     "stand.nom": "Tu nombre",
-    "stand.email": "Tu correo electrónico",
+    "stand.email": "Tu correo electrónico (opcional)",
     "stand.nom_vide": "Indica tu nombre.",
     "stand.email_invalide": "Esta dirección de correo está incompleta.",
     "stand.valider_une": "Validar mi lámina",
@@ -4882,7 +4882,7 @@ export const ui = {
     "stand.code_perime": "このタブレットが記憶しているコードは、営業中のスタンドと一致しなくなりました。本日のコードを入力してください。",
     "stand.code_injoignable": "スタンドから応答がありませんでした。接続を確認して、もう一度お試しください。",
     "stand.nom": "お名前",
-    "stand.email": "メールアドレス",
+    "stand.email": "メールアドレス（任意）",
     "stand.nom_vide": "お名前を入力してください。",
     "stand.email_invalide": "このメールアドレスは不完全です。",
     "stand.valider_une": "ポスターを確定する",
@@ -5651,7 +5651,7 @@ export const ui = {
     "stand.code_perime": "此平板记住的代码已不对应任何开放的摊位。请输入当天的代码。",
     "stand.code_injoignable": "摊位没有响应。请检查网络连接后重试。",
     "stand.nom": "您的姓名",
-    "stand.email": "您的电子邮箱",
+    "stand.email": "您的电子邮箱（选填）",
     "stand.nom_vide": "请填写您的姓名。",
     "stand.email_invalide": "此电子邮箱地址不完整。",
     "stand.valider_une": "确认我的海报",

@@ -323,7 +323,10 @@ export function mountSalonRoutes(app: Hono): void {
     const nom = String(body.name ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
     if (!nom) return c.json({ error: "Le nom du client est nécessaire." }, 400);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    // L'adresse est FACULTATIVE au stand depuis le 27/11 (Alexandra : « plus
+    // besoin d'email pour créer une affiche stand pour le client, juste un nom
+    // car ils mettent n'imp ») : vide, la vente se fait sans courrier.
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return c.json({ error: "L'adresse e-mail ne semble pas valide." }, 400);
 
     const [panier] = await db
@@ -352,16 +355,16 @@ export function mountSalonRoutes(app: Hono): void {
 
     // Une fiche par personne, pas une par commande : un habitué des salons
     // reviendra, et on veut retrouver son historique.
-    const [existant] = await db
-      .select()
-      .from(schema.customers)
-      .where(eq(schema.customers.email, email));
+    // Sans adresse, une fiche neuve à chaque fois (rien pour reconnaître la personne).
+    const [existant] = email
+      ? await db.select().from(schema.customers).where(eq(schema.customers.email, email))
+      : [];
     const client =
       existant ??
       (
         await db
           .insert(schema.customers)
-          .values({ name: nom, email })
+          .values({ name: nom, email: email || null })
           .returning()
       )[0]!;
     if (existant && !existant.name)

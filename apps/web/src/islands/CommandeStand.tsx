@@ -221,7 +221,8 @@ export default function CommandeStand(props: {
       setErreur(tr("stand.nom_vide"));
       return;
     }
-    if (!COURRIEL.test(m)) {
+    // Facultative depuis le 27/11 : vide, on passe ; tapée, elle doit tenir.
+    if (m && !COURRIEL.test(m)) {
       setErreur(tr("stand.email_invalide"));
       return;
     }
@@ -374,7 +375,6 @@ export default function CommandeStand(props: {
             autocapitalize="off"
             spellcheck={false}
             inputmode="email"
-            required
             class={CHAMP}
           />
           {/* Aucune phrase sous l'adresse : au stand, le client parle à la
