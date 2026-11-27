@@ -16,16 +16,50 @@
  * resynchronisé au passage : il dépend de la date du jour.
  */
 import { eq, isNull } from "drizzle-orm";
-import { ouvertureEffective } from "@memoryline/types";
+import { champAParis, horairesDuJour, jourAParis, ouvertureEffective, type StandCalendrier } from "@memoryline/types";
 import { db, schema } from "./db/client.js";
 import { calendrierDuStand, synchroniserLieuDuStand } from "./lieux-retrait.js";
+
+/**
+ * Une heure de marge après la fermeture du calendrier (27/11 au soir,
+ * Alexandra, à 21 h 58 : « le marché de Noël de Mulhouse, il est ouvert selon
+ * calendrier, alors que selon calendrier, il est censé fermer à 21 h » ; choix
+ * retenu : « Fermer + 1 h de marge »).
+ */
+export const MARGE_APRES_FERMETURE_MIN = 60;
+
+/** « 21:00 » + 60 min → « 22:00 » ; plafonné à « 24:00 » (minuit). */
+function apresMinutes(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(":").map(Number) as [number, number];
+  const t = Math.min(24 * 60, h * 60 + m + minutes);
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+
+/**
+ * La tablette d'un stand « calendrier » prend-elle des ventes maintenant ?
+ * Les jours de marché (ouvertureEffective, packages/types), de l'heure
+ * d'ouverture du premier créneau jusqu'à 1 h après la fin du dernier, à
+ * l'heure de Paris. Un jour sans heure connue reste ouvert toute la journée,
+ * comme avant. La règle vit ICI et non dans packages/types : y toucher
+ * changerait l'empreinte des fichiers d'impression, qui se referaient tous.
+ */
+export function ouvertAuxHeures(cal: StandCalendrier, maintenant: Date): boolean {
+  if (!ouvertureEffective(cal, maintenant)) return false;
+  if (cal.pilotage !== "calendrier") return true;
+  const { creneaux } = horairesDuJour(cal.horaires, jourAParis(maintenant));
+  if (!creneaux.length) return true;
+  const debut = creneaux.map((c) => c.de).sort()[0]!;
+  const fin = creneaux.map((c) => c.a).sort()[creneaux.length - 1]!;
+  const heure = champAParis(maintenant).slice(11, 16);
+  return heure >= debut && heure < apresMinutes(fin, MARGE_APRES_FERMETURE_MIN);
+}
 
 /** Remet l'ouverture d'un stand d'accord avec son calendrier, et son lieu de retrait. */
 export async function appliquerCalendrier(standId: number, maintenant = new Date()): Promise<void> {
   const [stand] = await db.select().from(schema.stands).where(eq(schema.stands.id, standId));
   if (!stand) return;
   if (stand.pilotage === "calendrier" && !stand.archivedAt) {
-    const ouvert = ouvertureEffective(calendrierDuStand(stand), maintenant);
+    const ouvert = ouvertAuxHeures(calendrierDuStand(stand), maintenant);
     if (ouvert !== stand.ouvert)
       await db
         .update(schema.stands)
