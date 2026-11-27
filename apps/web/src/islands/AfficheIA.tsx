@@ -988,6 +988,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       "femme-cheval-couche",
       "homme-cheval",
     ],
+    // Les animaux seuls (27/11 au soir, Alexandra : « on n'a aucun animal
+    // seul, alors que je t'avais filé des animaux seuls dans les ombres »),
+    // détachés de leurs scènes dans la 2e planche.
+    animaux: ["chien-assis", "chat-assis", "lapin", "deux-lapins", "chien-et-cheval"],
   } as const;
   type GroupeSilhouettes = keyof typeof GROUPES_SILHOUETTES;
   type SceneSilhouette = (typeof GROUPES_SILHOUETTES)[GroupeSilhouettes][number];
@@ -2174,7 +2178,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     // nouvelles ombres). Avant, `?v=assises` (les vignettes montraient encore les
     // silhouettes debout) : la réponse reste une heure en cache, l'adresse
     // neuve passe outre l'ancienne liste.
-    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=ombres-groupes-3`)
+    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=ombres-groupes-4`)
       .then((r) => r.json())
       .then((data: { silhouettes?: { id: string; d: string; gauche: number; droite: number; haut: number }[] }) =>
         setFormesSilhouettes(Object.fromEntries((data.silhouettes ?? []).map((s) => [s.id, s]))),
