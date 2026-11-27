@@ -2,25 +2,115 @@
 
 Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujours une mise en ligne de `main`. Le détail de chaque travail passé est dans `git log` et dans les commentaires du code. Ce fichier ne garde que l'état utile et ce qui RESTE. Ce que Margaux doit faire de son côté, elle le sait : ce n'est pas suivi ici.
 
-## 0. État au 27/11, 14 h : en ligne jusqu'à `c75d866` ; 3 commits prêts mais PAS en ligne (`7c211ce`, `0d3ccef`, `171c887`) ; À FAIRE : les étapes de la fenêtre IA, et plus de limite sur la création d'un ciel
+## 0. État au 27/11, 14 h 30 : en ligne jusqu'à `c75d866` ; 3 commits prêts mais PAS en ligne (`7c211ce`, `0d3ccef`, `171c887`) ; le « GO » ci-dessous reste entièrement à faire
 
-### 0.0000000000000 À FAIRE EN PREMIER : des étapes dans la fenêtre « Personnaliser » des affiches IA (photo ET ciel étoilé)
-- Demande d'Alexandra (27/11, vers 13 h 40), sur la fiche Ciel étoilé puis sur l'affiche à partir d'une photo : « pareil ici on met des steps car la page est trop longue », « quand on ouvre c'est trop long faut des steps ». Elle a arrêté la session (« mets dans à faire je continue après à mon taf ») : **rien n'est commencé ici**, AfficheIA.tsx a seulement été lu.
-- **Attention au doublon** : ce fichier disait à 11 h 50 « étapes à onglets de la fenêtre IA en construction (pas commitées) ». Ce travail n'est dans aucun commit et pas sur le PC de la maison (aucune modification locale, aucune autre session). S'il existe sur l'autre poste, le reprendre LÀ, après `git pull` — AfficheIA.tsx a bougé depuis (mode ciel `props.ciel`, rangée des styles en ZoneDefilante, titre de la fenêtre). Sinon, partir du plan ci-dessous. Ne pas faire les deux.
-- Plan retenu (même fenêtre pour les deux produits, `apps/web/src/islands/AfficheIA.tsx`, colonne « Commandes ») :
-  - **4 étapes**, en pastilles en haut de la colonne des réglages, comme le module des affiches personnalisables (`.ml-cfg-etapes` / `.ml-cfg-etape`, global.css) : « 1. Photo » (style, photo, relais du téléphone, sens, précision, « Créer mon affiche », puis « Générer une autre version » et « Recommencer » une fois l'affiche obtenue) ou « 1. Ciel » (le formulaire CielEtoile : date, heure, ville, couleurs, « Dessiner mon ciel ») ; « 2. Texte » (les 3 lignes, leurs polices, la couleur) ; « 3. Personnages » (portrait seulement ; sans affiche : dire de la créer d'abord) ; « 4. Format » (format, quantité, « Ajouter au panier », éteint tant qu'aucune affiche n'existe).
-  - Les étapes se **masquent** (classe `hidden`), elles ne se démontent pas : le formulaire du ciel (date et ville saisies), le champ fichier (`champFichier`), le relais photo et les repères (`blocStyle`, `boutonCreer`) doivent rester montés.
-  - En bas, « Retour » / « Continuer », barre collée sur le modèle de `BarreActions` (`.ml-cfg-pied`, packages/configurator/src/components/Defilement.tsx — pas encore exportée du paquet). À l'étape 1, « Continuer » en bouton secondaire tant qu'aucune affiche n'existe : l'action principale reste « Créer mon affiche ».
-  - Un envoi de photo ou une création qui échoue, ou une photo qui arrive du téléphone, ramène à l'étape 1 (le message d'erreur y est) ; un refus du panier s'affiche à l'étape 4.
-  - L'aperçu (colonne de gauche) et « Vos créations » ne changent pas. Libellés des étapes dans ui.ts, 7 langues.
-  - **Stand compris** : c'est l'écran de la tablette du marché. L'essayer au harnais (`apps/web/.harnais-persos`, `/affiches/affiche-photo?styles=7`, mode stand) avant toute mise en ligne, et mettre en ligne marché fermé. Le harnais est hors de git : sur ce PC, `demarrer.mjs` réécrit maintenant aussi l'import `./CielEtoile.tsx` (ligne à recopier sur l'autre poste, sinon il refuse de démarrer).
+### 0.GO — CE QU'IL Y A À FAIRE (Alexandra dira : « GO fais tout ça »)
 
-### 0.00000000000000 À FAIRE AUSSI : plus AUCUNE limite sur la création d'un ciel étoilé
-- Alexandra, 27/11 vers 13 h 35, en essayant la fiche Ciel étoilé (thème « encre ») : la création a répondu `{"error":"Trop de demandes d'affilée, réessayez dans une minute"}` (429). « Pour ÇA il faut pas de limite ! parce que ça consomme pas de token. »
-- **Cause** (apps/api/src/ciel.ts) : `tropDAppels` refuse au-delà de 10 appels par minute et par adresse, et ce compteur est **partagé** entre `POST /ia/ciel` (la création) et `GET /ia/ciel/apercu-theme` (l'aperçu des thèmes du BO, à chaque image pas encore en mémoire). Ouvrir BO › Ciel étoilé : couleurs après un redémarrage de l'API compte déjà 6 appels, chaque couleur changée en ajoute un : en essayant ensuite la fiche, la limite tombe tout de suite. Un appel refusé est compté lui aussi.
-- Ce qui N'est PAS en cause : les « 3 essais par jour sur le site » (`essaisDuJourSurLeSite`, ia.ts) ne comptent que les affiches à partir d'une photo — `filtreDuPerimetre("affiches")` écarte le modèle « ciel » — et `/ia/ciel` ne les consulte pas. Le plafond mensuel OpenAI non plus.
-- **À faire** : retirer `tropDAppels` de `POST /ia/ciel` (et sa phrase d'erreur) ; donner à l'aperçu des thèmes son propre compteur, large (ou aucun). Adapter `tests/ciel.test.ts` si un essai porte dessus ; le message « rafale » du site (`causeDuStatut`, 429) ne doit plus pouvoir venir du ciel.
-- À savoir avant de tout enlever : un ciel ne coûte aucun jeton, mais environ 0,3 s de processeur et près de 1 Mo de disque (PNG pleine définition + aperçu), gardés 30 jours s'il n'est pas acheté (`ia.purgeJours`). Sans aucune limite, un robot remplirait les 19 Go libres du VPS en quelques heures. Proposition : aucune limite qu'une personne puisse atteindre, et un garde-fou très haut contre les robots seulement (par exemple 120 par minute et par adresse, jamais vu par une cliente ni par la tablette du stand). À décider avec Alexandra : garde-fou très haut, ou vraiment rien.
+**Mode d'emploi pour la session qui reçoit le GO.** Faire les lots 1, 2 et 3 dans cet ordre, sans rien redemander : tout ce qui devait être décidé l'est (lignes « Décidé »). Un commit par lot, poussé sur `main`, sans ligne Co-Authored-By. Ne PAS mettre en ligne : à la fin, dire ce qui est prêt et attendre son « met en prod » (lot 4). Rien n'est commencé : aucun de ces lots n'a une ligne de code.
+
+Règles qui valent pour les trois lots :
+- **Ne rien toucher aux commandes ni à l'impression** : `commandes.ts`, `salon.ts`, `CheckoutIsland`, paiement, `pdf.ts`, `fichiers-impression.ts`, `couleurs-image-fichier.ts`, `packages/types/src/*` (ces derniers changent l'empreinte d'impression : tous les fichiers d'impression se referaient). Aucun des trois lots n'en a besoin.
+- **Rien en prod** : pas de ciel créé, pas de commande d'essai, pas de connexion au BO, jamais de lecture d'un `.env`.
+- Textes du site : en « vous », dans `apps/web/src/i18n/ui.ts`, dans les 7 langues (fr, en, de, it, es, ja, zh) — ils sont donnés plus bas. Commentaires du code en français, datés, avec la phrase d'Alexandra qui a motivé le changement.
+- Vérifier avant chaque commit : `npx tsc --noEmit -p .` dans `apps/api` et dans `apps/web` (côté site, 3 erreurs anciennes dans `StandSalon.tsx`, aucune autre) ; `npx astro check` dans `apps/admin` (0 erreur) ; `npx tsx --test tests/ciel.test.ts` dans `apps/api` (8 essais, sans base). Les tests sur base : recette de la base jetable au § 0.2 de ce fichier.
+- Doublon possible sur le lot 3 : voir sa première ligne.
+
+#### Lot 1 — Plus aucune limite sur la création d'un ciel étoilé (une demi-heure)
+- **Pourquoi.** Alexandra, 27/11, en essayant la fiche (thème « encre ») : réponse `{"error":"Trop de demandes d'affilée, réessayez dans une minute"}` (429). « Pour ÇA il faut pas de limite ! parce que ça consomme pas de token. »
+- **Cause** (`apps/api/src/ciel.ts`) : `tropDAppels` (vers la ligne 474) refuse au-delà de 10 appels par minute et par adresse, et ce compteur est partagé entre `POST /ia/ciel` (ligne 546, la création) et `GET /ia/ciel/apercu-theme` (ligne 524, les aperçus de thèmes du BO, à chaque image pas encore en mémoire). Ouvrir BO › Ciel étoilé : couleurs après un redémarrage de l'API compte déjà 6 appels, chaque couleur changée un de plus ; un appel refusé est compté lui aussi. Les « 3 essais par jour » de l'affiche photo ne sont pas en cause : `essaisDuJourSurLeSite` (ia.ts) écarte le modèle « ciel », et `/ia/ciel` ne les consulte pas.
+- **Décidé** (proposé à Alexandra le 27/11, sans objection) : aucune limite qu'une personne puisse atteindre. On garde seulement un garde-fou contre les robots, très haut : **120 créations par minute et par adresse**. Raison : un ciel ne coûte aucun jeton, mais environ 0,3 s de processeur et près de 1 Mo de disque gardé 30 jours s'il n'est pas acheté (`ia.purgeJours`) ; sans rien, un script remplirait les 19 Go libres du VPS en quelques heures. Si elle dit « vraiment aucune limite », retirer aussi ce garde-fou.
+- **À faire.**
+  1. Remplacer `tropDAppels` par un petit compteur réutilisable, par exemple `compteurParMinute(max)` qui rend une fonction `(ip) => boolean` avec sa propre table : un compteur à 120 pour `POST /ia/ciel`, un AUTRE à 120 pour `GET /ia/ciel/apercu-theme`. Les deux ne se partagent plus rien. Commentaire daté qui dit pourquoi (la phrase d'Alexandra).
+  2. Sur le site (`apps/web/src/islands/CielEtoile.tsx`, fonction `dessiner`) : aujourd'hui toute erreur affiche `ciel.erreur` (« Le ciel n'a pas pu être dessiné. Vérifiez la date et réessayez. »), même un 429, ce qui est faux. Sur un 429, afficher le texte de la clé existante `ia.err.rafale` ; le reste inchangé.
+  3. Tests (`apps/api/tests/ciel.test.ts`) : exporter le compteur et vérifier que 120 appels passent, que le 121e est refusé, et que deux compteurs ne se gênent pas.
+- **Fini quand** : les essais passent, tsc de l'API et du site sans erreur nouvelle, et la phrase « Trop de demandes » ne peut plus sortir de `/ia/ciel` qu'au-delà de 120 par minute.
+
+#### Lot 2 — « Nuit de Noël » sur la fiche Ciel étoilé : une étiquette cadeau, et un thème rouge et or (une à deux heures)
+- **Pourquoi.** Idée retenue par Alexandra le 27/11 : « Le ciel de la nuit de Noël. Un bouton "Nuit de Noël 2026" sur la fiche Ciel étoilé règle la date sur le 24 décembre à minuit, dans la ville de la cliente. On y ajoute un thème rouge et or. C'est idéal pour "le premier Noël de…". » Et : **« avec un btn original »**.
+- **Décidé.**
+  - Le bouton n'est pas un bouton ordinaire : c'est une **étiquette de cadeau** accrochée au formulaire, sous le champ « Heure » et avant « Ville » (`CielEtoile.tsx`, entre les blocs des lignes 235 et 240).
+  - Un toucher règle **la date sur le 24 décembre** de l'année de la saison, **l'heure sur 23:59** (c'est « minuit » sans faire passer la date au 25 : le champ affiche bien le 24, et le ciel est le même à une minute près), et choisit le thème **« Noël »** s'il est proposé. La ville ne change pas. La cliente peut tout modifier ensuite.
+  - **De saison** : l'étiquette ne s'affiche que du 1er novembre au 31 janvier (date du navigateur). L'année écrite dessus et réglée est celle du mois de décembre de la saison : en novembre et décembre, l'année en cours ; en janvier, l'année précédente.
+  - Thème « Noël » : fond `#7c1420`, étoiles `#fff6e5`, dorures `#e9c56b` (essayé le 27/11 sur un vrai rendu du ciel du 24/12 à Mulhouse : rouge profond, anneau or, nettement différent de « Bordeaux »).
+- **Le dessin de l'étiquette** (à régler à l'œil, mais l'idée est celle-ci) :
+  - Une étiquette de cadeau : rectangle dont le bout gauche finit en pointe, avec son œillet et un brin de ficelle qui remonte vers le haut ; **penchée de 3°** comme si elle pendait. Rouge de la boutique (`#9c1616`, la couleur `terracotta` du site), un **liseré or cousu** en pointillé à l'intérieur (`#e9c56b`), œillet blanc cerclé d'or, texte crème (`#fff6e5`).
+  - Dedans : une petite étoile à quatre branches dessinée en SVG (pas un emoji), « Nuit de Noël 2026 » en DM Serif Display, et dessous, en petit et en police du site, « 24 décembre, minuit ».
+  - Au survol ou au focus, elle se redresse et se balance une fois, comme une étiquette qu'on effleure (rien si l'appareil demande moins d'animations). Au toucher, l'étoile s'allume (pleine, or) et l'étiquette reste droite et « choisie » (`aria-pressed`) tant que la date et l'heure sont celles de la nuit de Noël ; si la cliente change la date ou l'heure, elle reprend sa pose.
+  - Un vrai `<button type="button">`, d'au moins 44 px de haut, contour de focus visible (ne pas découper le bouton lui-même avec `clip-path`, qui rognerait le contour : la forme est un SVG posé derrière le texte). Une phrase pour les lecteurs d'écran quand la date est réglée (`aria-live="polite"`).
+  - Pas de dégradé brillant, pas d'emoji sapin, pas de capitales espacées : ça doit avoir l'air fait main, pas « gabarit ».
+  - Croquis de départ (taille fixe 15 rem × 4 rem, `max-width: 100%`) :
+    ```tsx
+    <button type="button" class="ml-etiquette-noel" aria-pressed={noelRegle()} onClick={reglerNoel}>
+      <svg aria-hidden="true" viewBox="0 0 240 64" class="absolute inset-0 h-full w-full overflow-visible">
+        <path d="M24 32 C 8 28, 6 10, 16 0" fill="none" stroke="#b08d57" stroke-width="2" stroke-linecap="round" />
+        <path d="M32 2 H234 a4 4 0 0 1 4 4 V58 a4 4 0 0 1 -4 4 H32 L8 32 Z" fill="#9c1616" />
+        <path d="M35 7 H231 V57 H35 L16 32 Z" fill="none" stroke="#e9c56b" stroke-width="1.2" stroke-dasharray="4 3" />
+        <circle cx="26" cy="32" r="4.5" fill="#fff" stroke="#e9c56b" stroke-width="1.5" />
+      </svg>
+      <svg aria-hidden="true" viewBox="0 0 24 24" class="relative h-5 w-5 shrink-0">
+        <path d="M12 2 13.8 10.2 22 12 13.8 13.8 12 22 10.2 13.8 2 12 10.2 10.2Z"
+          fill={noelRegle() ? "#e9c56b" : "none"} stroke="#e9c56b" stroke-width="1.4" stroke-linejoin="round" />
+      </svg>
+      <span class="relative leading-tight">
+        <span class="block text-lg" style={{ "font-family": "'DM Serif Display', serif" }}>{tr("ciel.noel.bouton").replace("{annee}", String(anneeDeNoel))}</span>
+        <span class="block text-xs opacity-90">{tr("ciel.noel.detail")}</span>
+      </span>
+    </button>
+    ```
+    et, dans `apps/web/src/styles/global.css` : position relative, `display: inline-flex`, `align-items: center`, `gap: .6rem`, largeur 15 rem, hauteur 4 rem, `padding: 0 1rem 0 2.75rem`, couleur `#fff6e5`, `transform: rotate(-3deg)` avec `transform-origin: 1.6rem 50%` (l'œillet), transition douce ; au survol et au focus `rotate(0)` plus un balancement d'une seconde (`@keyframes` : −3° → 2,5° → −1,5° → 0°) sous `@media (prefers-reduced-motion: no-preference)` ; `[aria-pressed="true"]` reste à 0°. Vérifier que la police DM Serif Display est bien chargée sur la fiche (elle sert aux textes des affiches).
+- **Les textes** (`ui.ts`, 7 langues, `{annee}` remplacé par le code) :
+  - `ciel.noel.bouton` — fr « Nuit de Noël {annee} » · en « Christmas night {annee} » · de « Heiligabend {annee} » · it « Notte di Natale {annee} » · es « Nochebuena {annee} » · ja « {annee}年のクリスマスイブ » · zh « {annee}年平安夜 »
+  - `ciel.noel.detail` — fr « 24 décembre, minuit » · en « 24 December, midnight » · de « 24. Dezember, Mitternacht » · it « 24 dicembre, mezzanotte » · es « 24 de diciembre, medianoche » · ja « 12月24日 真夜中 » · zh « 12月24日午夜 »
+  - `ciel.noel.regle` (dit aux lecteurs d'écran) — fr « Date réglée sur la nuit de Noël. » · en « Date set to Christmas night. » · de « Datum auf Heiligabend gestellt. » · it « Data impostata sulla notte di Natale. » · es « Fecha ajustada a la Nochebuena. » · ja « 日付をクリスマスイブに設定しました。 » · zh « 日期已设为平安夜。 »
+- **Le thème « Noël », à trois endroits.**
+  1. `apps/api/src/ciel.ts`, `THEMES_CIEL_DE_BASE` (ligne 176) : ajouter `{ id: "noel", nom: "Noël", fond: "#7c1420", etoiles: "#fff6e5", dorures: "#e9c56b", actif: true }` après « Bordeaux ».
+  2. `apps/admin/src/pages/ciel.astro`, `DE_BASE` (ligne 35) : la même ligne (cette liste recopie celle de l'API).
+  3. Une migration (la suivante est `0120_…`, entrée à ajouter dans `apps/api/drizzle/meta/_journal.json` : `idx` 120, `when` supérieur au dernier, soit 1795300000000) : les thèmes de base ne servent QUE tant que la boutique n'a rien enregistré au BO. Si le réglage `ciel.themes` existe déjà, il faut y ajouter le thème sans toucher aux autres :
+     ```sql
+     UPDATE "setting"
+     SET "value" = "value" || '[{"id":"noel","nom":"Noël","fond":"#7c1420","etoiles":"#fff6e5","dorures":"#e9c56b","actif":true}]'::jsonb,
+         "updated_at" = now()
+     WHERE "key" = 'ciel.themes'
+       AND jsonb_typeof("value") = 'array'
+       AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements("value") e WHERE e->>'id' = 'noel');
+     ```
+     Si le réglage n'existe pas, la requête ne fait rien et le thème vient de la liste de base. Margaux peut ensuite le renommer, le recolorer ou le désactiver au BO comme les autres.
+- **Le code du bouton** (`CielEtoile.tsx`) : `enSaison` et `anneeDeNoel` calculés au montage ; `reglerNoel()` fait `setDate(anneeDeNoel + "-12-24")`, `setHeure("23:59")`, et `setTheme("noel")` si `themes()` contient cet identifiant ; `noelRegle()` est vrai quand `date()` et `heure()` valent ces deux valeurs. Rien d'autre ne change : la création part par le même `POST /ia/ciel`.
+- **Fini quand** : hors saison l'étiquette n'apparaît pas (essayer en changeant la date de la machine ou en passant la date en paramètre de la fonction) ; en saison, un toucher règle 24/12 et 23:59, choisit « Noël », et « Dessiner mon ciel » crée le ciel de cette nuit-là ; l'essai `themesDuReglage` passe toujours ; l'étiquette est jolie sur téléphone (elle ne déborde pas) et au clavier.
+
+#### Lot 3 — Des étapes dans la fenêtre « Personnaliser » des affiches IA, photo ET ciel étoilé (une demi-journée)
+- **Avant tout, le doublon** : ce fichier disait le 27/11 à 11 h 50 « étapes à onglets de la fenêtre IA en construction (pas commitées) ». Ce travail n'est dans aucun commit et n'est pas sur le PC de la maison. S'il existe sur ce poste (`git status`, `git stash list`), le REPRENDRE après `git pull` — `AfficheIA.tsx` a changé depuis (mode ciel `props.ciel`, rangée des styles en `ZoneDefilante`, titre de la fenêtre) — et l'aligner sur ce qui suit. Sinon, partir de ce plan. Ne pas faire les deux.
+- **Pourquoi.** Alexandra, 27/11, sur la fiche Ciel étoilé puis sur l'affiche à partir d'une photo : « pareil ici on met des steps car la page est trop longue », « quand on ouvre c'est trop long faut des steps ». « Pareil » : comme le module des affiches personnalisables, qui a ses étapes en pastilles et sa barre du bas.
+- **Décidé.** Quatre étapes, les mêmes pour les deux produits sauf la première :
+  1. **« Photo »** (affiche photo) : le style, la photo, le relais du téléphone, la consigne « photo nette », le sens, la précision, puis « Créer mon affiche » ; une fois l'affiche obtenue, « Générer une autre version » et « Recommencer » viennent ICI (ils étaient tout en bas). **« Ciel »** (ciel étoilé) : le formulaire `CielEtoile` (date, heure, étiquette de Noël, ville, couleurs, « Dessiner mon ciel »).
+  2. **« Texte »** : les trois lignes, leurs polices, la couleur du texte.
+  3. **« Personnages »** : comme aujourd'hui (portrait seulement, la phrase en paysage). Tant qu'aucune affiche n'existe, une phrase à la place : « Créez d'abord votre affiche (étape 1). »
+  4. **« Format »** : le format, la quantité, « Ajouter au panier » (éteint tant qu'aucune affiche n'existe, avec la même phrase).
+- **Comment.** Tout est dans `apps/web/src/islands/AfficheIA.tsx`, colonne « Commandes » (lignes 1740 à 2329 à `b2d4ee7`) : bloc du ciel 1743-1755 ; style 1760-1827 ; titre « Votre photo » 1829-1832 ; zone de dépôt 1855-1920 ; relais 1930-1939 ; consigne 1944-1947 ; sens 1952-1985 ; précision 1987-1997 ; actions d'avant l'affiche 2004-2051 ; textes 2059-2118 ; format 2120-2146 ; personnages 2151-2237 ; message d'erreur 2239-2246 ; actions finales 2248-2327.
+  - Un nouveau signal, par exemple `volet` (« source » | « texte » | « personnages » | « format ») — surtout pas `etape`, qui existe déjà et dit autre chose (depot / envoi / generation / pret).
+  - **Les étapes se masquent, elles ne se démontent pas** (classe `hidden` sur leur conteneur, pas de `<Show>`) : le formulaire du ciel doit garder sa date et sa ville, et le champ fichier (`champFichier`), le relais photo (`RelaisPhoto`) et les repères (`blocStyle`, `boutonCreer`) doivent rester montés.
+  - En haut de la colonne : les pastilles, sur une ligne, numérotées (« 1. Photo », « 2. Texte »…), toutes cliquables à tout moment, celle de l'étape montrée marquée (`aria-current="step"`). Reprendre l'allure des pastilles du module (`.ml-cfg-etapes` / `.ml-cfg-etape` dans `global.css`, rendu dans `packages/configurator/src/index.tsx`).
+  - En bas : « Retour » (absent à la première étape) et « Continuer » (absent à la dernière, où « Ajouter au panier » tient ce rôle), dans une barre collée au bas de la fenêtre, sur le modèle de `BarreActions` (`packages/configurator/src/components/Defilement.tsx`, classe `.ml-cfg-pied` ; elle n'est pas exportée du paquet aujourd'hui : l'exporter ou refaire une barre simple). À l'étape 1, « Continuer » est un bouton secondaire (contour) tant qu'aucune affiche n'existe : l'action principale reste « Créer mon affiche » ; une fois l'affiche là, « Continuer » devient le bouton plein et « Générer une autre version » passe en contour.
+  - Changer d'étape remonte le haut de la colonne dans la vue (`corpsModale`) et ne déplace pas le focus hors de la fenêtre.
+  - **Retours automatiques à l'étape 1** : une photo choisie ou arrivée du téléphone (`choisirPhoto`), un envoi ou une création qui échoue (les `catch` de `choisirPhoto` et de `lancerGeneration`), « Recommencer » (`reprendreDepart`), et `rappelerLeStyle` (son bloc doit être visible avant le `scrollIntoView`). Le message d'erreur (`messageEchec`) s'affiche à l'étape 1 près du bouton de création, et à l'étape 4 au-dessus de « Ajouter au panier » pour un refus du panier.
+  - Ce qui ne bouge pas : l'aperçu de gauche, « Vos créations », la composition des personnages (elle remplace toujours toute la fenêtre), les règles du stand (pas de zone de dépôt sur la tablette, relais toujours là), et tout ce qui part au panier.
+- **Les textes** (`ui.ts`, 7 langues). Pour « Personnages » et « Format », réutiliser les clés du module, déjà traduites : `cfg.etape.personnages` et `cfg.etape.format` ; « Retour » et « Continuer » existent aussi (`cfg.retour`, `cfg.continuer`). À créer :
+  - `ia.etape.photo` — fr « Photo » · en « Photo » · de « Foto » · it « Foto » · es « Foto » · ja « 写真 » · zh « 照片 »
+  - `ia.etape.ciel` — fr « Ciel » · en « Sky » · de « Himmel » · it « Cielo » · es « Cielo » · ja « 星空 » · zh « 星空 »
+  - `ia.etape.texte` — fr « Texte » · en « Text » · de « Text » · it « Testo » · es « Texto » · ja « 文字 » · zh « 文字 »
+  - `ia.etape.creer_dabord` — fr « Créez d'abord votre affiche (étape 1). » · en « Create your poster first (step 1). » · de « Erstellen Sie zuerst Ihr Poster (Schritt 1). » · it « Crea prima il tuo poster (passaggio 1). » · es « Crea primero tu lámina (paso 1). » · ja « まずステップ1でポスターを作成してください。 » · zh « 请先在第 1 步制作海报。 »
+- **Vérifier — c'est l'écran de la tablette du marché.** Au harnais local (`apps/web/.harnais-persos`, hors git ; aperçu « harnais-persos », il écoute toujours sur le port 5199) : `/affiches/affiche-photo?styles=7`, puis en mode stand ; parcours complet photo → création → texte → personnages → format → panier ; une création qui échoue ; une photo qui arrive pendant qu'on est à l'étape 3 ; téléphone (375 px), tablette, grand écran ; clavier. Si `demarrer.mjs` refuse de démarrer (« imports relatifs non réécrits dans HEAD : ./CielEtoile.tsx »), lui ajouter la ligne `.replaceAll('from "./CielEtoile.tsx"', 'from "../../src/islands/CielEtoile.tsx"')` à la suite des autres. Le harnais ne sait peut-être pas jouer le produit ciel (`ciel`, `/ia/ciel`, `/ia/ciel/themes`) : le lui apprendre dans `api-maquette.mjs` et `main.tsx`, ou le dire clairement dans le compte rendu si ce n'est pas essayé.
+- **Fini quand** : aucune étape ne dépasse à peu près un écran sur la tablette ; rien n'est perdu en passant d'une étape à l'autre (photo, date, ville, textes, personnages) ; les deux produits et le stand ont été essayés au harnais ; tsc du site sans erreur nouvelle.
+
+#### Lot 4 — Mise en ligne, sur son « met en prod » seulement
+- À la fin des trois lots : dire à Alexandra ce qui est commité, ce qui a été essayé et ce qui ne l'a pas été, puis attendre. Une seule mise en ligne, marché fermé de préférence (11 h – 20 h : seulement si elle le demande, et après avoir vérifié qu'il n'y a aucune activité).
+- Elle emportera aussi les trois commits déjà en attente (`7c211ce`, `0d3ccef`, `171c887`, détail plus bas) et la migration du thème « Noël ». Recette : § 5 de ce fichier. Après : le site, le stand, le BO et l'API répondent, la fiche `/affiches/ciel-etoile` aussi, aucune erreur dans les journaux ; ne créer aucun ciel en prod (c'est Alexandra qui essaie).
+- Puis mettre ce fichier à jour (ce qui est en ligne, ce qui reste), commiter, pousser.
+
+### 0.RÉSERVE — idées de Noël notées, PAS dans le GO (seulement si Alexandra les demande)
+- **Le calendrier 2027 de la famille** : une affiche avec le titre en haut, les 12 mois, les personnages en bas, les anniversaires marqués d'un cœur ; même mécanique que le ciel (fond calculé, thèmes, aucun appel à OpenAI). Environ une journée.
+- **« Nous au marché de Noël »** : une affiche personnalisable classique, les personnages en bonnet devant un marché de Noël alsacien. Rien à coder : Margaux dessine les fonds et un bonnet, et crée le produit au BO.
+- **Un prénom sous chaque personnage** (« Les petits-enfants de Mamie Jo ») : touche au moteur d'impression, donc après le marché.
 
 ### 0.000000000000 COMMITÉ ET POUSSÉ, PAS EN LIGNE (à mettre en ligne sur un « met en prod » d'Alexandra, marché fermé de préférence)
 - `7c211ce` : la fenêtre du ciel s'appelle « Votre ciel étoilé » (plus « Votre affiche à partir de votre photo ») et son aperçu vide montre une carte du ciel au lieu d'une photo ; 7 langues.
