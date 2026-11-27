@@ -2117,18 +2117,10 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           )}
         </For>
       </div>
-      {/* 2. Une scène, ou aucune (un toucher la pose, le ciel se redessine). */}
+      {/* 2. Les scènes (un toucher la pose ou la retire, le ciel se redessine). Plus
+          de bouton « Aucun » (27/11 au soir, Alexandra : « il sert à rien ») :
+          la croix de chaque scène posée la retire. */}
       <div role="group" aria-label={tr(`ciel.groupe.${groupeSilhouettes()}`)} class="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
-        <button
-          type="button"
-          role="radio"
-          aria-checked={choixSilhouettes().length === 0}
-          onClick={() => setChoixSilhouettes([])}
-          class="ml-choix flex min-w-0 flex-col items-center justify-center gap-1 border border-ink/15 px-1 pb-1.5 pt-2 text-center text-[11px] leading-tight hover:border-ink/45"
-        >
-          <span aria-hidden="true" class="flex h-14 items-center text-2xl text-ink/30">∅</span>
-          <span>{tr("ciel.silh.aucun")}</span>
-        </button>
         <For each={GROUPES_SILHOUETTES[groupeSilhouettes()] as readonly SceneSilhouette[]}>
           {(id) => (
             <button
