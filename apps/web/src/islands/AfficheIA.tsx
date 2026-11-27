@@ -2019,10 +2019,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
   >({});
   createEffect(() => {
     if (!modeCiel() || volet() !== "personnages" || Object.keys(formesSilhouettes()).length) return;
-    // `?v=assises` (27/11, Alexandra : les vignettes montraient encore les
+    // `?v=…` changée à chaque nouveau catalogue (27/11 au soir, Alexandra : « y a
+    // plus de prévisu ??? » — le navigateur gardait la liste sans les
+    // nouvelles ombres). Avant, `?v=assises` (les vignettes montraient encore les
     // silhouettes debout) : la réponse reste une heure en cache, l'adresse
     // neuve passe outre l'ancienne liste.
-    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=ombres-image`)
+    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=ombres-groupes-2`)
       .then((r) => r.json())
       .then((data: { silhouettes?: { id: string; d: string; gauche: number; droite: number; haut: number }[] }) =>
         setFormesSilhouettes(Object.fromEntries((data.silhouettes ?? []).map((s) => [s.id, s]))),
