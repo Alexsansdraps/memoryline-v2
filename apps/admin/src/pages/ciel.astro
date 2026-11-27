@@ -11,7 +11,7 @@
  * un même ciel d'exemple.
  *
  * Rangés dans le réglage `ciel.themes`. Tant que la boutique n'y a pas touché,
- * ce sont les six thèmes de base. Un thème décoché n'est plus proposé aux
+ * ce sont les six thèmes de base. Un thème désactivé n'est plus proposé aux
  * clientes ; les affiches déjà créées gardent leurs couleurs (elles sont dans
  * l'image).
  */
@@ -100,7 +100,7 @@ if (Astro.request.method === "POST" && !flashErreur) {
         actif: f.getAll("actif").map(String).includes(id),
       }));
       if (!suivants.some((t) => t.actif)) {
-        flash = "Gardez au moins un thème proposé : sans thème, la fiche n'aurait plus de couleurs à offrir. Rien n'a été enregistré.";
+        flash = "Gardez au moins un thème activé : sans thème, la fiche n'aurait plus de couleurs à offrir. Rien n'a été enregistré.";
         flashErreur = true;
       } else {
         await api.setSetting(REGLAGE, suivants);
@@ -123,13 +123,13 @@ if (Astro.request.method === "POST" && !flashErreur) {
         };
         themes = [...themes, nouveau];
         await api.setSetting(REGLAGE, themes);
-        flash = `Thème « ${nom} » ajouté et proposé sur la fiche.`;
+        flash = `Thème « ${nom} » ajouté et activé sur la fiche.`;
       }
     } else if (action === "supprimer") {
       const id = String(f.get("id") ?? "");
       const reste = themes.filter((t) => t.id !== id);
       if (!reste.some((t) => t.actif)) {
-        flash = "C'est le dernier thème proposé : il ne peut pas être supprimé.";
+        flash = "C'est le dernier thème activé : il ne peut pas être supprimé.";
         flashErreur = true;
       } else {
         const nom = themes.find((t) => t.id === id)?.nom ?? "Ce thème";
@@ -205,9 +205,11 @@ const urlApercu = apiUrl("/ia/ciel/apercu-theme");
             </label>
           </div>
           <div class="mt-3 flex items-center justify-between gap-2">
+            {/* « Activé / Désactivé » (27/11, Alexandra) : le mot du BO pour
+                tout ce qui s'allume et s'éteint, plutôt que « Proposé ». */}
             <label class="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="actif" value={t.id} checked={t.actif} />
-              Proposé
+              <input type="checkbox" name="actif" value={t.id} checked={t.actif} data-etat />
+              <span data-etat-texte>{t.actif ? "Activé" : "Désactivé"}</span>
             </label>
             <button
               type="submit"
@@ -266,6 +268,13 @@ const urlApercu = apiUrl("/ia/ciel/apercu-theme");
   </section>
 
   <script is:inline define:vars={{ urlApercu }}>
+    // « Activé » / « Désactivé » suit la case.
+    document.querySelectorAll("[data-etat]").forEach(function (c) {
+      c.addEventListener("change", function () {
+        var t = c.parentElement && c.parentElement.querySelector("[data-etat-texte]");
+        if (t) t.textContent = c.checked ? "Activé" : "Désactivé";
+      });
+    });
     // L'aperçu suit les couleurs : à chaque couleur lâchée, l'image du bloc
     // est redemandée à l'API avec les trois couleurs du moment.
     document.querySelectorAll("[data-theme]").forEach(function (bloc) {
