@@ -31,6 +31,12 @@ Faits le 27/11 au soir et EN LIGNE (`e4bb63c`) : couleur des ombres par thème (
 - Limites : un paiement confirmé plus tard (webhook) ou un onglet fermé avant « Merci » ne donne pas de Purchase (il faudrait l'API Conversions, eventID `achat-<numéro>` déjà prêt) ; une commande réglée par carte cadeau compte son total entier.
 - Déjà là avant, à décider : aucun lien « Gérer les cookies » pour revenir sur son choix (exigence CNIL, vaut aussi pour Google) ; GA4 reçoit les adresses à jeton dans page_location (à masquer dans les réglages de GA4).
 
+## 0.1 quinquies EN COURS le 28/11 après-midi — « finis le à faire sauf la partie personnages », EN PROD CE SOIR après 20 h
+
+- Chantiers lancés (agents, en local) : « Gérer les cookies » dans le pied de page + pas de bandeau à la tablette + en-tête sans débordement de 768 à 1280 px ; petits défauts du configurateur (barre du bas à 360 px, bulle « Plus bas », poignée ⠿, champ qui s'agrandit, avertissement emoji non imprimable, ♥ ☀ ❄ en couleur à l'écran, couleur du texte qui suit le fond sur l'affiche du stand) ; BO « tout traduire » des pages ; pages légales et recherche en japonais et chinois (migration 0123) ; audit PageSpeed (rapport seulement) — dossier `travaux/finir-a-faire/`.
+- Décisions d'Alexandra (28/11 vers 13 h 25) : plein écran + étape « 2. Texte » sur TOUTES les affiches personnalisables (chantier `travaux/finir-a-faire/workflow-plein-ecran.js`, après celui du configurateur) ; panier : corriger seulement l'affichage « 1 personnage » (le contrôle de couleur reste débranché) ; ombres : retoucher le chat de « Papa, trois enfants et un chat » (pas de renommage de « Papa et bébé ») ; mise en prod : ce soir.
+- Laissés exprès : traduction de la ligne 2 par défaut de l'affiche du stand (les lignes par défaut restent en français, comme partout) ; fenêtre ouverte sur le sapin (Margaux peut ordonner les fonds au BO) ; noms des pièces du module en ja/zh et texte ja/zh imprimé (touche l'impression) ; facture sans emojis et vignettes orphelines (commandes) ; import Shopify et « Continuer avec Google » (attendent Alexandra/Margaux).
+
 ## 0.2 Règles
 
 - **Mise en ligne** : hors ouverture du marché (avant 11 h, après 20 h), Claude met en ligne directement en mode « hotfix ». Pendant l'ouverture : seulement sur un « met en prod » d'Alexandra pour CE changement, après avoir vérifié qu'il n'y a aucune activité (`docker compose -f docker-compose.prod.yml logs --since 15m api | grep -ciE 'cart|checkout|commande'`). Recette : § 5.
