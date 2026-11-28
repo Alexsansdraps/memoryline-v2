@@ -4,7 +4,7 @@ Fichier de reprise, à lire en premier. **`main` fait foi** : la prod est toujou
 
 ## 0. État
 
-- **Tout `main` est EN LIGNE** (dernière mise en ligne de code : `3c9f0be`, 27/11 vers 22 h 25).
+- ⚠ **`main` N'EST PLUS DÉPLOYABLE TEL QUEL depuis le 28/11 vers 13 h 40** (« commit push » d'Alexandra) : il contient le travail INTERROMPU de l'après-midi (voir 0.1 quinquies : cookies/en-tête, configurateur, BO tout traduire, japonais-chinois avec la migration 0123, chat, panier), qui compile mais N'EST PAS VÉRIFIÉ. Avant toute mise en ligne : finir et vérifier ces chantiers (ou les annuler). La prod est à `dd2c0ef` (pixel Meta, 28/11 13 h 15), saine.
 - Marché de Noël de Mulhouse : du 20/11 au 27/12, 11 h – 20 h (le calendrier du stand ferme à 21 h ; le stand se ferme seul 1 h après la fin du dernier créneau).
 - Réglés par Alexandra le 27/11 à 22 h 30, à ne plus proposer : le message rouge « crédit » ; les lectures de contrôle des ventes du stand du 26/11.
 

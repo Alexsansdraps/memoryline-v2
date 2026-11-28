@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, createUniqueId, For, on, onCleanup, Show } from "solid-js";
 import {
   aLaLargeur,
   COULEURS_TEXTE_AFFICHE,
@@ -17,7 +17,69 @@ import type { CharacterDTO, ConfiguratorState } from "../store";
 import { Field, PastilleCouleur } from "./ui";
 import { ZoneDefilante } from "./Defilement";
 import { ChoixMotif, TitreDeChoix, type CouleurDeMotif } from "./ChoixMotif";
+import { peutContenirEmoji, regleDesEmojis, type RegleEmojis } from "./emojis-imprimables";
 import type { MessagesConfigurateur } from "../messages";
+
+/**
+ * Au plus, la hauteur que prend un champ de ligne qui grandit avec son texte :
+ * huit lignes à l'écran, puis il défile. Une ligne de l'affiche n'a pas de
+ * longueur maximale, et un texte collé par erreur ne doit pas pousser tout
+ * l'écran hors de la fenêtre.
+ */
+const LIGNES_MAX_CHAMP = 8;
+
+/**
+ * « Le champ d'une ligne longue ne s'agrandit pas » (recette du 16-17/11,
+ * A-FAIRE § 2 ; Alexandra, 28/11 : « finis le à faire »).
+ *
+ * Une zone de texte ne grandit que par son nombre de rangées (`rows`), qui suit
+ * les retours à la ligne tapés : une ligne longue, repliée par le navigateur,
+ * restait dans un champ d'une rangée où l'on ne voyait que sa fin. Le champ
+ * prend maintenant la hauteur de ce qu'il contient, dès que son texte dépasse
+ * ses rangées — à la frappe, quand un motif écrit son nom, à la réouverture
+ * depuis le panier, quand la fenêtre change de largeur. Tant que tout tient,
+ * il ne porte aucune hauteur à lui : un champ court est exactement celui
+ * d'avant. Seul l'écran change : le texte enregistré reste celui qu'on tape.
+ */
+function brancherHauteurDuChamp(champ: HTMLTextAreaElement, valeur: () => string): void {
+  let image = 0;
+  const ajuster = () => {
+    cancelAnimationFrame(image);
+    image = requestAnimationFrame(() => {
+      // D'abord la hauteur de ses rangées, comme avant : c'est elle qu'on
+      // compare au contenu.
+      champ.style.height = "";
+      if (!champ.isConnected || champ.scrollHeight <= champ.clientHeight + 1) return;
+      const style = getComputedStyle(champ);
+      const marges = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+      const bords = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+      const interligne = parseFloat(style.lineHeight);
+      const plafond = Number.isFinite(interligne) ? interligne * LIGNES_MAX_CHAMP + marges : Infinity;
+      // scrollHeight compte la marge intérieure, pas les bords.
+      const contenu = Math.min(champ.scrollHeight, plafond);
+      champ.style.height = `${style.boxSizing === "border-box" ? contenu + bords : contenu - marges}px`;
+    });
+  };
+  createEffect(on(valeur, ajuster));
+  // La largeur seule compte : c'est elle qui replie le texte. Sa propre
+  // hauteur, que l'on vient de poser, ne doit pas relancer la mesure.
+  let largeur = -1;
+  const taille =
+    typeof ResizeObserver === "undefined"
+      ? undefined
+      : new ResizeObserver((entrees) => {
+          const l = entrees[entrees.length - 1]?.contentRect.width ?? -1;
+          if (Math.abs(l - largeur) < 0.5) return;
+          largeur = l;
+          ajuster();
+        });
+  taille?.observe(champ);
+  void document.fonts?.ready.then(ajuster);
+  onCleanup(() => {
+    cancelAnimationFrame(image);
+    taille?.disconnect();
+  });
+}
 
 /**
  * Étape 1 : fond + les trois lignes de texte.
@@ -181,6 +243,27 @@ export function StepBackgroundText(props: {
     ];
   };
 
+  /*
+   * « Les emojis plus récents que Twemoji 15.0 disparaissent du papier sans
+   * avertissement » (recette du 16-17/11, A-FAIRE § 2 ; Alexandra, 28/11 :
+   * « finis le à faire »). Sous une ligne, une phrase polie dit quel emoji ne
+   * sera pas imprimé, d'après la règle même de l'impression
+   * (emojis-imprimables.ts). Elle n'arrive qu'avec le premier pictogramme
+   * tapé : sans emoji, rien n'est chargé et l'écran ne change pas.
+   */
+  const [regle, setRegle] = createSignal<RegleEmojis | null>(null);
+  createEffect(() => {
+    if (regle() || !props.state.lignes.some((l) => peutContenirEmoji(l.value))) return;
+    void regleDesEmojis().then((r) => {
+      if (r) setRegle(() => r);
+    });
+  });
+  /** Les emojis de ce texte que le papier n'aura pas. */
+  const nonImprimes = (valeur: string): string[] => {
+    const r = regle();
+    return r && peutContenirEmoji(valeur) ? r(valeur) : [];
+  };
+
   return (
     <div class="ml-cfg-step">
       <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
@@ -303,7 +386,12 @@ export function StepBackgroundText(props: {
       {/* Les lignes de l'affiche : même champ pour toutes, aucune n'est le
           titre. Une ligne laissée vide n'est pas dessinée. */}
       <For each={props.state.lignes}>
-        {(ligne, i) => (
+        {(ligne, i) => {
+          // Les emojis de la ligne que le papier n'aura pas (voir plus haut),
+          // et l'identifiant de la phrase qui le dit, lue avec le champ.
+          const absents = createMemo(() => nonImprimes(ligne.value));
+          const idAvertissement = createUniqueId();
+          return (
           <Field
             label={
               m().champsLignes[i()] ?? m().ligneN.replace("{n}", String(i() + 1))
@@ -311,13 +399,16 @@ export function StepBackgroundText(props: {
           >
             {/* Une zone de texte, pour que la touche Entrée coupe la ligne
                 (« SAINT-VALERY- » / « SUR-SOMME ») ; elle grandit avec le
-                nombre de morceaux, trois au plus. La phrase qui l'expliquait
-                sous les champs est partie à la demande de la boutiquière :
-                le geste reste, sans mode d'emploi. */}
+                nombre de morceaux, trois au plus — et, depuis le 28/11, avec
+                la longueur du texte (brancherHauteurDuChamp). La phrase qui
+                l'expliquait sous les champs est partie à la demande de la
+                boutiquière : le geste reste, sans mode d'emploi. */}
             <textarea
+              ref={(champ) => brancherHauteurDuChamp(champ, () => ligne.value)}
               rows={Math.min(MORCEAUX_PAR_LIGNE, ligne.value.split("\n").length)}
               value={ligne.value}
               placeholder={m().exemplesLignes[i()] ?? ""}
+              aria-describedby={absents().length > 0 ? idAvertissement : undefined}
               onInput={(e) => {
                 const champ = e.currentTarget;
                 const value = limiterRetours(champ.value);
@@ -326,6 +417,28 @@ export function StepBackgroundText(props: {
               }}
               style={{ ...inputStyle, resize: "none", "line-height": "1.4" }}
             />
+            {/* Toujours là, vide le plus souvent : un lecteur d'écran annonce
+                la phrase quand elle arrive. Sans emoji manquant, rien ne
+                s'affiche et rien ne bouge. */}
+            <span aria-live="polite" style={{ display: "block" }}>
+              <Show when={absents().length > 0}>
+                <span
+                  id={idAvertissement}
+                  style={{
+                    display: "block",
+                    margin: "5px 0 2px",
+                    "font-size": "13px",
+                    "line-height": "1.4",
+                    color: "#92400e",
+                  }}
+                >
+                  {(absents().length > 1 ? m().emojisNonImprimes : m().emojiNonImprime).replace(
+                    "{emojis}",
+                    absents().join(" "),
+                  )}
+                </span>
+              </Show>
+            </span>
             <ChoixPolice ligne={i()} />
             {/* 27/11, Alexandra : « faudrait que ça propose 3 tailles de texte
                 à chaque fois sur chaque ligne 1, 2, 3 ». Trois « A » de tailles
@@ -361,7 +474,8 @@ export function StepBackgroundText(props: {
               </div>
             </Show>
           </Field>
-        )}
+          );
+        }}
       </For>
 
       {/* Couleur PARTAGÉE par les trois lignes. Deux teintes seulement : un

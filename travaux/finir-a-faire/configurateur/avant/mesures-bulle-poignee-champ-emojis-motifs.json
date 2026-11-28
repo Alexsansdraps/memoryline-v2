@@ -1,0 +1,131 @@
+{
+ "bulle": {
+  "360x640": {
+   "visible": true,
+   "texte": "Plus bas : couleurs, cheveux, accessoires et vêtements",
+   "bulle": [
+    31,
+    506,
+    279,
+    570
+   ],
+   "couvertes": 5
+  },
+  "320x568": {
+   "visible": true,
+   "texte": "Plus bas : couleurs, cheveux, accessoires et vêtements",
+   "bulle": [
+    31,
+    414,
+    239,
+    478
+   ],
+   "couvertes": 3
+  },
+  "375x667": {
+   "visible": true,
+   "texte": "Plus bas : couleurs, cheveux, accessoires et vêtements",
+   "bulle": [
+    31,
+    550,
+    294,
+    597
+   ],
+   "couvertes": 2
+  },
+  "390x844": {
+   "visible": true,
+   "texte": "Plus bas : couleurs, cheveux, accessoires et vêtements",
+   "bulle": [
+    31,
+    727,
+    309,
+    774
+   ],
+   "couvertes": 0
+  }
+ },
+ "poignee": {
+  "bureau": {
+   "boite": [
+    19,
+    19
+   ],
+   "cible": [
+    20,
+    20
+   ],
+   "ligne": [
+    386,
+    52
+   ],
+   "glyphe": [
+    9,
+    17
+   ]
+  },
+  "tel": {
+   "boite": [
+    19,
+    19
+   ],
+   "cible": [
+    20,
+    20
+   ],
+   "ligne": [
+    328,
+    52
+   ],
+   "glyphe": [
+    9,
+    17
+   ]
+  }
+ },
+ "champ": {
+  "bureau": {
+   "hauteur": 38,
+   "contenu": 55,
+   "client": 36,
+   "rows": 1
+  },
+  "tel": {
+   "hauteur": 38,
+   "contenu": 55,
+   "client": 36,
+   "rows": 1
+  }
+ },
+ "emojis": [
+  {
+   "rang": "0",
+   "html": 124,
+   "texte": "MERS-LES-BAINS",
+   "taille": "8cqw"
+  },
+  {
+   "rang": "1",
+   "html": 190,
+   "texte": "Joyeux Noël 🎄 🫩 🐦‍🔥",
+   "taille": "5.5cqw"
+  },
+  {
+   "rang": "2",
+   "html": 179,
+   "texte": "♥ ☀ ❄ ❤ 🎄 ⭐",
+   "taille": "4.6cqw"
+  }
+ ],
+ "motifs": {
+  "Rouge Noël (uni)": "rgb(255, 255, 255)",
+  "Crème (uni)": "rgb(255, 255, 255)",
+  "Bleu ciel (uni)": "rgb(255, 255, 255)",
+  "Neige (dégradé)": "rgb(255, 255, 255)",
+  "Vichy rouge": "rgb(255, 255, 255)",
+  "Cœurs alsaciens": "rgb(255, 255, 255)",
+  "Aube rosée (dégradé)": "rgb(255, 255, 255)",
+  "Crépuscule (dégradé)": "rgb(255, 255, 255)",
+  "Bleu nuit (uni)": "rgb(255, 255, 255)"
+ }
+}

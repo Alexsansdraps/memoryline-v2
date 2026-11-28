@@ -19,6 +19,7 @@
  * même ordre.
  */
 import { PUBLIC_API_URL, avecStand } from "./api-navigateur.ts";
+import { assezLongPourChercher, langueAIdeogrammes } from "./recherche-saisie.ts";
 
 interface Trouvee {
   slug: string;
@@ -155,10 +156,13 @@ function brancher({ champ, panneau, basculer }: Branchement): void {
   champ.setAttribute("aria-controls", panneau.id);
   champ.setAttribute("aria-expanded", "false");
 
-  champ.addEventListener("input", () => {
+  // Japonais et chinois (28/11, même règle que la page de recherche,
+  // lib/recherche-saisie.ts) : un idéogramme seul suffit, et l'on attend
+  // qu'un clavier japonais ou chinois ait fini de composer son mot.
+  const relancer = () => {
     const q = champ.value.trim();
     window.clearTimeout(minuterie);
-    if (q.length < 2) {
+    if (!assezLongPourChercher(q, langue)) {
       enCours?.abort();
       derniere = "";
       vider();
@@ -166,7 +170,12 @@ function brancher({ champ, panneau, basculer }: Branchement): void {
       return;
     }
     minuterie = window.setTimeout(() => void chercher(q), ATTENTE_MS);
+  };
+  champ.addEventListener("input", (e) => {
+    if (langueAIdeogrammes(langue) && (e as InputEvent).isComposing) return;
+    relancer();
   });
+  if (langueAIdeogrammes(langue)) champ.addEventListener("compositionend", relancer);
 
   // Revenir dans le champ rouvre les derniers résultats.
   champ.addEventListener("focus", () => {
@@ -181,7 +190,7 @@ function brancher({ champ, panneau, basculer }: Branchement): void {
       const premier = liste.querySelector<HTMLAnchorElement>("a");
       if (premier && derniere === champ.value.trim()) {
         window.location.href = premier.href;
-      } else if (champ.value.trim().length >= 2) {
+      } else if (assezLongPourChercher(champ.value, langue)) {
         window.clearTimeout(minuterie);
         void chercher(champ.value.trim());
       }

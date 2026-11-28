@@ -925,14 +925,26 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         À droite, cette contrainte tombe. La rangée redevient une simple
         ligne, le champ peut être plus large ET apparaître plus tôt : dès
         1024 px au lieu de 1290.
+
+        EN-TÊTE COMPACT ENTRE 1024 ET 1279 PX (28/11, A-FAIRE 0.6 ; Alexandra :
+        « finis le à faire sauf la partie personnages »). Le champ y arrivait
+        à côté d'un menu en 14 px aux grands espacements de l'ordinateur : à
+        1024 px, il tombait à 173 px et son indication se coupait
+        (« Rechercher une ») ; pour une administratrice connectée, le bouton
+        « Back-office » l'écrasait à 60 px et poussait le choix de la langue
+        hors de l'écran. Sous 1280 px, le menu garde donc la taille et les
+        espacements de la tablette (13 px, 20 px entre les entrées), la
+        rangée et le logo se rapprochent (16 px), et le bouton du back-office
+        n'est plus qu'une icône (plus bas). À partir de 1280 px, rien ne
+        change : ce sont les mêmes classes `xl:` qu'avant.
       */}
       <div
-        class="flex w-full items-center gap-4 px-4 py-4 max-[359px]:gap-3 sm:gap-6 sm:px-4 xl:px-10"
+        class="flex w-full items-center gap-4 px-4 py-4 max-[359px]:gap-3 sm:gap-6 sm:px-4 lg:gap-4 xl:gap-6 xl:px-10"
       >
         {/* Le logo et le menu, à leur largeur naturelle. `shrink-0` est ce
             qui empêche les libellés de se couper : sans lui, le navigateur
             comprime ce groupe dès que la rangée est chargée. */}
-        <div class="mr-auto flex min-w-0 items-center gap-3 max-[359px]:gap-2 sm:gap-5 lg:shrink-0 lg:gap-6">
+        <div class="mr-auto flex min-w-0 items-center gap-3 max-[359px]:gap-2 sm:gap-5 lg:shrink-0 lg:gap-4 xl:gap-6">
           {/* LE MENU SUR TÉLÉPHONE.
 
               Sous 768 px, la barre de menu est masquée (`hidden md:flex`,
@@ -1061,7 +1073,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
 
           <nav
             aria-label={tr("nav.accueil")}
-            class="hidden md:flex items-center gap-5 text-[13px] font-semibold lg:gap-6 lg:text-[14px] lg:whitespace-nowrap"
+            class="hidden md:flex items-center gap-5 text-[13px] font-semibold lg:whitespace-nowrap xl:gap-6 xl:text-[14px]"
           >
             {/* Le menu vient du back-office. Une entrée sans sous-lien est un
                 simple lien ; les autres se déroulent au clic, et se referment au
@@ -1218,7 +1230,12 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           </a>
           {/* Raccourci d'administration. Volontairement discret : il ne
               s'affiche que pour une session de back-office valide, et ne doit
-              pas concurrencer le panier dans l'œil du client. */}
+              pas concurrencer le panier dans l'œil du client.
+              Sous 1280 px, l'icône seule dans un petit carré (28/11, « en-tête
+              compact sous 1280 px ») : le mot faisait déborder l'en-tête à
+              1024 px. Il reste lu par les lecteurs d'écran, et le survol
+              donne toujours le titre. Les `max-xl:` ne valent que sous
+              1280 px : au-dessus, le bouton est celui d'avant. */}
           {admin && (
             <a
               href={lienBackOffice}
@@ -1226,7 +1243,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
               title={`Back-office — ${admin.email} (${
                 admin.role === "owner" ? "propriétaire" : "vendeur"
               })`}
-              class="hidden sm:inline-flex items-center gap-1.5 border border-ink/15 px-2.5 py-1 text-[12px] text-ink/55 hover:text-terracotta hover:border-terracotta/40 transition-colors"
+              class="hidden sm:inline-flex items-center gap-1.5 border border-ink/15 px-2.5 py-1 text-[12px] text-ink/55 hover:text-terracotta hover:border-terracotta/40 transition-colors max-xl:h-7 max-xl:w-7 max-xl:justify-center max-xl:px-0 max-xl:py-0"
             >
               <svg
                 width="13"
@@ -1243,7 +1260,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
                 <path d="M3 9h18" />
                 <path d="M8 9v11" />
               </svg>
-              Back-office
+              <span class="max-xl:sr-only">Back-office</span>
             </a>
           )}
           {/* Compte : même traitement que le panier — une icône, le mot en
@@ -1567,7 +1584,28 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
         <div
           class="mt-12 flex flex-col gap-2 border-t border-ink/10 pt-6 text-sm text-ink-soft sm:flex-row sm:items-center sm:justify-between"
         >
-          <p>© {new Date().getFullYear()} {tr("pied.droits")}</p>
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <p>© {new Date().getFullYear()} {tr("pied.droits")}</p>
+            {/* « Gérer les cookies » (28/11, Alexandra : « finis le à faire
+                sauf la partie personnages » ; exigence de la CNIL : retirer
+                son accord aussi facilement que le donner). Il rouvre le
+                bandeau cookies, qui montre le choix actuel
+                (CookieBanner.astro). Caché tant que le script du bandeau ne
+                l'a pas branché : sans JavaScript, il ne ferait rien. Ni lien
+                ni bandeau à la tablette d'un stand. */}
+            {!Astro.locals.stand && (
+              <button
+                type="button"
+                data-cookies-gerer
+                hidden
+                aria-controls="cookie-banner"
+                aria-expanded="false"
+                class="cursor-pointer text-left transition-colors hover:text-terracotta"
+              >
+                {tr("cookies.gerer")}
+              </button>
+            )}
+          </div>
           {/* La signature de qui a créé le site (Alexandra, 13/11). Les
               mentions légales la reprennent (migration 0078). */}
           <p class="text-xs">

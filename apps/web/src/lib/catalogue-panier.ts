@@ -126,6 +126,40 @@ export function estPretAImprimer(
 }
 
 /**
+ * Un MOTIF (affiche à motifs, 28/11, stand de Mulhouse) : un « personnage »
+ * d'un type d'affiche « motifs-… ». Même règle que le configurateur
+ * (estMotif) et que le contrôle du panier (motifs-couleurs.ts) : seul ce
+ * préfixe le dit (BO › produit, « Motifs au choix du client »).
+ */
+function estUnMotif(base: { orientation?: string | null } | undefined): boolean {
+  return (base?.orientation ?? "").startsWith("motifs-");
+}
+
+/**
+ * Les motifs d'une ligne, par leur nom, et le nombre de ses VRAIS
+ * personnages — pour le résumé de la ligne, rien d'autre.
+ *
+ * Une affiche à motifs range son motif parmi les personnages de sa
+ * configuration, en tête (configFromState) : l'aperçu et le fichier
+ * d'impression le dessinent ainsi. Compté tel quel, le sapin seul faisait
+ * « 1 personnage », et deux personnages en faisaient trois. Un personnage
+ * que la bibliothèque ne connaît pas (archivé) se compte comme avant.
+ */
+export function motifsEtPersonnages(
+  config: PosterConfig | null,
+  personnage: (id: string | number) => { name?: string | null; orientation?: string | null } | undefined,
+): { motifs: string[]; personnages: number } {
+  const motifs: string[] = [];
+  let personnages = 0;
+  for (const c of config?.characters ?? []) {
+    const base = personnage(c.typeId);
+    if (!estUnMotif(base)) personnages++;
+    else if (base?.name?.trim()) motifs.push(base.name.trim());
+  }
+  return { motifs, personnages };
+}
+
+/**
  * L'image à montrer quand la ligne n'a rien de composé.
  *
  * Une affiche prête à imprimer arrive au panier sans fond ni personnage :

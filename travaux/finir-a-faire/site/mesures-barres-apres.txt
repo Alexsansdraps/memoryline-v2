@@ -1,0 +1,56 @@
+fr       1024     DÉBORDE gauche 594 | recherche 222/228 | icônes 129
+fr       1024 BO  DÉBORDE gauche 594 | recherche 178/228 | icônes 173 (BO 28 icône)
+fr       1100     ok      gauche 594 | recherche 230/228 | icônes 129
+fr       1100 BO  ok      gauche 594 | recherche 230/228 | icônes 173 (BO 28 icône)
+fr       1180     ok      gauche 594 | recherche 230/228 | icônes 129
+fr       1180 BO  ok      gauche 594 | recherche 230/228 | icônes 173 (BO 28 icône)
+fr       1279     ok      gauche 594 | recherche 230/228 | icônes 129
+fr       1279 BO  ok      gauche 594 | recherche 230/228 | icônes 173 (BO 28 icône)
+fr       1280     ok      gauche 642 | recherche 230/228 | icônes 129
+fr       1280 BO  ok      gauche 642 | recherche 230/228 | icônes 251 (BO 106 texte)
+fr       1440     ok      gauche 642 | recherche 259/228 | icônes 129
+fr       1440 BO  ok      gauche 642 | recherche 259/228 | icônes 251 (BO 106 texte)
+fr stand 1024     ok      gauche 594 | recherche 230/228 | icônes 91
+fr stand 1100     ok      gauche 594 | recherche 230/228 | icônes 91
+fr stand 1180     ok      gauche 594 | recherche 230/228 | icônes 91
+fr stand 1279     ok      gauche 594 | recherche 230/228 | icônes 91
+fr stand 1280     ok      gauche 642 | recherche 230/228 | icônes 91
+fr stand 1440     ok      gauche 642 | recherche 259/228 | icônes 91
+es       1024     ok      gauche 597 | recherche 218/197 | icônes 129
+es       1024 BO  DÉBORDE gauche 597 | recherche 174/197 | icônes 173 (BO 28 icône)
+es       1100     ok      gauche 597 | recherche 230/197 | icônes 129
+es       1100 BO  ok      gauche 597 | recherche 230/197 | icônes 173 (BO 28 icône)
+es       1180     ok      gauche 597 | recherche 230/197 | icônes 129
+es       1180 BO  ok      gauche 597 | recherche 230/197 | icônes 173 (BO 28 icône)
+es       1279     ok      gauche 597 | recherche 230/197 | icônes 129
+es       1279 BO  ok      gauche 597 | recherche 230/197 | icônes 173 (BO 28 icône)
+es       1280     ok      gauche 646 | recherche 230/197 | icônes 129
+es       1280 BO  ok      gauche 646 | recherche 230/197 | icônes 252 (BO 106 texte)
+es       1440     ok      gauche 646 | recherche 259/197 | icônes 129
+es       1440 BO  ok      gauche 646 | recherche 259/197 | icônes 252 (BO 106 texte)
+es stand 1024     ok      gauche 597 | recherche 230/197 | icônes 91
+es stand 1100     ok      gauche 597 | recherche 230/197 | icônes 91
+es stand 1180     ok      gauche 597 | recherche 230/197 | icônes 91
+es stand 1279     ok      gauche 597 | recherche 230/197 | icônes 91
+es stand 1280     ok      gauche 646 | recherche 230/197 | icônes 91
+es stand 1440     ok      gauche 646 | recherche 259/197 | icônes 91
+de       1024     ok      gauche 582 | recherche 230/172 | icônes 130
+de       1024 BO  ok      gauche 582 | recherche 188/172 | icônes 174 (BO 28 icône)
+de       1100     ok      gauche 582 | recherche 230/172 | icônes 130
+de       1100 BO  ok      gauche 582 | recherche 230/172 | icônes 174 (BO 28 icône)
+de       1180     ok      gauche 582 | recherche 230/172 | icônes 130
+de       1180 BO  ok      gauche 582 | recherche 230/172 | icônes 174 (BO 28 icône)
+de       1279     ok      gauche 582 | recherche 230/172 | icônes 130
+de       1279 BO  ok      gauche 582 | recherche 230/172 | icônes 174 (BO 28 icône)
+de       1280     ok      gauche 629 | recherche 230/172 | icônes 130
+de       1280 BO  ok      gauche 629 | recherche 230/172 | icônes 253 (BO 106 texte)
+de       1440     ok      gauche 629 | recherche 259/172 | icônes 130
+de       1440 BO  ok      gauche 629 | recherche 259/172 | icônes 253 (BO 106 texte)
+de stand 1024     ok      gauche 582 | recherche 230/172 | icônes 92
+de stand 1100     ok      gauche 582 | recherche 230/172 | icônes 92
+de stand 1180     ok      gauche 582 | recherche 230/172 | icônes 92
+de stand 1279     ok      gauche 582 | recherche 230/172 | icônes 92
+de stand 1280     ok      gauche 629 | recherche 230/172 | icônes 92
+de stand 1440     ok      gauche 629 | recherche 259/172 | icônes 92
+
+54 mesures, 3 débordements entre 768 et 1280 px.

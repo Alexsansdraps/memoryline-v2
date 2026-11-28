@@ -5,71 +5,275 @@
  * - Choix explicite Accepter / Refuser (équivalence requise par la CNIL).
  * - Mémorise le consentement dans localStorage (pas de cookie tiers tant
  *   que l'utilisateur n'a pas accepté).
- * - Émet un évènement `ml:consent` pour brancher les traceurs plus tard.
+ * - Émet un évènement `ml:consent` : Google (Consent Mode) et le pixel Meta
+ *   l'écoutent (layouts/Base.astro) et coupent sur « refuse ».
+ *
+ * Revenir sur son choix (28/11, Alexandra : « finis le à faire sauf la partie
+ * personnages » ; A-FAIRE 0.1 quater, exigence de la CNIL : retirer son
+ * accord doit être aussi simple que le donner). « Gérer les cookies », au pied
+ * de chaque page (Base.astro, `data-cookies-gerer`), rouvre ce bandeau. Il
+ * montre alors le choix actuel (le bouton coché, et la ligne « Choix actuel :
+ * … ») et se referme sans rien changer par la croix ou Échap. « Refuser »
+ * après « Accepter » émet « refuse » : Google repasse en refus, le pixel Meta
+ * est révoqué, et les cookies de mesure déjà posés sur le site (_ga…,
+ * _gcl_…, _fbp, _fbc) sont effacés : le refus de Google et de Meta arrête de
+ * les lire et d'en poser, il ne les efface pas.
+ *
+ * Pas de bandeau à la tablette d'un stand (28/11, décision laissée ouverte
+ * dans A-FAIRE 0.6 : « pas de bandeau cookies sur la tablette ») : elle passe
+ * de main en main, personne n'y choisit, rien n'y est enregistré, donc tout y
+ * reste refusé (le pixel Meta ne s'y charge jamais, Base.astro). Le lien
+ * « Gérer les cookies » n'y est pas non plus. Un « Accepter » resté dans la
+ * tablette d'avant, quand le bandeau s'y montrait, ne compte pas : chaque page
+ * du stand annonce « refuse » à Google dès son chargement (le script de
+ * Google lit le choix gardé dans l'en-tête, AVANT celui-ci, et Tag Manager ne
+ * se charge qu'après la page), sans toucher au choix gardé.
  */
 import { LANGUE_DEFAUT, lien, t, type Langue } from "../i18n/utils.ts";
 
 const { langue = LANGUE_DEFAUT } = Astro.props as { langue?: Langue };
 const tr = t(langue);
+const stand = !!Astro.locals.stand;
 ---
 
-<div
-  id="cookie-banner"
-  hidden
-  class="fixed inset-x-0 bottom-0 z-50 border-t border-ink/10 bg-paper/95 backdrop-blur"
->
-  <div
-    class="mx-auto max-w-[1200px] px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-4"
-  >
-    <p class="text-sm text-ink-soft flex-1">
-      {tr("cookies.texte")}{" "}
-      {/* Les pages libres du site vivent sous « /pages/{adresse} » : ce lien
-          pointait sur « /cookies », qui n'est une route de personne et
-          renvoyait 404 — juste sous une phrase qui promet d'expliquer ce
-          qu'on fait des données. */}
-      <a href={lien(langue, "/pages/cookies")} class="underline"
-        >{tr("cookies.politique")}</a
-      >.
-    </p>
-    <div class="flex gap-3 shrink-0">
-      <button
-        data-consent="refuse"
-        class="rounded-full border border-ink/20 px-4 py-2 text-sm hover:border-ink transition-colors"
-        >{tr("cookies.refuser")}</button
-      >
-      <button
-        data-consent="accept"
-        class="rounded-full bg-ink px-4 py-2 text-sm text-paper hover:bg-ink/85 transition-colors"
-        >{tr("cookies.accepter")}</button
-      >
+{
+  !stand && (
+    <div
+      id="cookie-banner"
+      hidden
+      role="region"
+      aria-label={tr("pied.cookies")}
+      tabindex="-1"
+      class="fixed inset-x-0 bottom-0 z-50 border-t border-ink/10 bg-paper/95 backdrop-blur focus:outline-none"
+    >
+      <div class="mx-auto max-w-[1200px] px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div class="flex-1 text-sm text-ink-soft">
+          <p>
+            {tr("cookies.texte")}{" "}
+            {/* Les pages libres du site vivent sous « /pages/{adresse} » : ce
+                lien pointait sur « /cookies », qui n'est une route de personne
+                et renvoyait 404 — juste sous une phrase qui promet d'expliquer
+                ce qu'on fait des données. */}
+            <a href={lien(langue, "/pages/cookies")} class="underline"
+              >{tr("cookies.politique")}</a
+            >.
+          </p>
+          {/* Le choix actuel, quand le bandeau est rouvert depuis « Gérer
+              les cookies » (le script y met la phrase qui convient). */}
+          <p
+            data-cookies-actuel
+            data-accept={tr("cookies.actuel_accepte")}
+            data-refuse={tr("cookies.actuel_refuse")}
+            hidden
+            class="mt-1 font-semibold text-ink"
+          ></p>
+        </div>
+        <div class="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            data-consent="refuse"
+            class="ml-cookies-choix inline-flex items-center gap-1.5 rounded-full border border-ink/20 px-4 py-2 text-sm hover:border-ink transition-colors"
+          >
+            <svg
+              class="ml-cookies-coche"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+            {tr("cookies.refuser")}
+          </button>
+          <button
+            type="button"
+            data-consent="accept"
+            class="ml-cookies-choix inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 text-sm text-paper hover:bg-ink/85 transition-colors"
+          >
+            <svg
+              class="ml-cookies-coche"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+            {tr("cookies.accepter")}
+          </button>
+          {/* Seulement une fois le bandeau rouvert, un choix déjà fait : la
+              première fois, il faut choisir (la CNIL ne veut pas d'une croix
+              qui vaudrait accord). */}
+          <button
+            type="button"
+            data-cookies-fermer
+            hidden
+            aria-label={tr("cookies.fermer")}
+            title={tr("cookies.fermer")}
+            class="-mr-2 inline-flex h-9 w-9 cursor-pointer items-center justify-center text-ink/60 hover:text-ink transition-colors"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
-  </div>
-</div>
+  )
+}
 
-<script is:inline>
-  (function () {
-    const KEY = "ml_cookie_consent";
-    const banner = document.getElementById("cookie-banner");
-    if (!banner) return;
-    let stored = null;
-    try {
-      stored = localStorage.getItem(KEY);
-    } catch {}
-    if (!stored) banner.hidden = false;
+{
+  !stand && (
+    <script is:inline>
+      (function () {
+        var KEY = "ml_cookie_consent";
+        var banner = document.getElementById("cookie-banner");
+        if (!banner) return;
+        // Jamais à la tablette d'un stand : le bandeau n'y est pas rendu, et
+        // ceci le garde fermé s'il l'était un jour.
+        if (document.documentElement.getAttribute("data-stand") === "1") return;
+        var choix = banner.querySelectorAll("[data-consent]");
+        var ligneActuelle = banner.querySelector("[data-cookies-actuel]");
+        var croix = banner.querySelector("[data-cookies-fermer]");
+        var gerer = document.querySelectorAll("[data-cookies-gerer]");
+        // Le lien « Gérer les cookies » qui l'a rouvert : le focus y revient
+        // à la fermeture.
+        var ouvertPar = null;
 
-    function choose(value) {
-      try {
-        localStorage.setItem(KEY, value);
-      } catch {}
-      banner.hidden = true;
-      document.dispatchEvent(
-        new CustomEvent("ml:consent", { detail: { consent: value } }),
-      );
-    }
-    banner.querySelectorAll("[data-consent]").forEach((btn) => {
-      btn.addEventListener("click", () =>
-        choose(btn.getAttribute("data-consent")),
-      );
-    });
-  })();
-</script>
+        function lire() {
+          try {
+            return localStorage.getItem(KEY);
+          } catch (e) {
+            return null;
+          }
+        }
+
+        function annoncer(ouvert) {
+          gerer.forEach(function (g) {
+            g.setAttribute("aria-expanded", ouvert ? "true" : "false");
+          });
+        }
+
+        // `par` : le lien du pied de page, ou rien à l'arrivée sur le site.
+        function montrer(par) {
+          var actuel = lire();
+          var connu = actuel === "accept" || actuel === "refuse";
+          ouvertPar = par || null;
+          choix.forEach(function (b) {
+            if (par && connu && b.getAttribute("data-consent") === actuel)
+              b.setAttribute("aria-current", "true");
+            else b.removeAttribute("aria-current");
+          });
+          if (ligneActuelle) {
+            var texte = par && connu ? ligneActuelle.getAttribute("data-" + actuel) || "" : "";
+            ligneActuelle.textContent = texte;
+            ligneActuelle.hidden = !texte;
+          }
+          if (croix) croix.hidden = !(par && connu);
+          banner.hidden = false;
+          annoncer(true);
+          if (par) banner.focus();
+        }
+
+        function cacher() {
+          banner.hidden = true;
+          annoncer(false);
+          var par = ouvertPar;
+          ouvertPar = null;
+          if (par && document.contains(par)) par.focus();
+        }
+
+        // Les cookies de mesure déjà posés sur ce site par Google (_ga,
+        // _ga_…, _gid, _gat…, _gcl_…) et par Meta (_fbp, _fbc), sous l'adresse
+        // exacte et sous le domaine du site (.memoryline.fr), là où Google
+        // les pose. Jamais le panier ni la session : ils ne vivent pas sous
+        // ces noms.
+        function effacerMesures() {
+          try {
+            var hote = location.hostname.split(".");
+            var domaines = [""];
+            for (var i = 0; i < hote.length - 1; i++)
+              domaines.push("; domain=." + hote.slice(i).join("."));
+            document.cookie.split(";").forEach(function (c) {
+              var nom = c.split("=")[0].trim();
+              if (!/^(_ga|_ga_.+|_gid|_gat|_gat_.+|_gcl_.+|_fbp|_fbc)$/.test(nom)) return;
+              domaines.forEach(function (d) {
+                document.cookie = nom + "=; Max-Age=0; path=/" + d;
+              });
+            });
+          } catch (e) {}
+        }
+
+        // Le choix est gardé, PUIS l'évènement part : lib/meta-pixel.ts relit
+        // le choix gardé à chaque mesure.
+        function choose(value) {
+          try {
+            localStorage.setItem(KEY, value);
+          } catch (e) {}
+          cacher();
+          document.dispatchEvent(new CustomEvent("ml:consent", { detail: { consent: value } }));
+          if (value === "refuse") effacerMesures();
+        }
+
+        choix.forEach(function (b) {
+          b.addEventListener("click", function () {
+            choose(b.getAttribute("data-consent"));
+          });
+        });
+        if (croix) croix.addEventListener("click", cacher);
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && !banner.hidden && croix && !croix.hidden) cacher();
+        });
+        gerer.forEach(function (g) {
+          g.hidden = false;
+          g.addEventListener("click", function () {
+            montrer(g);
+          });
+        });
+        if (!lire()) montrer(null);
+      })();
+    </script>
+  )
+}
+
+{
+  stand && (
+    <script is:inline>
+      // Tablette d'un stand : pas de bandeau, tout refusé, même si un ancien
+      // « Accepter » est resté dans le navigateur (voir l'en-tête du fichier).
+      document.dispatchEvent(new CustomEvent("ml:consent", { detail: { consent: "refuse" } }));
+    </script>
+  )
+}
+
+<style>
+  /* La coche du choix actuel, seulement quand le bandeau est rouvert. */
+  .ml-cookies-coche {
+    display: none;
+  }
+  .ml-cookies-choix[aria-current="true"] .ml-cookies-coche {
+    display: block;
+  }
+  .ml-cookies-choix[data-consent="refuse"][aria-current="true"] {
+    border-color: var(--color-ink);
+  }
+</style>

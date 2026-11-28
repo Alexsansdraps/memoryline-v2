@@ -245,7 +245,28 @@ export function StepCharacters(props: {
                             color: "#9ca3af",
                             "font-size": "15px",
                             "line-height": "1",
-                            padding: "2px 4px",
+                            // « La poignée ⠿ fait 19 px » (recette du 16-17/11,
+                            // A-FAIRE § 2 ; Alexandra, 28/11 : « finis le à
+                            // faire ») : sa CIBLE fait maintenant 45 × 45 px, la
+                            // taille d'un doigt, sans rien déplacer. La boîte
+                            // grandit, des marges négatives lui rendent sa place
+                            // d'avant (45 − 2 × 13 = 19 px, comme les 2 × 4 px de
+                            // marge intérieure autour du dessin) : la ligne, le
+                            // nom et les boutons ne bougent pas d'un pixel, et
+                            // le ⠿, centré, reste où il était. Elle passe devant
+                            // le nom (`position: relative`) : sans cela, le nom,
+                            // venu après, prendrait le doigt sur les 7 px où ils
+                            // se recouvrent.
+                            display: "inline-flex",
+                            "align-items": "center",
+                            "justify-content": "center",
+                            width: "45px",
+                            height: "45px",
+                            margin: "-13px",
+                            padding: "0",
+                            "box-sizing": "border-box",
+                            position: "relative",
+                            "flex-shrink": "0",
                             // Sans cela, le doigt fait défiler la page au lieu
                             // de prendre la ligne.
                             "touch-action": "none",

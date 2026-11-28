@@ -1,0 +1,2099 @@
+{
+ "date": "2026-11-28T12:07:25.507Z",
+ "versions": {
+  "meta-pixel.ts": "1e023aac176f",
+  "Base.astro (script du pixel)": "653993207f3f",
+  "api-navigateur.ts": "c88a5011cd8f",
+  "CheckoutIsland.tsx": "ce9e8fc11f89"
+ },
+ "fichiersModifiesPendantLEssai": [],
+ "verifications": [
+  {
+   "scenario": "0-site-local-tel-quel",
+   "nom": "le HTML servi en local ne contient pas le pixel",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "0-site-local-tel-quel",
+   "nom": "pas de window.fbq avant le choix",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "0-site-local-tel-quel",
+   "nom": "« Accepter » cliqué : toujours pas de window.fbq",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "0-site-local-tel-quel",
+   "nom": "page suivante : pas de window.fbq",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "0-site-local-tel-quel",
+   "nom": "aucune requête vers Meta",
+   "ok": true,
+   "details": "[]"
+  },
+  {
+   "scenario": "0b-copie-exacte-sur-localhost",
+   "nom": "script exact inséré, « Accepter » cliqué : pas de window.fbq (adresse ≠ memoryline.fr)",
+   "ok": true,
+   "details": "{\"fbq\":\"undefined\",\"_fbq\":\"undefined\",\"file\":null,\"callMethod\":false,\"fauxCharge\":0,\"consentement\":\"accept\",\"bandeauVisible\":false,\"dataStand\":null,\"scriptInsere\":\"exacte\",\"scriptFbevents\":[]}"
+  },
+  {
+   "scenario": "0b-copie-exacte-sur-localhost",
+   "nom": "aucune requête vers Meta",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "a-sans-choix",
+   "nom": "script inséré, bandeau affiché, pas de window.fbq",
+   "ok": true,
+   "details": "{\"fbq\":\"undefined\",\"_fbq\":\"undefined\",\"file\":null,\"callMethod\":false,\"fauxCharge\":0,\"consentement\":null,\"bandeauVisible\":true,\"dataStand\":null,\"scriptInsere\":\"localhost\",\"scriptFbevents\":[]}"
+  },
+  {
+   "scenario": "a-sans-choix",
+   "nom": "page suivante sans choix : pas de window.fbq",
+   "ok": true,
+   "details": "{\"fbq\":\"undefined\",\"_fbq\":\"undefined\",\"file\":null,\"callMethod\":false,\"fauxCharge\":0,\"consentement\":null,\"bandeauVisible\":true,\"dataStand\":null,\"scriptInsere\":\"localhost\",\"scriptFbevents\":[]}"
+  },
+  {
+   "scenario": "a-sans-choix",
+   "nom": "aucune requête vers Meta, aucun appel",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "b-refuser",
+   "nom": "« Refuser » : choix gardé, bandeau caché, pas de window.fbq",
+   "ok": true,
+   "details": "{\"fbq\":\"undefined\",\"_fbq\":\"undefined\",\"file\":null,\"callMethod\":false,\"fauxCharge\":0,\"consentement\":\"refuse\",\"bandeauVisible\":false,\"dataStand\":null,\"scriptInsere\":\"localhost\",\"scriptFbevents\":[]}"
+  },
+  {
+   "scenario": "b-refuser",
+   "nom": "page suivante : toujours pas de window.fbq",
+   "ok": true,
+   "details": "{\"fbq\":\"undefined\",\"_fbq\":\"undefined\",\"file\":null,\"callMethod\":false,\"fauxCharge\":0,\"consentement\":\"refuse\",\"bandeauVisible\":false,\"dataStand\":null,\"scriptInsere\":\"localhost\",\"scriptFbevents\":[]}"
+  },
+  {
+   "scenario": "b-refuser",
+   "nom": "les 4 fonctions de meta-pixel.ts appelées sans accord : aucun appel, aucune clé ml_meta_*",
+   "ok": true,
+   "details": "{\"cles\":[]}"
+  },
+  {
+   "scenario": "b-refuser",
+   "nom": "aucune requête vers Meta",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "nom": "aucun appel au pixel, aucune requête vers Meta",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "c-accepter",
+   "nom": "avant le choix : pas de window.fbq",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "c-accepter",
+   "nom": "« Accepter » : window.fbq posé, le script de Meta chargé une fois (faux, local)",
+   "ok": true,
+   "details": "{\"fbq\":\"function\",\"_fbq\":\"function\",\"file\":0,\"callMethod\":true,\"fauxCharge\":1,\"consentement\":\"accept\",\"bandeauVisible\":false,\"dataStand\":null,\"scriptInsere\":\"localhost\",\"scriptFbevents\":[\"https://connect.facebook.net/en_US/fbevents.js\"]}"
+  },
+  {
+   "scenario": "c-accepter",
+   "nom": "appels : set autoConfig false, init 1156538100082754, track PageView (dans cet ordre, une fois)",
+   "ok": true,
+   "details": "[[\"set\",\"autoConfig\",false,\"1156538100082754\"],[\"init\",\"1156538100082754\"],[\"track\",\"PageView\"]]"
+  },
+  {
+   "scenario": "c-page-suivante",
+   "nom": "PageView dès le chargement de la page suivante (sans clic)",
+   "ok": true,
+   "details": "[[\"set\",\"autoConfig\",false,\"1156538100082754\"],[\"init\",\"1156538100082754\"],[\"track\",\"PageView\"]]"
+  },
+  {
+   "scenario": "c-page-suivante",
+   "nom": "le script de Meta se charge APRÈS l'évènement load de la page",
+   "ok": true,
+   "details": "{\"load\":1795867565542,\"script\":1795867565566}"
+  },
+  {
+   "scenario": "c-page-suivante",
+   "nom": "window.fbq posé dès le <head> (file d'attente avant le script de Meta)",
+   "ok": true,
+   "details": "[\"file\",\"file\",\"file\"]"
+  },
+  {
+   "scenario": "c-retrait-de-l-accord-simule",
+   "nom": "« Refuser » après coup : fbq('consent','revoke'), puis plus aucune mesure",
+   "ok": true,
+   "details": "[[\"consent\",\"revoke\"]]"
+  },
+  {
+   "scenario": "c-retrait-de-l-accord-simule",
+   "nom": "nouvel « Accepter » : fbq('consent','grant'), sans second init ni second script",
+   "ok": true,
+   "details": "[[\"consent\",\"revoke\"],[\"consent\",\"grant\"]]"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "nom": "2 AddToCart (affiche, carte cadeau), pas plus",
+   "ok": true,
+   "details": "[[\"track\",\"AddToCart\",{\"value\":46,\"currency\":\"EUR\",\"content_type\":\"product\",\"content_ids\":[\"250\"],\"num_items\":2},{\"eventID\":\"ajout-305\"}],[\"track\",\"AddToCart\",{\"value\":30,\"currency\":\"EUR\",\"content_type\":\"product\",\"num_items\":1},{\"eventID\":\"ajout-307\"}]]"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "nom": "AddToCart de l'affiche : 2 × 23 € = 46 €, produit 250, 2 articles, eventID = ligne du serveur, envoyé depuis la fiche avant de partir",
+   "ok": true,
+   "details": "{\"appel\":[\"track\",\"AddToCart\",{\"value\":46,\"currency\":\"EUR\",\"content_type\":\"product\",\"content_ids\":[\"250\"],\"num_items\":2},{\"eventID\":\"ajout-305\"}],\"page\":\"/affiches/strasbourg-cathedrale-affiche-personnalisee\",\"ligneServeur\":{\"id\":305,\"produit\":250,\"carte\":false,\"quantite\":2,\"prixCents\":2300,\"format\":\"A4\"}}"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "nom": "AddToCart de la carte cadeau : 30 €, 1 article, sans content_ids, eventID = ligne du serveur",
+   "ok": true,
+   "details": "{\"appel\":[\"track\",\"AddToCart\",{\"value\":30,\"currency\":\"EUR\",\"content_type\":\"product\",\"num_items\":1},{\"eventID\":\"ajout-307\"}],\"page\":\"/carte-cadeau\",\"ligneServeur\":{\"id\":307,\"produit\":null,\"carte\":true,\"quantite\":1,\"prixCents\":3000,\"format\":null}}"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "nom": "InitiateCheckout UNE fois (à la 1re ouverture de la caisse), 46 €, 2 articles, sans identifiant du panier",
+   "ok": true,
+   "details": "[[\"/commande\",[\"track\",\"InitiateCheckout\",{\"value\":46,\"currency\":\"EUR\",\"num_items\":2}]]]"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "nom": "pas de second InitiateCheckout : 2e arrivée sur la caisse, rechargement, quantité changée, ligne retirée",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "nom": "l'identifiant du panier ne part dans aucun appel",
+   "ok": true,
+   "details": "45a72ad6-5f96-4f53-a7ed-a0f72291c0af"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "nom": "un PageView par page HTML chargée",
+   "ok": true,
+   "details": "{\"pageViews\":5,\"pages\":5}"
+  },
+  {
+   "scenario": "comparaison-A-B",
+   "nom": "mêmes adresses après chaque ajout (la caisse /commande)",
+   "ok": true,
+   "details": "{\"A\":[\"/commande\",\"/commande\"],\"B\":[\"/commande\",\"/commande\"]}"
+  },
+  {
+   "scenario": "comparaison-A-B",
+   "nom": "même panier à chaque étape (produit, carte, quantité, prix, format)",
+   "ok": true,
+   "details": "{\"A\":[{\"quand\":\"affiche ajoutée\",\"statut\":200,\"etat\":\"draft\",\"lignes\":[{\"produit\":250,\"carte\":false,\"quantite\":2,\"prixCents\":2300,\"format\":\"A4\"}]},{\"quand\":\"carte cadeau ajoutée\",\"statut\":200,\"etat\":\"draft\",\"lignes\":[{\"produit\":250,\"carte\":false,\"quantite\":2,\"prixCents\":2300,\"format\":\"A4\"},{\"produit\":null,\"carte\":true,\"quantite\":1,\"prixCents\":3000,\"format\":null}]},{\"quand\":\"quantité +1 dans la caisse\",\"statut\":200,\"etat\":\"draft\",\"lignes\":[{\"produit\":250,\"carte\":false,\"quantite\":3,\"prixCents\":2300,\"format\":\"A4\"},{\"produit\":null,\"carte\":true,\"quantite\":1,\"prixCents\":3000,\"format\":null}]},{\"quand\":\"carte cadeau retirée\",\"statut\":200,\"etat\":\"draft\",\"lignes\":[{\"produit\":250,\"carte\":false,\"quantite\":3,\"prixCents\":2300,\"format\":\"A4\"}]}],\"B\":[{\"quand\":\"affiche ajoutée\",\"statut\":200,\"etat\":\"draft\",\"lignes\":[{\"produit\":250,\"carte\":false,\"quantite\":2,\"prixCents\":2300,\"format\":\"A4\"}]},{\"quand\":\"carte cadeau ajoutée\",\"statut\":200,\"etat\":\"draft\",\"lignes\":[{\"produit\":250,\"carte\":false,\"quantite\":2,\"prixCents\":2300,\"format\":\"A4\"},{\"produit\":null,\"carte\":true,\"quantite\":1,\"prixCents\":3000,\"format\":null}]},{\"quand\":\"quantité +1 dans la caisse\",\"statut\":200,\"etat\":\"draft\",\"lignes\":[{\"produit\":250,\"carte\":false,\"quantite\":3,\"prixCents\":2300,\"format\":\"A4\"},{\"produit\":null,\"carte\":true,\"quantite\":1,\"prixCents\":3000,\"format\":null}]},{\"quand\":\"carte cadeau retirée\",\"statut\":200,\"etat\":\"draft\",\"lignes\":[{\"produit\":250,\"carte\":false,\"quantite\":3,\"prixCents\":2300,\"format\":\"A4\"}]}]}"
+  },
+  {
+   "scenario": "comparaison-A-B",
+   "nom": "mêmes montants affichés par la caisse à chaque étape",
+   "ok": true,
+   "details": "{\"A\":[[\"6,90 €\",\"A4 · 23 €\",\"46 €\",\"6,90 €\",\"52,90 €\"],[\"Carte de 30 €\",\"6,90 €\",\"A4 · 23 €\",\"46 €\",\"€\",\"30 €\",\"6,90 €\",\"82,90 €\"],[\"Carte de 30 €\",\"6,90 €\",\"A4 · 23 €\",\"46 €\",\"€\",\"30 €\",\"6,90 €\",\"82,90 €\"],[\"Carte de 30 €\",\"A4 · 23 €\",\"69 €\",\"€\",\"30 €\",\"99 €\"],[\"A4 · 23 €\",\"69 €\",\"69 €\"]],\"B\":[[\"6,90 €\",\"A4 · 23 €\",\"46 €\",\"6,90 €\",\"52,90 €\"],[\"Carte de 30 €\",\"6,90 €\",\"A4 · 23 €\",\"46 €\",\"€\",\"30 €\",\"6,90 €\",\"82,90 €\"],[\"Carte de 30 €\",\"6,90 €\",\"A4 · 23 €\",\"46 €\",\"€\",\"30 €\",\"6,90 €\",\"82,90 €\"],[\"Carte de 30 €\",\"A4 · 23 €\",\"69 €\",\"€\",\"30 €\",\"99 €\"],[\"A4 · 23 €\",\"69 €\",\"69 €\"]]}"
+  },
+  {
+   "scenario": "comparaison-A-B",
+   "nom": "mêmes écritures envoyées à l'API (POST/PUT/DELETE), dans le même ordre",
+   "ok": true,
+   "details": "{\"A\":[\"POST /api/cart/<panier>/items\",\"POST /api/cart/<panier>/items\",\"PUT /api/cart/<panier>/items/<n>\",\"DELETE /api/cart/<panier>/items/<n>\"],\"B\":[\"POST /api/cart/<panier>/items\",\"POST /api/cart/<panier>/items\",\"PUT /api/cart/<panier>/items/<n>\",\"DELETE /api/cart/<panier>/items/<n>\"]}"
+  },
+  {
+   "scenario": "comparaison-A-B",
+   "nom": "aucune erreur nouvelle avec le pixel actif (hors bruit du serveur de dev Vite)",
+   "ok": true,
+   "details": "{\"A\":[],\"B\":[]}"
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "nom": "Purchase : 53,90 € (même page) puis 123,45 € (page neuve, total relu dans l'onglet), une seule fois chacun, rien pour un numéro inconnu ou vide",
+   "ok": true,
+   "details": "[[\"track\",\"Purchase\",{\"value\":53.9,\"currency\":\"EUR\"},{\"eventID\":\"achat-ESSAI-PIXEL-1\"}],[\"track\",\"Purchase\",{\"value\":123.45,\"currency\":\"EUR\"},{\"eventID\":\"achat-ESSAI-PIXEL-2\"}]]"
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "nom": "le total gardé dans l'onglet est effacé après l'achat",
+   "ok": true,
+   "details": "{\"r\":{\"gardee2\":\"12345\",\"reste1\":null,\"marque1\":\"1\"},\"r2\":{\"reste2\":null}}"
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "nom": "Purchase une fois sur le « Merci », au total de la commande (69 € = 3 × 23 € + port 0 €, mode « À domicileOfferteColissimo — 2 à 3 jours ouvrés »)",
+   "ok": true,
+   "details": "[[\"track\",\"Purchase\",{\"value\":69,\"currency\":\"EUR\"},{\"eventID\":\"achat-ESSAI-PIXEL-4\"}]]"
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "nom": "pas d'InitiateCheckout de plus (déjà mesuré pour ce panier dans cet onglet)",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "nom": "code, création et validation SIMULÉES (rien n'a atteint l'API)",
+   "ok": true,
+   "details": "[\"POST /api/caisse/code\",\"POST /api/orders\",\"POST /api/payments/gratuit\"]"
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "nom": "le panier est resté un panier côté serveur (aucune commande créée)",
+   "ok": true,
+   "details": "{\"avant\":\"draft\",\"apres\":\"draft\"}"
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "nom": "le « Merci » oublie le panier payé (la pastille en rouvre un neuf), comme avant",
+   "ok": true,
+   "details": "{\"avant\":\"45a72ad6-5f96-4f53-a7ed-a0f72291c0af\",\"apres\":\"c85b2afe-9732-4677-903a-93bab039565d\"}"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "nom": "tant que le secret du paiement est dans l'adresse, le script de Meta ne se charge pas",
+   "ok": true,
+   "details": "{\"adresse\":\"?payment_intent=pi_essai_pixel&payment_intent_client_secret=pi_essai_pixel_secret_essai\",\"scriptsMeta\":0,\"fbq\":\"function\"}"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "nom": "adresse nettoyée par la caisse, puis script chargé une fois",
+   "ok": true,
+   "details": "{\"adresse\":\"\",\"scriptsMeta\":1,\"reste\":null}"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "nom": "Purchase 45,60 € (total gardé avant la redirection), une fois, envoyé depuis l'adresse SANS secret",
+   "ok": true,
+   "details": "[[\"/affiches\",[\"set\",\"autoConfig\",false,\"1156538100082754\"]],[\"/affiches\",[\"init\",\"1156538100082754\"]],[\"/affiches\",[\"track\",\"PageView\"]],[\"/commande\",[\"set\",\"autoConfig\",false,\"1156538100082754\"]],[\"/commande\",[\"init\",\"1156538100082754\"]],[\"/commande\",[\"track\",\"PageView\"]],[\"/commande\",[\"track\",\"Purchase\",{\"value\":45.6,\"currency\":\"EUR\"},{\"eventID\":\"achat-ESSAI-PIXEL-3\"}]]]"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "nom": "total effacé de l'onglet après l'achat",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "nom": "page à jeton : le script de Meta ne se charge pas",
+   "ok": true,
+   "details": "{\"adresse\":\"/compte/reinitialiser?jeton=essai-pixel-jeton-secret\",\"scriptsMeta\":0,\"meta\":\"strict-origin\"}"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "nom": "page à jeton : <meta name=referrer content=strict-origin>",
+   "ok": true,
+   "details": "{\"adresse\":\"/compte/reinitialiser?jeton=essai-pixel-jeton-secret\",\"scriptsMeta\":0,\"meta\":\"strict-origin\"}"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "nom": "page suivante : le referrer ne porte plus le jeton (origine seule)",
+   "ok": true,
+   "details": "{\"referrer\":\"http://localhost:8080/\",\"scriptsMeta\":1}"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "nom": "aucune mesure traitée sur la page à jeton (rien n'a pu partir avec le jeton)",
+   "ok": true,
+   "details": "[[\"/affiches\",\"autoConfig\"],[\"/affiches\",\"1156538100082754\"],[\"/affiches\",\"PageView\"]]"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "nom": "arrivée depuis une adresse du site à jeton (referrer complet) : fbq en file d'attente, script de Meta jamais chargé",
+   "ok": true,
+   "details": "{\"referrer\":\"http://localhost:8080/panier/recuperer?jeton=essai-pixel-secret\",\"scriptsMeta\":0,\"fbq\":\"function\"}"
+  },
+  {
+   "scenario": "g-stand",
+   "nom": "mode stand (?stand=1), accord donné : html[data-stand=1], pas de window.fbq",
+   "ok": true,
+   "details": "{\"fbq\":\"undefined\",\"_fbq\":\"undefined\",\"file\":null,\"callMethod\":false,\"fauxCharge\":0,\"consentement\":\"accept\",\"bandeauVisible\":false,\"dataStand\":\"1\",\"scriptInsere\":\"localhost\",\"scriptFbevents\":[]}"
+  },
+  {
+   "scenario": "g-stand",
+   "nom": "au stand, l'ajout mène au panier de la tablette, l'affiche y est",
+   "ok": true,
+   "details": "{\"adresse\":\"/panier?stand=1\",\"lignes\":[{\"id\":308,\"produit\":250,\"carte\":false,\"quantite\":1,\"prixCents\":2300,\"format\":\"A4\"}]}"
+  },
+  {
+   "scenario": "g-stand",
+   "nom": "au stand : aucun appel au pixel, aucune requête vers Meta",
+   "ok": true,
+   "details": ""
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "nom": "script de Meta bloqué : la carte cadeau arrive au panier, la caisse s'affiche",
+   "ok": true,
+   "details": "[{\"id\":309,\"produit\":null,\"carte\":true,\"quantite\":1,\"prixCents\":2000,\"format\":null}]"
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "nom": "les mesures restent en file d'attente, sans erreur",
+   "ok": true,
+   "details": "{\"file\":4,\"erreurs\":[]}"
+  },
+  {
+   "scenario": "bilan",
+   "nom": "toutes les requêtes vers Meta interceptées : fbevents.js servi en local (ou bloqué), aucune autre",
+   "ok": true,
+   "details": "[]"
+  },
+  {
+   "scenario": "bilan",
+   "nom": "aucune réponse de Meta venue du réseau (pas d'adresse IP distante)",
+   "ok": true,
+   "details": "[]"
+  },
+  {
+   "scenario": "bilan",
+   "nom": "hôtes extérieurs demandés par les pages",
+   "ok": true,
+   "details": "[\"memoryline.fr\",\"js.stripe.com\",\"connect.facebook.net\"]"
+  }
+ ],
+ "appelsAuPixel": [
+  {
+   "scenario": "c-accepter",
+   "via": "file",
+   "page": "/",
+   "t": 1795867562863,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "c-accepter",
+   "via": "file",
+   "page": "/",
+   "t": 1795867562863,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "c-accepter",
+   "via": "file",
+   "page": "/",
+   "t": 1795867562863,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "c-page-suivante",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867565603,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "c-page-suivante",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867565603,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "c-page-suivante",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867565603,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "c-retrait-de-l-accord-simule",
+   "via": "direct",
+   "page": "/affiches",
+   "t": 1795867568053,
+   "args": [
+    "consent",
+    "revoke"
+   ]
+  },
+  {
+   "scenario": "c-retrait-de-l-accord-simule",
+   "via": "direct",
+   "page": "/affiches",
+   "t": 1795867568573,
+   "args": [
+    "consent",
+    "grant"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/affiches/strasbourg-cathedrale-affiche-personnalisee",
+   "t": 1795867570094,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/affiches/strasbourg-cathedrale-affiche-personnalisee",
+   "t": 1795867570094,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/affiches/strasbourg-cathedrale-affiche-personnalisee",
+   "t": 1795867570094,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "direct",
+   "page": "/affiches/strasbourg-cathedrale-affiche-personnalisee",
+   "t": 1795867576747,
+   "args": [
+    "track",
+    "AddToCart",
+    {
+     "value": 46,
+     "currency": "EUR",
+     "content_type": "product",
+     "content_ids": [
+      "250"
+     ],
+     "num_items": 2
+    },
+    {
+     "eventID": "ajout-305"
+    }
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867577324,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867577324,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867577325,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "direct",
+   "page": "/commande",
+   "t": 1795867577358,
+   "args": [
+    "track",
+    "InitiateCheckout",
+    {
+     "value": 46,
+     "currency": "EUR",
+     "num_items": 2
+    }
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/carte-cadeau",
+   "t": 1795867579481,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/carte-cadeau",
+   "t": 1795867579481,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/carte-cadeau",
+   "t": 1795867579482,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "direct",
+   "page": "/carte-cadeau",
+   "t": 1795867581866,
+   "args": [
+    "track",
+    "AddToCart",
+    {
+     "value": 30,
+     "currency": "EUR",
+     "content_type": "product",
+     "num_items": 1
+    },
+    {
+     "eventID": "ajout-307"
+    }
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867582265,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867582265,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867582265,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867585358,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867585358,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867585358,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867592712,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867592712,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867592712,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "via": "direct",
+   "page": "/commande",
+   "t": 1795867594569,
+   "args": [
+    "track",
+    "Purchase",
+    {
+     "value": 53.9,
+     "currency": "EUR"
+    },
+    {
+     "eventID": "achat-ESSAI-PIXEL-1"
+    }
+   ]
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867595027,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867595027,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867595028,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "via": "direct",
+   "page": "/affiches",
+   "t": 1795867596986,
+   "args": [
+    "track",
+    "Purchase",
+    {
+     "value": 123.45,
+     "currency": "EUR"
+    },
+    {
+     "eventID": "achat-ESSAI-PIXEL-2"
+    }
+   ]
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867597553,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867597553,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867597554,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "via": "direct",
+   "page": "/commande",
+   "t": 1795867602619,
+   "args": [
+    "track",
+    "Purchase",
+    {
+     "value": 69,
+     "currency": "EUR"
+    },
+    {
+     "eventID": "achat-ESSAI-PIXEL-4"
+    }
+   ]
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867605274,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867605274,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867605274,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867610185,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867610185,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867610185,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "via": "file",
+   "page": "/commande",
+   "t": 1795867610185,
+   "args": [
+    "track",
+    "Purchase",
+    {
+     "value": 45.6,
+     "currency": "EUR"
+    },
+    {
+     "eventID": "achat-ESSAI-PIXEL-3"
+    }
+   ]
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867616792,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867616792,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "via": "file",
+   "page": "/affiches",
+   "t": 1795867616792,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "via": "file",
+   "page": "/",
+   "t": 1795867623569,
+   "args": [
+    "set",
+    "autoConfig",
+    false,
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "via": "file",
+   "page": "/",
+   "t": 1795867623570,
+   "args": [
+    "init",
+    "1156538100082754"
+   ]
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "via": "file",
+   "page": "/",
+   "t": 1795867623570,
+   "args": [
+    "track",
+    "PageView"
+   ]
+  }
+ ],
+ "requetesMeta": [
+  {
+   "scenario": "c-accepter",
+   "t": 1795867562860,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "c-page-suivante",
+   "t": 1795867565566,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867570057,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867577253,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867579454,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867582245,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867585354,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "t": 1795867592645,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "t": 1795867594991,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "t": 1795867597510,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "t": 1795867605244,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "t": 1795867610183,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "t": 1795867616790,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "t": 1795867623547,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "faux fbevents.js servi localement"
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "t": 1795867640336,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "bloquée (essai « bloqueur de pub »)"
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "t": 1795867643655,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "methode": "GET",
+   "type": "Script",
+   "reponse": "bloquée (essai « bloqueur de pub »)"
+  }
+ ],
+ "reseauMeta": [
+  {
+   "scenario": "c-accepter",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "c-page-suivante",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "statut": 200,
+   "ipDistante": null
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "echec": "net::ERR_BLOCKED_BY_CLIENT.Inspector",
+   "raison": "inspector"
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "echec": "net::ERR_BLOCKED_BY_CLIENT.Inspector",
+   "raison": "inspector"
+  }
+ ],
+ "requetesExterieures": [
+  {
+   "scenario": "0-site-local-tel-quel",
+   "t": 1795867508931,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "0-site-local-tel-quel",
+   "t": 1795867514920,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "0b-copie-exacte-sur-localhost",
+   "t": 1795867518103,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "a-sans-choix",
+   "t": 1795867523331,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "a-sans-choix",
+   "t": 1795867527417,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "b-refuser",
+   "t": 1795867533741,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "t": 1795867544514,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "t": 1795867545739,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "t": 1795867549520,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "t": 1795867550524,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "t": 1795867551989,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "t": 1795867553092,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  },
+  {
+   "scenario": "c-accepter",
+   "t": 1795867560196,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "c-accepter",
+   "t": 1795867562860,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "c-page-suivante",
+   "t": 1795867565390,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "c-page-suivante",
+   "t": 1795867565565,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867570056,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867577222,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867577298,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867578323,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867579453,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867582235,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867582333,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867583334,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867584727,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867585353,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "t": 1795867585818,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "t": 1795867592617,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "t": 1795867592702,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "t": 1795867593748,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "t": 1795867594818,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "t": 1795867594991,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "t": 1795867597471,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "t": 1795867597553,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "t": 1795867598572,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "t": 1795867605072,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "t": 1795867605240,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "t": 1795867607252,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "t": 1795867608279,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "t": 1795867610183,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "t": 1795867616624,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "t": 1795867616789,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "t": 1795867619932,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "t": 1795867623421,
+   "url": "https://memoryline.fr/ciel/ciel-etoile-exemple.jpg",
+   "type": "Image"
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "t": 1795867623547,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "t": 1795867640336,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "t": 1795867643643,
+   "url": "https://connect.facebook.net/en_US/fbevents.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "t": 1795867643731,
+   "url": "https://js.stripe.com/dahlia/stripe.js",
+   "type": "Script"
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "t": 1795867644789,
+   "url": "https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html",
+   "type": "Document"
+  }
+ ],
+ "simulees": [
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "t": 1795867602282,
+   "requete": "POST /api/caisse/code",
+   "corps": "{\"code\":\"ESSAIPIXEL\"}",
+   "reponse": {
+    "type": "carte",
+    "carte": {
+     "code": "ESSAIPIXEL",
+     "masque": "XXXX-XXXX-PIXL",
+     "soldeCents": 100000
+    }
+   }
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "t": 1795867602611,
+   "requete": "POST /api/orders",
+   "corps": "{\"cartId\":\"45a72ad6-5f96-4f53-a7ed-a0f72291c0af\",\"customer\":{\"name\":\"Essai Pixel\",\"email\":\"essai.pixel@exemple.invalid\"},\"shipping\":{\"method\":\"colissimo\",\"name\":\"Essai Pixel\",\"line1\":\"1 rue de l'Essai\",\"line2\":\"\",\"postalCode\":\"68100\",\"city\":\"Mulhouse\",\"country\":\"FR\",\"phone\":\"0600000000\",\"relayPointId\":\"\",\"relayPointLabel\":\"\",\"enregistrer\":true},\"langue\":\"fr\",\"carteCadeau\":\"ESSAIPIXEL\"}",
+   "reponse": {
+    "orderId": 990004,
+    "number": "ESSAI-PIXEL-4",
+    "status": "pending",
+    "totalCents": 6900,
+    "shippingCents": 0,
+    "giftCardCents": 6900,
+    "aPayerCents": 0
+   }
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "t": 1795867602614,
+   "requete": "POST /api/payments/gratuit",
+   "corps": "{\"orderId\":990004,\"cartId\":\"45a72ad6-5f96-4f53-a7ed-a0f72291c0af\"}",
+   "reponse": {
+    "status": "paid",
+    "number": "ESSAI-PIXEL-4"
+   }
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "t": 1795867609762,
+   "requete": "POST /api/payments/stripe/retour",
+   "corps": "{\"paymentIntent\":\"pi_essai_pixel\",\"clientSecret\":\"pi_essai_pixel_secret_essai\"}",
+   "reponse": {
+    "issue": "payee",
+    "number": "ESSAI-PIXEL-3"
+   }
+  }
+ ],
+ "pagesServies": [
+  {
+   "scenario": "remise à zéro",
+   "url": "http://localhost:8080/robots.txt",
+   "statut": 200,
+   "insertion": "aucune"
+  },
+  {
+   "scenario": "0-site-local-tel-quel",
+   "url": "http://localhost:8080/",
+   "statut": 200,
+   "insertion": "aucune"
+  },
+  {
+   "scenario": "0-site-local-tel-quel",
+   "url": "http://localhost:8080/affiches",
+   "statut": 200,
+   "insertion": "aucune"
+  },
+  {
+   "scenario": "remise à zéro",
+   "url": "http://localhost:8080/robots.txt",
+   "statut": 200,
+   "insertion": "aucune"
+  },
+  {
+   "scenario": "0b-copie-exacte-sur-localhost",
+   "url": "http://localhost:8080/",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "exacte",
+   "dataStand": false
+  },
+  {
+   "scenario": "remise à zéro",
+   "url": "http://localhost:8080/robots.txt",
+   "statut": 200,
+   "insertion": "aucune"
+  },
+  {
+   "scenario": "a-sans-choix",
+   "url": "http://localhost:8080/",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "a-sans-choix",
+   "url": "http://localhost:8080/affiches",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "b-refuser",
+   "url": "http://localhost:8080/",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "url": "http://localhost:8080/affiches/strasbourg-cathedrale-affiche-personnalisee",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "url": "http://localhost:8080/commande",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "url": "http://localhost:8080/carte-cadeau",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "url": "http://localhost:8080/commande",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "A-panier-cookies-refuses",
+   "url": "http://localhost:8080/commande",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "remise à zéro",
+   "url": "http://localhost:8080/robots.txt",
+   "statut": 200,
+   "insertion": "aucune"
+  },
+  {
+   "scenario": "c-accepter",
+   "url": "http://localhost:8080/",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "c-page-suivante",
+   "url": "http://localhost:8080/affiches",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "http://localhost:8080/affiches/strasbourg-cathedrale-affiche-personnalisee",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "http://localhost:8080/commande",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "http://localhost:8080/carte-cadeau",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "http://localhost:8080/commande",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "B-panier-cookies-acceptes",
+   "url": "http://localhost:8080/commande",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "url": "http://localhost:8080/commande",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "f1-fonctions-directes",
+   "url": "http://localhost:8080/affiches",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "f3-commande-gratuite-simulee",
+   "url": "http://localhost:8080/commande",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "url": "http://localhost:8080/affiches",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "f2-retour-de-redirection-simule",
+   "url": "http://localhost:8080/commande?payment_intent=pi_essai_pixel&payment_intent_client_secret=pi_essai_pixel_secret_essai",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "url": "http://localhost:8080/compte/reinitialiser?jeton=essai-pixel-jeton-secret",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "url": "http://localhost:8080/affiches",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "url": "http://localhost:8080/affiches",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "f4-adresse-a-jeton",
+   "url": "http://localhost:8080/",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "g-stand",
+   "url": "http://localhost:8080/?stand=1",
+   "statut": 302,
+   "insertion": "aucune"
+  },
+  {
+   "scenario": "g-stand",
+   "url": "http://localhost:8080/pages/mulhouse?stand=1",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": true
+  },
+  {
+   "scenario": "g-stand",
+   "url": "http://localhost:8080/affiches/strasbourg-cathedrale-affiche-personnalisee?stand=1",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": true
+  },
+  {
+   "scenario": "g-stand",
+   "url": "http://localhost:8080/panier?stand=1",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": true
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "url": "http://localhost:8080/carte-cadeau",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "url": "http://localhost:8080/commande",
+   "statut": 200,
+   "insertion": "avant <meta name=generator>",
+   "script": "localhost",
+   "dataStand": false
+  }
+ ],
+ "erreurs": [
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "source": "journal.network",
+   "texte": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+   "url": "https://connect.facebook.net/en_US/fbevents.js"
+  },
+  {
+   "scenario": "h-bloqueur-de-pub",
+   "source": "journal.network",
+   "texte": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector",
+   "url": "https://connect.facebook.net/en_US/fbevents.js"
+  }
+ ],
+ "bruitServeurDeDev": 302,
+ "dialogues": [],
+ "parcours": {
+  "A": {
+   "etats": [
+    {
+     "quand": "affiche ajoutée",
+     "id": "041aace0-f50d-4232-a6ae-6f4511650d52",
+     "statut": 200,
+     "etat": "draft",
+     "lignes": [
+      {
+       "id": 303,
+       "produit": 250,
+       "carte": false,
+       "quantite": 2,
+       "prixCents": 2300,
+       "format": "A4"
+      }
+     ]
+    },
+    {
+     "quand": "carte cadeau ajoutée",
+     "id": "041aace0-f50d-4232-a6ae-6f4511650d52",
+     "statut": 200,
+     "etat": "draft",
+     "lignes": [
+      {
+       "id": 303,
+       "produit": 250,
+       "carte": false,
+       "quantite": 2,
+       "prixCents": 2300,
+       "format": "A4"
+      },
+      {
+       "id": 304,
+       "produit": null,
+       "carte": true,
+       "quantite": 1,
+       "prixCents": 3000,
+       "format": null
+      }
+     ]
+    },
+    {
+     "quand": "quantité +1 dans la caisse",
+     "id": "041aace0-f50d-4232-a6ae-6f4511650d52",
+     "statut": 200,
+     "etat": "draft",
+     "lignes": [
+      {
+       "id": 303,
+       "produit": 250,
+       "carte": false,
+       "quantite": 3,
+       "prixCents": 2300,
+       "format": "A4"
+      },
+      {
+       "id": 304,
+       "produit": null,
+       "carte": true,
+       "quantite": 1,
+       "prixCents": 3000,
+       "format": null
+      }
+     ]
+    },
+    {
+     "quand": "carte cadeau retirée",
+     "id": "041aace0-f50d-4232-a6ae-6f4511650d52",
+     "statut": 200,
+     "etat": "draft",
+     "lignes": [
+      {
+       "id": 303,
+       "produit": 250,
+       "carte": false,
+       "quantite": 3,
+       "prixCents": 2300,
+       "format": "A4"
+      }
+     ]
+    }
+   ],
+   "prix": [
+    [
+     "6,90 €",
+     "A4 · 23 €",
+     "46 €",
+     "6,90 €",
+     "52,90 €"
+    ],
+    [
+     "Carte de 30 €",
+     "6,90 €",
+     "A4 · 23 €",
+     "46 €",
+     "€",
+     "30 €",
+     "6,90 €",
+     "82,90 €"
+    ],
+    [
+     "Carte de 30 €",
+     "6,90 €",
+     "A4 · 23 €",
+     "46 €",
+     "€",
+     "30 €",
+     "6,90 €",
+     "82,90 €"
+    ],
+    [
+     "Carte de 30 €",
+     "A4 · 23 €",
+     "69 €",
+     "€",
+     "30 €",
+     "99 €"
+    ],
+    [
+     "A4 · 23 €",
+     "69 €",
+     "69 €"
+    ]
+   ],
+   "adresses": [
+    "/commande",
+    "/commande"
+   ],
+   "quantiteFiche": 2
+  },
+  "B": {
+   "etats": [
+    {
+     "quand": "affiche ajoutée",
+     "id": "45a72ad6-5f96-4f53-a7ed-a0f72291c0af",
+     "statut": 200,
+     "etat": "draft",
+     "lignes": [
+      {
+       "id": 305,
+       "produit": 250,
+       "carte": false,
+       "quantite": 2,
+       "prixCents": 2300,
+       "format": "A4"
+      }
+     ]
+    },
+    {
+     "quand": "carte cadeau ajoutée",
+     "id": "45a72ad6-5f96-4f53-a7ed-a0f72291c0af",
+     "statut": 200,
+     "etat": "draft",
+     "lignes": [
+      {
+       "id": 305,
+       "produit": 250,
+       "carte": false,
+       "quantite": 2,
+       "prixCents": 2300,
+       "format": "A4"
+      },
+      {
+       "id": 307,
+       "produit": null,
+       "carte": true,
+       "quantite": 1,
+       "prixCents": 3000,
+       "format": null
+      }
+     ]
+    },
+    {
+     "quand": "quantité +1 dans la caisse",
+     "id": "45a72ad6-5f96-4f53-a7ed-a0f72291c0af",
+     "statut": 200,
+     "etat": "draft",
+     "lignes": [
+      {
+       "id": 305,
+       "produit": 250,
+       "carte": false,
+       "quantite": 3,
+       "prixCents": 2300,
+       "format": "A4"
+      },
+      {
+       "id": 307,
+       "produit": null,
+       "carte": true,
+       "quantite": 1,
+       "prixCents": 3000,
+       "format": null
+      }
+     ]
+    },
+    {
+     "quand": "carte cadeau retirée",
+     "id": "45a72ad6-5f96-4f53-a7ed-a0f72291c0af",
+     "statut": 200,
+     "etat": "draft",
+     "lignes": [
+      {
+       "id": 305,
+       "produit": 250,
+       "carte": false,
+       "quantite": 3,
+       "prixCents": 2300,
+       "format": "A4"
+      }
+     ]
+    }
+   ],
+   "prix": [
+    [
+     "6,90 €",
+     "A4 · 23 €",
+     "46 €",
+     "6,90 €",
+     "52,90 €"
+    ],
+    [
+     "Carte de 30 €",
+     "6,90 €",
+     "A4 · 23 €",
+     "46 €",
+     "€",
+     "30 €",
+     "6,90 €",
+     "82,90 €"
+    ],
+    [
+     "Carte de 30 €",
+     "6,90 €",
+     "A4 · 23 €",
+     "46 €",
+     "€",
+     "30 €",
+     "6,90 €",
+     "82,90 €"
+    ],
+    [
+     "Carte de 30 €",
+     "A4 · 23 €",
+     "69 €",
+     "€",
+     "30 €",
+     "99 €"
+    ],
+    [
+     "A4 · 23 €",
+     "69 €",
+     "69 €"
+    ]
+   ],
+   "adresses": [
+    "/commande",
+    "/commande"
+   ],
+   "quantiteFiche": 2
+  }
+ }
+}

@@ -1,0 +1,50 @@
+en       1024     ok      gauche 514 | recherche 230/201 | icônes 131
+en       1024 BO  ok      gauche 514 | recherche 230/201 | icônes 175 (BO 28 icône)
+en       1180     ok      gauche 514 | recherche 230/201 | icônes 131
+en       1180 BO  ok      gauche 514 | recherche 230/201 | icônes 175 (BO 28 icône)
+en       1279     ok      gauche 514 | recherche 230/201 | icônes 131
+en       1279 BO  ok      gauche 514 | recherche 230/201 | icônes 175 (BO 28 icône)
+en       1280     ok      gauche 556 | recherche 230/201 | icônes 131
+en       1280 BO  ok      gauche 556 | recherche 230/201 | icônes 253 (BO 106 texte)
+en stand 1024     ok      gauche 514 | recherche 230/201 | icônes 93
+en stand 1180     ok      gauche 514 | recherche 230/201 | icônes 93
+en stand 1279     ok      gauche 514 | recherche 230/201 | icônes 93
+en stand 1280     ok      gauche 556 | recherche 230/201 | icônes 93
+it       1024     ok      gauche 562 | recherche 230/182 | icônes 125
+it       1024 BO  ok      gauche 562 | recherche 214/182 | icônes 169 (BO 28 icône)
+it       1180     ok      gauche 562 | recherche 230/182 | icônes 125
+it       1180 BO  ok      gauche 562 | recherche 230/182 | icônes 169 (BO 28 icône)
+it       1279     ok      gauche 562 | recherche 230/182 | icônes 125
+it       1279 BO  ok      gauche 562 | recherche 230/182 | icônes 169 (BO 28 icône)
+it       1280     ok      gauche 608 | recherche 230/182 | icônes 125
+it       1280 BO  ok      gauche 608 | recherche 230/182 | icônes 247 (BO 106 texte)
+it stand 1024     ok      gauche 562 | recherche 230/182 | icônes 87
+it stand 1180     ok      gauche 562 | recherche 230/182 | icônes 87
+it stand 1279     ok      gauche 562 | recherche 230/182 | icônes 87
+it stand 1280     ok      gauche 608 | recherche 230/182 | icônes 87
+ja       1024     ok      gauche 581 | recherche 230/171 | icônes 129
+ja       1024 BO  ok      gauche 581 | recherche 191/171 | icônes 173 (BO 28 icône)
+ja       1180     ok      gauche 581 | recherche 230/171 | icônes 129
+ja       1180 BO  ok      gauche 581 | recherche 230/171 | icônes 173 (BO 28 icône)
+ja       1279     ok      gauche 581 | recherche 230/171 | icônes 129
+ja       1279 BO  ok      gauche 581 | recherche 230/171 | icônes 173 (BO 28 icône)
+ja       1280     ok      gauche 627 | recherche 230/171 | icônes 129
+ja       1280 BO  ok      gauche 627 | recherche 230/171 | icônes 252 (BO 106 texte)
+ja stand 1024     ok      gauche 581 | recherche 230/171 | icônes 91
+ja stand 1180     ok      gauche 581 | recherche 230/171 | icônes 91
+ja stand 1279     ok      gauche 581 | recherche 230/171 | icônes 91
+ja stand 1280     ok      gauche 627 | recherche 230/171 | icônes 91
+zh       1024     ok      gauche 362 | recherche 230/132 | icônes 131
+zh       1024 BO  ok      gauche 362 | recherche 230/132 | icônes 175 (BO 28 icône)
+zh       1180     ok      gauche 362 | recherche 230/132 | icônes 131
+zh       1180 BO  ok      gauche 362 | recherche 230/132 | icônes 175 (BO 28 icône)
+zh       1279     ok      gauche 362 | recherche 230/132 | icônes 131
+zh       1279 BO  ok      gauche 362 | recherche 230/132 | icônes 175 (BO 28 icône)
+zh       1280     ok      gauche 392 | recherche 230/132 | icônes 131
+zh       1280 BO  ok      gauche 392 | recherche 230/132 | icônes 253 (BO 106 texte)
+zh stand 1024     ok      gauche 362 | recherche 230/132 | icônes 93
+zh stand 1180     ok      gauche 362 | recherche 230/132 | icônes 93
+zh stand 1279     ok      gauche 362 | recherche 230/132 | icônes 93
+zh stand 1280     ok      gauche 392 | recherche 230/132 | icônes 93
+
+48 mesures, 0 débordements entre 768 et 1280 px.

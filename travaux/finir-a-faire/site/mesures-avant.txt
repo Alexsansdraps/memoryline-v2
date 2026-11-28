@@ -1,0 +1,170 @@
+fr        768     ok      gauche 545 | recherche - | icônes 167
+fr        768 BO  ok      gauche 423 | recherche - | icônes 289 (BO 106 texte) | coupées : Affiches prêtes à imprimer
+fr        900     ok      gauche 598 | recherche - | icônes 167
+fr        900 BO  ok      gauche 555 | recherche - | icônes 289 (BO 106 texte)
+fr       1024     DÉBORDE gauche 642 | recherche 173/228 | icônes 129
+fr       1024 BO  DÉBORDE gauche 642 | recherche 60/228 | icônes 251 (BO 106 texte) | dehors : Langue [964→1017]
+fr       1100     ok      gauche 642 | recherche 230/228 | icônes 129
+fr       1100 BO  DÉBORDE gauche 642 | recherche 127/228 | icônes 251 (BO 106 texte)
+fr       1180     ok      gauche 642 | recherche 230/228 | icônes 129
+fr       1180 BO  DÉBORDE gauche 642 | recherche 207/228 | icônes 251 (BO 106 texte)
+fr       1279     ok      gauche 642 | recherche 230/228 | icônes 129
+fr       1279 BO  ok      gauche 642 | recherche 230/228 | icônes 251 (BO 106 texte)
+fr       1280     ok      gauche 642 | recherche 230/228 | icônes 129
+fr       1280 BO  ok      gauche 642 | recherche 230/228 | icônes 251 (BO 106 texte)
+fr       1440     ok      gauche 642 | recherche 259/228 | icônes 129
+fr       1440 BO  ok      gauche 642 | recherche 259/228 | icônes 251 (BO 106 texte)
+fr stand  768     ok      gauche 583 | recherche - | icônes 129
+fr stand  900     ok      gauche 598 | recherche - | icônes 129
+fr stand 1024     DÉBORDE gauche 642 | recherche 211/228 | icônes 91
+fr stand 1100     ok      gauche 642 | recherche 230/228 | icônes 91
+fr stand 1180     ok      gauche 642 | recherche 230/228 | icônes 91
+fr stand 1279     ok      gauche 642 | recherche 230/228 | icônes 91
+fr stand 1280     ok      gauche 642 | recherche 230/228 | icônes 91
+fr stand 1440     ok      gauche 642 | recherche 259/228 | icônes 91
+en        768     ok      gauche 518 | recherche - | icônes 169
+en        768 BO  ok      gauche 421 | recherche - | icônes 291 (BO 106 texte)
+en        900     ok      gauche 518 | recherche - | icônes 169
+en        900 BO  ok      gauche 518 | recherche - | icônes 291 (BO 106 texte)
+en       1024     ok      gauche 556 | recherche 230/201 | icônes 131
+en       1024 BO  DÉBORDE gauche 556 | recherche 135/201 | icônes 253 (BO 106 texte)
+en       1100     ok      gauche 556 | recherche 230/201 | icônes 131
+en       1100 BO  ok      gauche 556 | recherche 211/201 | icônes 253 (BO 106 texte)
+en       1180     ok      gauche 556 | recherche 230/201 | icônes 131
+en       1180 BO  ok      gauche 556 | recherche 230/201 | icônes 253 (BO 106 texte)
+en       1279     ok      gauche 556 | recherche 230/201 | icônes 131
+en       1279 BO  ok      gauche 556 | recherche 230/201 | icônes 253 (BO 106 texte)
+en       1280     ok      gauche 556 | recherche 230/201 | icônes 131
+en       1280 BO  ok      gauche 556 | recherche 230/201 | icônes 253 (BO 106 texte)
+en       1440     ok      gauche 556 | recherche 259/201 | icônes 131
+en       1440 BO  ok      gauche 556 | recherche 259/201 | icônes 253 (BO 106 texte)
+en stand  768     ok      gauche 518 | recherche - | icônes 131
+en stand  900     ok      gauche 518 | recherche - | icônes 131
+en stand 1024     ok      gauche 556 | recherche 230/201 | icônes 93
+en stand 1100     ok      gauche 556 | recherche 230/201 | icônes 93
+en stand 1180     ok      gauche 556 | recherche 230/201 | icônes 93
+en stand 1279     ok      gauche 556 | recherche 230/201 | icônes 93
+en stand 1280     ok      gauche 556 | recherche 230/201 | icônes 93
+en stand 1440     ok      gauche 556 | recherche 259/201 | icônes 93
+de        768     ok      gauche 544 | recherche - | icônes 168 | coupées : Personalisierbare Poster / Druckfertige Poster
+de        768 BO  ok      gauche 421 | recherche - | icônes 291 (BO 106 texte) | coupées : Personalisierbare Poster / Druckfertige Poster
+de        900     ok      gauche 586 | recherche - | icônes 168
+de        900 BO  ok      gauche 553 | recherche - | icônes 291 (BO 106 texte) | coupées : Personalisierbare Poster / Druckfertige Poster
+de       1024     ok      gauche 629 | recherche 184/172 | icônes 130
+de       1024 BO  DÉBORDE gauche 629 | recherche 62/172 | icônes 253 (BO 106 texte)
+de       1100     ok      gauche 629 | recherche 230/172 | icônes 130
+de       1100 BO  DÉBORDE gauche 629 | recherche 138/172 | icônes 253 (BO 106 texte)
+de       1180     ok      gauche 629 | recherche 230/172 | icônes 130
+de       1180 BO  ok      gauche 629 | recherche 218/172 | icônes 253 (BO 106 texte)
+de       1279     ok      gauche 629 | recherche 230/172 | icônes 130
+de       1279 BO  ok      gauche 629 | recherche 230/172 | icônes 253 (BO 106 texte)
+de       1280     ok      gauche 629 | recherche 230/172 | icônes 130
+de       1280 BO  ok      gauche 629 | recherche 230/172 | icônes 253 (BO 106 texte)
+de       1440     ok      gauche 629 | recherche 259/172 | icônes 130
+de       1440 BO  ok      gauche 629 | recherche 259/172 | icônes 253 (BO 106 texte)
+de stand  768     ok      gauche 582 | recherche - | icônes 130 | coupées : Personalisierbare Poster / Druckfertige Poster
+de stand  900     ok      gauche 586 | recherche - | icônes 130
+de stand 1024     ok      gauche 629 | recherche 222/172 | icônes 92
+de stand 1100     ok      gauche 629 | recherche 230/172 | icônes 92
+de stand 1180     ok      gauche 629 | recherche 230/172 | icônes 92
+de stand 1279     ok      gauche 629 | recherche 230/172 | icônes 92
+de stand 1280     ok      gauche 629 | recherche 230/172 | icônes 92
+de stand 1440     ok      gauche 629 | recherche 259/172 | icônes 92
+it        768     ok      gauche 549 | recherche - | icônes 163
+it        768 BO  ok      gauche 427 | recherche - | icônes 285 (BO 106 texte)
+it        900     ok      gauche 566 | recherche - | icônes 163
+it        900 BO  ok      gauche 559 | recherche - | icônes 285 (BO 106 texte)
+it       1024     ok      gauche 608 | recherche 212/182 | icônes 125
+it       1024 BO  DÉBORDE gauche 608 | recherche 89/182 | icônes 247 (BO 106 texte)
+it       1100     ok      gauche 608 | recherche 230/182 | icônes 125
+it       1100 BO  DÉBORDE gauche 608 | recherche 165/182 | icônes 247 (BO 106 texte)
+it       1180     ok      gauche 608 | recherche 230/182 | icônes 125
+it       1180 BO  ok      gauche 608 | recherche 230/182 | icônes 247 (BO 106 texte)
+it       1279     ok      gauche 608 | recherche 230/182 | icônes 125
+it       1279 BO  ok      gauche 608 | recherche 230/182 | icônes 247 (BO 106 texte)
+it       1280     ok      gauche 608 | recherche 230/182 | icônes 125
+it       1280 BO  ok      gauche 608 | recherche 230/182 | icônes 247 (BO 106 texte)
+it       1440     ok      gauche 608 | recherche 259/182 | icônes 125
+it       1440 BO  ok      gauche 608 | recherche 259/182 | icônes 247 (BO 106 texte)
+it stand  768     ok      gauche 566 | recherche - | icônes 125
+it stand  900     ok      gauche 566 | recherche - | icônes 125
+it stand 1024     ok      gauche 608 | recherche 230/182 | icônes 87
+it stand 1100     ok      gauche 608 | recherche 230/182 | icônes 87
+it stand 1180     ok      gauche 608 | recherche 230/182 | icônes 87
+it stand 1279     ok      gauche 608 | recherche 230/182 | icônes 87
+it stand 1280     ok      gauche 608 | recherche 230/182 | icônes 87
+it stand 1440     ok      gauche 608 | recherche 259/182 | icônes 87
+es        768     ok      gauche 545 | recherche - | icônes 167
+es        768 BO  ok      gauche 422 | recherche - | icônes 290 (BO 106 texte)
+es        900     ok      gauche 601 | recherche - | icônes 167
+es        900 BO  ok      gauche 554 | recherche - | icônes 290 (BO 106 texte)
+es       1024     DÉBORDE gauche 646 | recherche 169/197 | icônes 129
+es       1024 BO  DÉBORDE gauche 646 | recherche 60/197 | icônes 252 (BO 106 texte) | dehors : Idioma [968→1021]
+es       1100     ok      gauche 646 | recherche 230/197 | icônes 129
+es       1100 BO  DÉBORDE gauche 646 | recherche 123/197 | icônes 252 (BO 106 texte)
+es       1180     ok      gauche 646 | recherche 230/197 | icônes 129
+es       1180 BO  ok      gauche 646 | recherche 203/197 | icônes 252 (BO 106 texte)
+es       1279     ok      gauche 646 | recherche 230/197 | icônes 129
+es       1279 BO  ok      gauche 646 | recherche 230/197 | icônes 252 (BO 106 texte)
+es       1280     ok      gauche 646 | recherche 230/197 | icônes 129
+es       1280 BO  ok      gauche 646 | recherche 230/197 | icônes 252 (BO 106 texte)
+es       1440     ok      gauche 646 | recherche 259/197 | icônes 129
+es       1440 BO  ok      gauche 646 | recherche 259/197 | icônes 252 (BO 106 texte)
+es stand  768     ok      gauche 583 | recherche - | icônes 129
+es stand  900     ok      gauche 601 | recherche - | icônes 129
+es stand 1024     ok      gauche 646 | recherche 207/197 | icônes 91
+es stand 1100     ok      gauche 646 | recherche 230/197 | icônes 91
+es stand 1180     ok      gauche 646 | recherche 230/197 | icônes 91
+es stand 1279     ok      gauche 646 | recherche 230/197 | icônes 91
+es stand 1280     ok      gauche 646 | recherche 230/197 | icônes 91
+es stand 1440     ok      gauche 646 | recherche 259/197 | icônes 91
+ja        768     ok      gauche 545 | recherche - | icônes 167
+ja        768 BO  ok      gauche 422 | recherche - | icônes 290 (BO 106 texte)
+ja        900     ok      gauche 585 | recherche - | icônes 167
+ja        900 BO  ok      gauche 554 | recherche - | icônes 290 (BO 106 texte)
+ja       1024     ok      gauche 627 | recherche 187/171 | icônes 129
+ja       1024 BO  DÉBORDE gauche 627 | recherche 65/171 | icônes 252 (BO 106 texte)
+ja       1100     ok      gauche 627 | recherche 230/171 | icônes 129
+ja       1100 BO  DÉBORDE gauche 627 | recherche 141/171 | icônes 252 (BO 106 texte)
+ja       1180     ok      gauche 627 | recherche 230/171 | icônes 129
+ja       1180 BO  ok      gauche 627 | recherche 221/171 | icônes 252 (BO 106 texte)
+ja       1279     ok      gauche 627 | recherche 230/171 | icônes 129
+ja       1279 BO  ok      gauche 627 | recherche 230/171 | icônes 252 (BO 106 texte)
+ja       1280     ok      gauche 627 | recherche 230/171 | icônes 129
+ja       1280 BO  ok      gauche 627 | recherche 230/171 | icônes 252 (BO 106 texte)
+ja       1440     ok      gauche 627 | recherche 259/171 | icônes 129
+ja       1440 BO  ok      gauche 627 | recherche 259/171 | icônes 252 (BO 106 texte)
+ja stand  768     ok      gauche 583 | recherche - | icônes 129
+ja stand  900     ok      gauche 585 | recherche - | icônes 129
+ja stand 1024     ok      gauche 627 | recherche 225/171 | icônes 91
+ja stand 1100     ok      gauche 627 | recherche 230/171 | icônes 91
+ja stand 1180     ok      gauche 627 | recherche 230/171 | icônes 91
+ja stand 1279     ok      gauche 627 | recherche 230/171 | icônes 91
+ja stand 1280     ok      gauche 627 | recherche 230/171 | icônes 91
+ja stand 1440     ok      gauche 627 | recherche 259/171 | icônes 91
+zh        768     ok      gauche 366 | recherche - | icônes 169
+zh        768 BO  ok      gauche 366 | recherche - | icônes 291 (BO 106 texte)
+zh        900     ok      gauche 366 | recherche - | icônes 169
+zh        900 BO  ok      gauche 366 | recherche - | icônes 291 (BO 106 texte)
+zh       1024     ok      gauche 392 | recherche 230/132 | icônes 131
+zh       1024 BO  ok      gauche 392 | recherche 230/132 | icônes 253 (BO 106 texte)
+zh       1100     ok      gauche 392 | recherche 230/132 | icônes 131
+zh       1100 BO  ok      gauche 392 | recherche 230/132 | icônes 253 (BO 106 texte)
+zh       1180     ok      gauche 392 | recherche 230/132 | icônes 131
+zh       1180 BO  ok      gauche 392 | recherche 230/132 | icônes 253 (BO 106 texte)
+zh       1279     ok      gauche 392 | recherche 230/132 | icônes 131
+zh       1279 BO  ok      gauche 392 | recherche 230/132 | icônes 253 (BO 106 texte)
+zh       1280     ok      gauche 392 | recherche 230/132 | icônes 131
+zh       1280 BO  ok      gauche 392 | recherche 230/132 | icônes 253 (BO 106 texte)
+zh       1440     ok      gauche 392 | recherche 259/132 | icônes 131
+zh       1440 BO  ok      gauche 392 | recherche 259/132 | icônes 253 (BO 106 texte)
+zh stand  768     ok      gauche 366 | recherche - | icônes 131
+zh stand  900     ok      gauche 366 | recherche - | icônes 131
+zh stand 1024     ok      gauche 392 | recherche 230/132 | icônes 93
+zh stand 1100     ok      gauche 392 | recherche 230/132 | icônes 93
+zh stand 1180     ok      gauche 392 | recherche 230/132 | icônes 93
+zh stand 1279     ok      gauche 392 | recherche 230/132 | icônes 93
+zh stand 1280     ok      gauche 392 | recherche 230/132 | icônes 93
+zh stand 1440     ok      gauche 392 | recherche 259/132 | icônes 93
+
+168 mesures, 15 débordements entre 768 et 1280 px.

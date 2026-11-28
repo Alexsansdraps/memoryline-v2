@@ -855,6 +855,13 @@
       "when": 1795320000000,
       "tag": "0122_affiche_stand_mulhouse_reglages",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1795330000000,
+      "tag": "0123_pages_legales_japonais_chinois",
+      "breakpoints": true
     }
   ]
 }

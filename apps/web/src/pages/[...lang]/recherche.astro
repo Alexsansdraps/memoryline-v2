@@ -16,6 +16,7 @@ import VignetteAffiche from "../../components/VignetteAffiche.astro";
 import { api, type Product } from "../../lib/api.ts";
 import { titreDePage } from "../../lib/textes-seo.ts";
 import { grilleProduits, sizesGrille, styleGrille } from "../../lib/grille.ts";
+import { assezLongPourChercher } from "../../lib/recherche-saisie.ts";
 /** Colonnes réglées au back-office (Contenu du site › Affichage des produits) :
  *  celles de la recherche s'il y en a, le réglage général sinon. */
 const grille = await grilleProduits("recherche", { stand: Astro.locals.stand });
@@ -35,18 +36,17 @@ if (Astro.params.lang !== undefined && !estLangue(Astro.params.lang))
 const langue: Langue = langueDepuisParam(Astro.params.lang);
 const tr = t(langue);
 
-/**
- * Deux caractères avant de chercher — la règle du back-office.
- *
- * En dessous, tout correspond : une lettre ramènerait le catalogue entier
- * sous le titre « résultats », ce qui est pire qu'une page vide.
- */
-const MINIMUM = 2;
 /** Autant que le rayon : la grille a la même forme, elle se lit pareil. */
 const PAR_PAGE = 48;
 
 const saisie = (Astro.url.searchParams.get("q") ?? "").trim();
-const assezLong = saisie.length >= MINIMUM;
+/**
+ * Deux caractères avant de chercher — la règle du back-office. En dessous,
+ * tout correspond : une lettre ramènerait le catalogue entier sous le titre
+ * « résultats », ce qui est pire qu'une page vide. En japonais et en chinois,
+ * un idéogramme seul suffit (28/11, lib/recherche-saisie.ts).
+ */
+const assezLong = assezLongPourChercher(saisie, langue);
 const pageDemandee = Math.max(
   Math.trunc(Number(Astro.url.searchParams.get("page") ?? 1)) || 1,
   1,
@@ -277,11 +277,18 @@ const titre = assezLong
       if (!champ || !compte || !zone) return;
       var minuterie;
       var enCours = null;
-      champ.addEventListener("input", function () {
+      // Japonais et chinois (28/11, À FAIRE : « la recherche dans ces
+      // langues ») : un idéogramme seul est un mot entier (港, 城, 塔) et se
+      // cherche dès la première touche ; et tant qu'un clavier japonais ou
+      // chinois compose un mot (« ぱり », « hai'tan » pas encore convertis),
+      // on attend le mot choisi. Même règle que lib/recherche-saisie.ts. Les
+      // autres langues ne changent pas.
+      var ideogrammes = /^(ja|zh)/.test(document.documentElement.lang || "");
+      function relancer() {
         clearTimeout(minuterie);
         var q = champ.value.trim();
         // Une seule lettre : on attend la suivante.
-        if (q.length === 1) return;
+        if (q.length === 1 && !(ideogrammes && /^[㐀-䶿一-鿿豈-﫿]$/.test(q))) return;
         minuterie = setTimeout(function () {
           if (enCours) enCours.abort();
           enCours = new AbortController();
@@ -317,7 +324,12 @@ const titre = assezLong
               // le bouton « Rechercher » marche toujours.
             });
         }, 220);
+      }
+      champ.addEventListener("input", function (e) {
+        if (ideogrammes && e.isComposing) return;
+        relancer();
       });
+      if (ideogrammes) champ.addEventListener("compositionend", relancer);
     })();
   </script>
 </Base>

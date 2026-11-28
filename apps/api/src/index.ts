@@ -141,6 +141,12 @@ import { maillageDeLaFiche } from "./maillage.js";
 import { enVente, standDuProduitEnService } from "./affiches-de-stand.js";
 import { couleursPubliques, lireCouleursMotifs } from "./motifs-couleurs.js";
 import {
+  HIRAGANA,
+  KATAKANA,
+  aplatirSaisieAsiatique,
+  ecritureAsiatique,
+} from "./recherche-boutique.js";
+import {
   genreDuRayon,
   languesDeLaCollection,
   languesDuProduit,
@@ -658,8 +664,11 @@ function aplatir(texte: string): string {
  * s'appeler « Promo 50% », et la barre oblique inversée d'être tapée par
  * erreur — les trois sont donc échappées.
  */
-function motifDe(saisie: string): string {
-  const plat = aplatir(saisie).replace(/[\\%_]/g, (signe) => `\\${signe}`);
+function motifDe(saisie: string, langue = "fr"): string {
+  // Japonais et chinois : leur propre aplatissement (recherche-boutique.ts,
+  // 28/11), qui garde entiers les kana voisés. Les autres langues ne changent pas.
+  const aplatie = ecritureAsiatique(langue) ? aplatirSaisieAsiatique(saisie) : aplatir(saisie);
+  const plat = aplatie.replace(/[\\%_]/g, (signe) => `\\${signe}`);
   return `%${plat}%`;
 }
 
@@ -677,6 +686,20 @@ function contient(colonne: Column, motif: string): SQL {
  */
 function contientTraduction(langue: string, motif: string): SQL {
   return sqlOp`translate(lower(coalesce(${schema.products.translations} -> ${langue} ->> 'name', '')), ${LETTRES_ACCENTUEES}, ${LETTRES_PLATES}) like ${motif}`;
+}
+
+/**
+ * Japonais et chinois (28/11, « la recherche dans ces langues », À FAIRE) :
+ * « le nom que la page MONTRE contient le motif ».
+ *
+ * Ce nom est le japonais (ou le chinois), l'anglais à défaut — la règle de
+ * `traduire()` plus haut. Il est mis sous forme simple (NFKC), en minuscules,
+ * sans accents, et ses katakana passent en hiragana : exactement ce que
+ * `aplatirSaisieAsiatique` fait de la saisie (recherche-boutique.ts).
+ */
+function contientNomAsiatique(langue: "ja" | "zh", motif: string): SQL {
+  const traductions = schema.products.translations;
+  return sqlOp`translate(lower(normalize(coalesce(nullif(btrim(${traductions} -> ${langue} ->> 'name'), ''), ${traductions} -> 'en' ->> 'name', ''), NFKC)), ${LETTRES_ACCENTUEES + KATAKANA}, ${LETTRES_PLATES + HIRAGANA}) like ${motif}`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -885,11 +908,15 @@ app.get("/products", async (c) => {
 
   const saisie = (c.req.query("q") ?? "").trim();
   if (saisie) {
-    const motif = motifDe(saisie);
+    const motif = motifDe(saisie, langue);
     const surLeNom = [
       contient(schema.products.name, motif),
       contient(schema.products.slug, motif),
-      ...(langue !== "fr" ? [contientTraduction(langue, motif)] : []),
+      ...(ecritureAsiatique(langue)
+        ? [contientNomAsiatique(langue, motif)]
+        : langue !== "fr"
+          ? [contientTraduction(langue, motif)]
+          : []),
     ];
     filtres.push(or(...surLeNom)!);
   }

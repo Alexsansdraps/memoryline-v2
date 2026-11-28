@@ -1,0 +1,750 @@
+{
+ "categorie": "peau-et-corps",
+ "date": "2026-11-27",
+ "generateur": "garde-robe/peau-et-corps/gen.mjs",
+ "teintes_peau": [
+  "#FFEEE0",
+  "#FFE2C0",
+  "#F6D2A9",
+  "#E1B480",
+  "#B88A6C",
+  "#8B5B38",
+  "#F8AA4C",
+  "#C87446"
+ ],
+ "lisibilite_ombre": {
+  "#FFEEE0": {
+   "deltaE": 12.89,
+   "rapport_a_la_peau_actuelle": 1
+  },
+  "#FFE2C0": {
+   "deltaE": 12.59,
+   "rapport_a_la_peau_actuelle": 0.98
+  },
+  "#F6D2A9": {
+   "deltaE": 12.04,
+   "rapport_a_la_peau_actuelle": 0.94
+  },
+  "#E1B480": {
+   "deltaE": 11.36,
+   "rapport_a_la_peau_actuelle": 0.89
+  },
+  "#B88A6C": {
+   "deltaE": 9.41,
+   "rapport_a_la_peau_actuelle": 0.73
+  },
+  "#8B5B38": {
+   "deltaE": 7.77,
+   "rapport_a_la_peau_actuelle": 0.61
+  },
+  "#F8AA4C": {
+   "deltaE": 12.83,
+   "rapport_a_la_peau_actuelle": 1
+  },
+  "#C87446": {
+   "deltaE": 10.25,
+   "rapport_a_la_peau_actuelle": 0.8
+  },
+  "#C57745": {
+   "deltaE": 10.38,
+   "rapport_a_la_peau_actuelle": 0.81
+  },
+  "#7A4A2A": {
+   "deltaE": 6.83,
+   "rapport_a_la_peau_actuelle": 0.53
+  },
+  "#B8B2A8": {
+   "deltaE": 10.19,
+   "rapport_a_la_peau_actuelle": 0.79
+  },
+  "#2F2A2B": {
+   "deltaE": 2.99,
+   "rapport_a_la_peau_actuelle": 0.23
+  },
+  "#D9822B": {
+   "deltaE": 11.99,
+   "rapport_a_la_peau_actuelle": 0.93
+  },
+  "#8E8A84": {
+   "deltaE": 8.22,
+   "rapport_a_la_peau_actuelle": 0.64
+  },
+  "#EAD7B7": {
+   "deltaE": 11.92,
+   "rapport_a_la_peau_actuelle": 0.93
+  },
+  "#C9B39A": {
+   "deltaE": 10.43,
+   "rapport_a_la_peau_actuelle": 0.81
+  },
+  "#E6E0D8": {
+   "deltaE": 12.18,
+   "rapport_a_la_peau_actuelle": 0.95
+  },
+  "#7A5A3E": {
+   "deltaE": 6.58,
+   "rapport_a_la_peau_actuelle": 0.51
+  }
+ },
+ "robes_animaux": {
+  "cheval": [
+   "#C57745",
+   "#7A4A2A",
+   "#B8B2A8",
+   "#2F2A2B"
+  ],
+  "chat": [
+   "#2F2A2B",
+   "#D9822B",
+   "#8E8A84",
+   "#EAD7B7"
+  ],
+  "lapin": [
+   "#C9B39A",
+   "#E6E0D8",
+   "#8E8A84",
+   "#7A5A3E"
+  ]
+ },
+ "gabarits": [
+  {
+   "fichier": "gabarit-dos-femme-standard-v2.svg",
+   "url": "/assets/gabarit-dos-femme-standard-v2.svg",
+   "famille": "femme",
+   "morphologie": "standard",
+   "groupe": "Female_Base_1001",
+   "base_color_zones": {
+    "st0": "#F8AA4C"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.875,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 182775 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-femme-fine.svg",
+   "url": "/assets/gabarit-dos-femme-fine.svg",
+   "famille": "femme",
+   "morphologie": "fine",
+   "groupe": "Female_Base_1002",
+   "base_color_zones": {
+    "st0": "#E38242"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.875,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 173940 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-femme-ronde.svg",
+   "url": "/assets/gabarit-dos-femme-ronde.svg",
+   "famille": "femme",
+   "morphologie": "ronde",
+   "groupe": "Female_Base_1003",
+   "base_color_zones": {
+    "st0": "#C87446"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.875,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 196691 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-femme-agee.svg",
+   "url": "/assets/gabarit-dos-femme-agee.svg",
+   "famille": "femme",
+   "morphologie": "agee",
+   "groupe": "Female_Base_1004",
+   "base_color_zones": {
+    "st0": "#E7965A"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.875,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 182591 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-homme-standard-v2.svg",
+   "url": "/assets/gabarit-dos-homme-standard-v2.svg",
+   "famille": "homme",
+   "morphologie": "standard",
+   "groupe": "Male_Base_1001",
+   "base_color_zones": {
+    "st0": "#F8AA4C"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.865,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 189064 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-homme-mince.svg",
+   "url": "/assets/gabarit-dos-homme-mince.svg",
+   "famille": "homme",
+   "morphologie": "mince",
+   "groupe": "Male_Base_1002",
+   "base_color_zones": {
+    "st0": "#C87446"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.865,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 181662 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-homme-rond.svg",
+   "url": "/assets/gabarit-dos-homme-rond.svg",
+   "famille": "homme",
+   "morphologie": "rond",
+   "groupe": "Male_Base_1003",
+   "base_color_zones": {
+    "st0": "#E38242"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.865,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 201449 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-homme-age.svg",
+   "url": "/assets/gabarit-dos-homme-age.svg",
+   "famille": "homme",
+   "morphologie": "age",
+   "groupe": "Male_Base_1004",
+   "base_color_zones": {
+    "st0": "#E7965A"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.865,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 189592 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-enfant-standard-v2.svg",
+   "url": "/assets/gabarit-dos-enfant-standard-v2.svg",
+   "famille": "enfant",
+   "morphologie": "standard",
+   "groupe": "Boy_Base_1001",
+   "base_color_zones": {
+    "st0": "#F2A346"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.778,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 103005 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-enfant-fin.svg",
+   "url": "/assets/gabarit-dos-enfant-fin.svg",
+   "famille": "enfant",
+   "morphologie": "fin",
+   "groupe": "Boy_Base_1002",
+   "base_color_zones": {
+    "st0": "#C87446"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.778,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 99282 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-enfant-rond.svg",
+   "url": "/assets/gabarit-dos-enfant-rond.svg",
+   "famille": "enfant",
+   "morphologie": "rond",
+   "groupe": "Boy_Base_1003",
+   "base_color_zones": {
+    "st0": "#EF9F56"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.778,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 109555 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-ado-standard-v2.svg",
+   "url": "/assets/gabarit-dos-ado-standard-v2.svg",
+   "famille": "ado",
+   "morphologie": "standard",
+   "groupe": "Teenage_Boy_Base_1001",
+   "base_color_zones": {
+    "st0": "#F8AA4C"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.821,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 146701 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-ado-fin.svg",
+   "url": "/assets/gabarit-dos-ado-fin.svg",
+   "famille": "ado",
+   "morphologie": "fin",
+   "groupe": "Teenage_Boy_Base_1002",
+   "base_color_zones": {
+    "st0": "#E38242"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.821,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "peau st0 = 100.0 % des 140425 px opaques, 0 px hors peau"
+   }
+  },
+  {
+   "fichier": "gabarit-dos-cheval-debout.svg",
+   "url": "/assets/gabarit-dos-cheval-debout.svg",
+   "famille": "cheval",
+   "morphologie": "debout",
+   "groupe": "Horse_Base_1002",
+   "base_color_zones": {
+    "st0": "#C57745",
+    "st2": "#5B392E",
+    "st3": "#865F4A"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.874,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "zones st0, st2, st3 seules ; 90355 px opaques, 0 hors zones"
+   },
+   "base_groupes_couleurs_conseilles": [
+    {
+     "zone": "st0",
+     "nom": "Robe",
+     "couleurs": [
+      "#C57745",
+      "#7A4A2A",
+      "#B8B2A8",
+      "#2F2A2B"
+     ]
+    },
+    {
+     "zone": "st2",
+     "nuances": [
+      "st3"
+     ],
+     "nom": "Crins",
+     "couleurs": [
+      "#5B392E",
+      "#2F2A2B",
+      "#D8D2C8",
+      "#E0C48A"
+     ]
+    }
+   ],
+   "base_zones_proposees_conseillees": [
+    "st0",
+    "st2"
+   ]
+  },
+  {
+   "fichier": "gabarit-dos-chat.svg",
+   "url": "/assets/gabarit-dos-chat.svg",
+   "famille": "chat",
+   "morphologie": "chat",
+   "groupe": "Cat_Base_1001",
+   "base_color_zones": {
+    "st0": "#2F2A2B"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.624,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "zones st0 seules ; 17876 px opaques, 0 hors zones"
+   },
+   "base_groupes_couleurs_conseilles": [
+    {
+     "zone": "st0",
+     "nom": "Robe",
+     "couleurs": [
+      "#2F2A2B",
+      "#D9822B",
+      "#8E8A84",
+      "#EAD7B7"
+     ]
+    }
+   ],
+   "base_zones_proposees_conseillees": [
+    "st0"
+   ]
+  },
+  {
+   "fichier": "gabarit-dos-lapin.svg",
+   "url": "/assets/gabarit-dos-lapin.svg",
+   "famille": "lapin",
+   "morphologie": "lapin",
+   "groupe": "Rabbit_Base_1001",
+   "base_color_zones": {
+    "st0": "#C9B39A",
+    "st2": "#F4F3F2"
+   },
+   "zone_peau": "st0",
+   "ombre": "st1",
+   "bottom_pct": 0.625,
+   "facteur_taille": 1,
+   "decalage_x": 0,
+   "slot_adjust": {},
+   "orientation": "back",
+   "controle": {
+    "ok": true,
+    "remarques": "zones st0, st2 seules ; 22022 px opaques, 0 hors zones"
+   },
+   "base_groupes_couleurs_conseilles": [
+    {
+     "zone": "st0",
+     "nom": "Robe",
+     "couleurs": [
+      "#C9B39A",
+      "#E6E0D8",
+      "#8E8A84",
+      "#7A5A3E"
+     ]
+    }
+   ],
+   "base_zones_proposees_conseillees": [
+    "st0"
+   ]
+  }
+ ],
+ "exclus": [
+  {
+   "fichier": "gabarit-dos-cheval.svg",
+   "raison": "cheval couché, pas proposé"
+  }
+ ],
+ "personnages_proposes": [
+  {
+   "nom": "Mamie aux cheveux blancs",
+   "gabarit": "gabarit-dos-femme-agee.svg",
+   "peau": "#F6D2A9",
+   "tenue_souhaitee": {
+    "hair": "coiffures/femme/chignon-grand-mere",
+    "clothes": "hauts/femme/gilet",
+    "pants": "bas/femme/jupe",
+    "accessory": "accessoires/femme/chale"
+   }
+  },
+  {
+   "nom": "Mamie au carré gris",
+   "gabarit": "gabarit-dos-femme-agee.svg",
+   "peau": "#8B5B38",
+   "tenue_souhaitee": {
+    "hair": "coiffures/femme/carre-court",
+    "clothes": "hauts/femme/pull-col-rond",
+    "pants": "bas/femme/pantalon",
+    "accessory": "accessoires/femme/lunettes"
+   }
+  },
+  {
+   "nom": "Femme aux longs cheveux",
+   "gabarit": "gabarit-dos-femme-standard-v2.svg",
+   "peau": "#FFE2C0",
+   "tenue_souhaitee": {
+    "hair": "coiffures/femme/longs-lisses",
+    "clothes": "hauts/femme/pull-col-rond",
+    "pants": "bas/femme/jean",
+    "accessory": "accessoires/femme/sac-a-main"
+   }
+  },
+  {
+   "nom": "Femme à la queue de cheval",
+   "gabarit": "gabarit-dos-femme-fine.svg",
+   "peau": "#E1B480",
+   "tenue_souhaitee": {
+    "hair": "coiffures/femme/queue-de-cheval",
+    "clothes": "hauts/femme/t-shirt",
+    "pants": "bas/femme/legging",
+    "accessory": "accessoires/femme/casquette"
+   }
+  },
+  {
+   "nom": "Femme aux cheveux frisés",
+   "gabarit": "gabarit-dos-femme-ronde.svg",
+   "peau": "#8B5B38",
+   "tenue_souhaitee": {
+    "hair": "coiffures/femme/afro",
+    "clothes": "hauts/femme/robe",
+    "pants": "bas/femme/jupe",
+    "accessory": "accessoires/femme/foulard"
+   }
+  },
+  {
+   "nom": "Femme au chapeau de paille",
+   "gabarit": "gabarit-dos-femme-standard-v2.svg",
+   "peau": "#B88A6C",
+   "tenue_souhaitee": {
+    "hair": "coiffures/femme/carre-court",
+    "clothes": "hauts/femme/debardeur",
+    "pants": "bas/femme/short",
+    "accessory": "accessoires/femme/chapeau-de-paille"
+   }
+  },
+  {
+   "nom": "Jeune maman",
+   "gabarit": "gabarit-dos-femme-fine.svg",
+   "peau": "#FFEEE0",
+   "tenue_souhaitee": {
+    "hair": "coiffures/femme/chignon-flou",
+    "clothes": "hauts/femme/chemise",
+    "pants": "bas/femme/jean",
+    "accessory": "accessoires/femme/sac-a-dos"
+   }
+  },
+  {
+   "nom": "Papi chauve",
+   "gabarit": "gabarit-dos-homme-age.svg",
+   "peau": "#F6D2A9",
+   "tenue_souhaitee": {
+    "hair": "coiffures/homme/calvitie-couronne-blanche",
+    "clothes": "hauts/homme/gilet",
+    "pants": "bas/homme/pantalon-velours",
+    "accessory": "accessoires/homme/casquette-plate"
+   }
+  },
+  {
+   "nom": "Papi à la barbe blanche",
+   "gabarit": "gabarit-dos-homme-age.svg",
+   "peau": "#B88A6C",
+   "tenue_souhaitee": {
+    "hair": "coiffures/homme/calvitie-barbe-blanche",
+    "clothes": "hauts/homme/chemise",
+    "pants": "bas/homme/pantalon",
+    "accessory": "accessoires/homme/lunettes"
+   }
+  },
+  {
+   "nom": "Homme barbu",
+   "gabarit": "gabarit-dos-homme-standard-v2.svg",
+   "peau": "#E1B480",
+   "tenue_souhaitee": {
+    "hair": "coiffures/homme/courts-barbe",
+    "clothes": "hauts/homme/chemise-a-carreaux",
+    "pants": "bas/homme/jean",
+    "accessory": "accessoires/homme/bonnet"
+   }
+  },
+  {
+   "nom": "Homme en sweat à capuche",
+   "gabarit": "gabarit-dos-homme-mince.svg",
+   "peau": "#8B5B38",
+   "tenue_souhaitee": {
+    "hair": "coiffures/homme/rases",
+    "clothes": "hauts/homme/sweat-capuche",
+    "pants": "bas/homme/jogging",
+    "accessory": "accessoires/homme/casque-audio"
+   }
+  },
+  {
+   "nom": "Homme au costume",
+   "gabarit": "gabarit-dos-homme-rond.svg",
+   "peau": "#FFE2C0",
+   "tenue_souhaitee": {
+    "hair": "coiffures/homme/raie-de-cote",
+    "clothes": "hauts/homme/veste-costume",
+    "pants": "bas/homme/pantalon",
+    "accessory": "accessoires/homme/chapeau"
+   }
+  },
+  {
+   "nom": "Homme en polo",
+   "gabarit": "gabarit-dos-homme-standard-v2.svg",
+   "peau": "#C87446",
+   "tenue_souhaitee": {
+    "hair": "coiffures/homme/courts",
+    "clothes": "hauts/homme/polo",
+    "pants": "bas/homme/short",
+    "accessory": "accessoires/homme/casquette"
+   }
+  },
+  {
+   "nom": "Petite fille aux couettes",
+   "gabarit": "gabarit-dos-enfant-standard-v2.svg",
+   "peau": "#FFEEE0",
+   "tenue_souhaitee": {
+    "hair": "coiffures/enfant/couettes",
+    "clothes": "hauts/enfant/robe",
+    "pants": "bas/enfant/collant",
+    "accessory": "accessoires/enfant/noeud"
+   }
+  },
+  {
+   "nom": "Petite fille aux tresses",
+   "gabarit": "gabarit-dos-enfant-fin.svg",
+   "peau": "#8B5B38",
+   "tenue_souhaitee": {
+    "hair": "coiffures/enfant/tresses",
+    "clothes": "hauts/enfant/t-shirt",
+    "pants": "bas/enfant/salopette",
+    "accessory": "accessoires/enfant/sac-a-dos"
+   }
+  },
+  {
+   "nom": "Petit garçon à la casquette",
+   "gabarit": "gabarit-dos-enfant-rond.svg",
+   "peau": "#F6D2A9",
+   "tenue_souhaitee": {
+    "hair": "coiffures/enfant/courts",
+    "clothes": "hauts/enfant/t-shirt-rayures",
+    "pants": "bas/enfant/short",
+    "accessory": "accessoires/enfant/casquette"
+   }
+  },
+  {
+   "nom": "Petit garçon au bonnet",
+   "gabarit": "gabarit-dos-enfant-standard-v2.svg",
+   "peau": "#B88A6C",
+   "tenue_souhaitee": {
+    "hair": "coiffures/enfant/frange",
+    "clothes": "hauts/enfant/pull",
+    "pants": "bas/enfant/pantalon",
+    "accessory": "accessoires/enfant/bonnet-pompon"
+   }
+  },
+  {
+   "nom": "Ado au sweat",
+   "gabarit": "gabarit-dos-ado-standard-v2.svg",
+   "peau": "#E1B480",
+   "tenue_souhaitee": {
+    "hair": "coiffures/ado/meche",
+    "clothes": "hauts/ado/sweat-capuche",
+    "pants": "bas/ado/jean",
+    "accessory": "accessoires/ado/casque-audio"
+   }
+  },
+  {
+   "nom": "Ado sportif",
+   "gabarit": "gabarit-dos-ado-fin.svg",
+   "peau": "#8B5B38",
+   "tenue_souhaitee": {
+    "hair": "coiffures/ado/rases",
+    "clothes": "hauts/ado/maillot",
+    "pants": "bas/ado/jogging",
+    "accessory": "accessoires/ado/casquette"
+   }
+  },
+  {
+   "nom": "Cheval alezan",
+   "gabarit": "gabarit-dos-cheval-debout.svg",
+   "peau": "#C57745",
+   "tenue_souhaitee": {
+    "accessory": "accessoires/cheval/licol"
+   }
+  },
+  {
+   "nom": "Chat noir",
+   "gabarit": "gabarit-dos-chat.svg",
+   "peau": "#2F2A2B",
+   "tenue_souhaitee": {
+    "accessory": "accessoires/chat/collier-grelot"
+   }
+  },
+  {
+   "nom": "Lapin fauve",
+   "gabarit": "gabarit-dos-lapin.svg",
+   "peau": "#C9B39A",
+   "tenue_souhaitee": {
+    "accessory": "accessoires/lapin/noeud"
+   }
+  }
+ ]
+}

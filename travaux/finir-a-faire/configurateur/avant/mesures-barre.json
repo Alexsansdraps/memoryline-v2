@@ -1,0 +1,256 @@
+{
+ "barre": {
+  "stand-motifs-360": {
+   "largeurEcran": 360,
+   "panneau": [
+    14,
+    346
+   ],
+   "barre": {
+    "scroll": 380,
+    "client": 298,
+    "droite": 329,
+    "hauteur": 83
+   },
+   "enfants": [
+    {
+     "texte": "",
+     "gauche": 31,
+     "droite": 329,
+     "haut": 44
+    },
+    {
+     "texte": "Retour",
+     "gauche": 31,
+     "droite": 109,
+     "haut": 38
+    },
+    {
+     "texte": "A3 · Cadre bois façon chêne",
+     "gauche": 121,
+     "droite": 310,
+     "haut": 27
+    },
+    {
+     "texte": "Valider l'affiche",
+     "gauche": 322,
+     "droite": 411,
+     "haut": 58
+    }
+   ],
+   "fenetreDefileX": true,
+   "pageDefileX": false,
+   "sortDuPanneau": true
+  },
+  "stand-motifs-320": {
+   "largeurEcran": 320,
+   "panneau": [
+    14,
+    306
+   ],
+   "barre": {
+    "scroll": 380,
+    "client": 258,
+    "droite": 289,
+    "hauteur": 83
+   },
+   "enfants": [
+    {
+     "texte": "",
+     "gauche": 31,
+     "droite": 289,
+     "haut": 44
+    },
+    {
+     "texte": "Retour",
+     "gauche": 31,
+     "droite": 109,
+     "haut": 38
+    },
+    {
+     "texte": "A3 · Cadre bois façon chêne",
+     "gauche": 121,
+     "droite": 310,
+     "haut": 27
+    },
+    {
+     "texte": "Valider l'affiche",
+     "gauche": 322,
+     "droite": 411,
+     "haut": 58
+    }
+   ],
+   "fenetreDefileX": true,
+   "pageDefileX": false,
+   "sortDuPanneau": true
+  },
+  "stand-classique-360": {
+   "largeurEcran": 360,
+   "panneau": [
+    14,
+    346
+   ],
+   "barre": {
+    "scroll": 380,
+    "client": 298,
+    "droite": 329,
+    "hauteur": 83
+   },
+   "enfants": [
+    {
+     "texte": "",
+     "gauche": 31,
+     "droite": 329,
+     "haut": 44
+    },
+    {
+     "texte": "Retour",
+     "gauche": 31,
+     "droite": 109,
+     "haut": 38
+    },
+    {
+     "texte": "A3 · Cadre bois façon chêne",
+     "gauche": 121,
+     "droite": 310,
+     "haut": 27
+    },
+    {
+     "texte": "Valider l'affiche",
+     "gauche": 322,
+     "droite": 411,
+     "haut": 58
+    }
+   ],
+   "fenetreDefileX": true,
+   "pageDefileX": false,
+   "sortDuPanneau": true
+  },
+  "stand-classique-320": {
+   "largeurEcran": 320,
+   "panneau": [
+    14,
+    306
+   ],
+   "barre": {
+    "scroll": 380,
+    "client": 258,
+    "droite": 289,
+    "hauteur": 83
+   },
+   "enfants": [
+    {
+     "texte": "",
+     "gauche": 31,
+     "droite": 289,
+     "haut": 44
+    },
+    {
+     "texte": "Retour",
+     "gauche": 31,
+     "droite": 109,
+     "haut": 38
+    },
+    {
+     "texte": "A3 · Cadre bois façon chêne",
+     "gauche": 121,
+     "droite": 310,
+     "haut": 27
+    },
+    {
+     "texte": "Valider l'affiche",
+     "gauche": 322,
+     "droite": 411,
+     "haut": 58
+    }
+   ],
+   "fenetreDefileX": true,
+   "pageDefileX": false,
+   "sortDuPanneau": true
+  },
+  "site-cadres-360": {
+   "largeurEcran": 360,
+   "panneau": [
+    14,
+    346
+   ],
+   "barre": {
+    "scroll": 404,
+    "client": 298,
+    "droite": 329,
+    "hauteur": 83
+   },
+   "enfants": [
+    {
+     "texte": "",
+     "gauche": 31,
+     "droite": 329,
+     "haut": 44
+    },
+    {
+     "texte": "Retour",
+     "gauche": 31,
+     "droite": 109,
+     "haut": 38
+    },
+    {
+     "texte": "45 € (A3 · Cadre bois façon chêne)",
+     "gauche": 121,
+     "droite": 335,
+     "haut": 27
+    },
+    {
+     "texte": "Valider l'affiche",
+     "gauche": 347,
+     "droite": 435,
+     "haut": 58
+    }
+   ],
+   "fenetreDefileX": true,
+   "pageDefileX": false,
+   "sortDuPanneau": true
+  },
+  "site-cadres-320": {
+   "largeurEcran": 320,
+   "panneau": [
+    14,
+    306
+   ],
+   "barre": {
+    "scroll": 404,
+    "client": 258,
+    "droite": 289,
+    "hauteur": 83
+   },
+   "enfants": [
+    {
+     "texte": "",
+     "gauche": 31,
+     "droite": 289,
+     "haut": 44
+    },
+    {
+     "texte": "Retour",
+     "gauche": 31,
+     "droite": 109,
+     "haut": 38
+    },
+    {
+     "texte": "45 € (A3 · Cadre bois façon chêne)",
+     "gauche": 121,
+     "droite": 335,
+     "haut": 27
+    },
+    {
+     "texte": "Valider l'affiche",
+     "gauche": 347,
+     "droite": 435,
+     "haut": 58
+    }
+   ],
+   "fenetreDefileX": true,
+   "pageDefileX": false,
+   "sortDuPanneau": true
+  }
+ }
+}

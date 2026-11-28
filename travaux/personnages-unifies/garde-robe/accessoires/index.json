@@ -1,0 +1,4156 @@
+{
+ "categorie": "accessoires",
+ "date": "2026-11-27",
+ "generateur": "garde-robe/accessoires/gen.mjs",
+ "pieces": [
+  {
+   "fichier": "gabarit-piece-accessoires-femme-chapeau-paille.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-chapeau-paille.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Chapeau de paille",
+   "id_groupe": "Female_Accessories_1000",
+   "position_proposee": 1000,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#CE9D21",
+     "groupe": "Paille",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#906E17",
+     "groupe": "Paille",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#D81919",
+     "groupe": "Ruban",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     118,
+     381
+    ],
+    "y": [
+     138,
+     254
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 46 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-capeline.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-capeline.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Capeline",
+   "id_groupe": "Female_Accessories_1001",
+   "position_proposee": 1001,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E4AF73",
+     "groupe": "Paille",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#D88D37",
+     "groupe": "Paille",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#273252",
+     "groupe": "Ruban",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     102,
+     402
+    ],
+    "y": [
+     142,
+     265
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 85,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 85,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 85,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 85,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 46 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Bord très large (jusqu'à |u| 150) : il passe au-dessus des épaules. Incompatible avec les coiffures volumineuses (chignon haut, queue haute, macarons, afro)."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-bob.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-bob.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bob",
+   "id_groupe": "Female_Accessories_1002",
+   "position_proposee": 1002,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#3C584F",
+     "groupe": "Toile",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#253C34",
+     "groupe": "Toile",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     130,
+     369
+    ],
+    "y": [
+     142,
+     264
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 44 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-bonnet.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-bonnet.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bonnet à revers",
+   "id_groupe": "Female_Accessories_1003",
+   "position_proposee": 1003,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#1D4912",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0D2008",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     156,
+     343
+    ],
+    "y": [
+     142,
+     249
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 58 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-bonnet-pompon.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-bonnet-pompon.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bonnet à pompon",
+   "id_groupe": "Female_Accessories_1004",
+   "position_proposee": 1004,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF599A",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Pompon",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     156,
+     343
+    ],
+    "y": [
+     114,
+     249
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 58 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-beret.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-beret.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Béret",
+   "id_groupe": "Female_Accessories_1005",
+   "position_proposee": 1005,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Laine",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     152,
+     363
+    ],
+    "y": [
+     123,
+     229
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 65,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 65,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 65,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 65,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 44 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Posé penché vers la droite ; il couvre toute la calotte contractuelle."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-casquette.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-casquette.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Casquette",
+   "id_groupe": "Female_Accessories_1006",
+   "position_proposee": 1006,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#194F6D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0E2B3B",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Patte",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     158,
+     341
+    ],
+    "y": [
+     138,
+     231
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "calotte_non_couverte_px": 15,
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "calotte_non_couverte_px": 15,
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "calotte_non_couverte_px": 15,
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "calotte_non_couverte_px": 15,
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 50 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Ouverture de réglage au-dessus de la patte (|u| < 30, v 24 à 50) : la coiffure ou le crâne s'y voient, comme sur la casquette actuelle de Male_2. Zone exclue du contrôle de calotte."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-lunettes.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-lunettes.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Lunettes",
+   "id_groupe": "Female_Accessories_1007",
+   "position_proposee": 1007,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#24222C",
+     "groupe": "Monture",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     169,
+     330
+    ],
+    "y": [
+     237,
+     280
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-lunettes-cordon.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-lunettes-cordon.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Lunettes à cordon",
+   "id_groupe": "Female_Accessories_1008",
+   "position_proposee": 1008,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E7B033",
+     "groupe": "Cordon",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#24222C",
+     "groupe": "Monture",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     169,
+     330
+    ],
+    "y": [
+     237,
+     399
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-serre-tete.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-serre-tete.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Serre-tête",
+   "id_groupe": "Female_Accessories_1009",
+   "position_proposee": 1009,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E2C447",
+     "groupe": "Serre-tête",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     163,
+     336
+    ],
+    "y": [
+     152,
+     244
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Posé sur les cheveux (contrat coiffures : volume jusqu'à demi(v) + 20, sommet v -28) : il flotte de quelques pixels au-dessus d'un crâne tondu."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-noeud-cheveux.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-noeud-cheveux.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Nœud dans les cheveux",
+   "id_groupe": "Female_Accessories_1010",
+   "position_proposee": 1010,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#D81919",
+     "groupe": "Ruban",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#A11313",
+     "groupe": "Ruban",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     204,
+     295
+    ],
+    "y": [
+     226,
+     303
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-barrettes.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-barrettes.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Barrettes",
+   "id_groupe": "Female_Accessories_1011",
+   "position_proposee": 1011,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Barrettes",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Strass",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     179,
+     315
+    ],
+    "y": [
+     192,
+     249
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 1,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 1,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 1,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 1,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-foulard-tete.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-foulard-tete.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Foulard sur la tête",
+   "id_groupe": "Female_Accessories_1012",
+   "position_proposee": 1012,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E03270",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#B91C54",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Pois",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     154,
+     345
+    ],
+    "y": [
+     146,
+     375
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 66 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Noué sur la nuque, pans jusqu'à v 196 : passe par-dessus les cheveux longs."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-echarpe.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-echarpe.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Écharpe",
+   "id_groupe": "Female_Accessories_1013",
+   "position_proposee": 1013,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#850D0D",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Rayures",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     186,
+     313
+    ],
+    "y": [
+     344,
+     543
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "base_du_cou_y": 384,
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "base_du_cou_y": 384,
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "base_du_cou_y": 384,
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "base_du_cou_y": 369,
+     "peau_visible_px": 0,
+     "debord_max_px": 13,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-foulard-cou.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-foulard-cou.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Foulard noué au cou",
+   "id_groupe": "Female_Accessories_1014",
+   "position_proposee": 1014,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#82C3F4",
+     "groupe": "Soie",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#40A4EE",
+     "groupe": "Soie",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     169,
+     308
+    ],
+    "y": [
+     351,
+     444
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "base_du_cou_y": 384,
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "base_du_cou_y": 384,
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "base_du_cou_y": 384,
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "base_du_cou_y": 369,
+     "peau_visible_px": 0,
+     "debord_max_px": 8,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-chale.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-chale.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Châle",
+   "id_groupe": "Female_Accessories_1015",
+   "position_proposee": 1015,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#B8551D",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#833D15",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#E4AF73",
+     "groupe": "Franges",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     83,
+     416
+    ],
+    "y": [
+     382,
+     571
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 1,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 1,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 1,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-sac-bandouliere.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-sac-bandouliere.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Sac en bandoulière",
+   "id_groupe": "Female_Accessories_1016",
+   "position_proposee": 1016,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#CD6122",
+     "groupe": "Cuir",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#904418",
+     "groupe": "Cuir",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st4": {
+     "couleur": "#E7B033",
+     "groupe": "Fermoir",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     195,
+     342
+    ],
+    "y": [
+     391,
+     763
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-sac-a-dos.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-sac-a-dos.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Sac à dos",
+   "id_groupe": "Female_Accessories_1017",
+   "position_proposee": 1017,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#194F6D",
+     "groupe": "Toile",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0F3144",
+     "groupe": "Toile",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#E8B71C",
+     "groupe": "Poche",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     168,
+     331
+    ],
+    "y": [
+     382,
+     635
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-canne.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-canne.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Canne",
+   "id_groupe": "Female_Accessories_1018",
+   "position_proposee": 1018,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#6B3E1E",
+     "groupe": "Bois",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#24222C",
+     "groupe": "Embout",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     463,
+     488
+    ],
+    "y": [
+     609,
+     874
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 91,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 96,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 73,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 91,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Posée debout à droite de l'assise (x 464 à 488), crosse vers y 614 tournée vers l'extérieur : elle ne touche ni le bras ni la main, même sur la femme ronde."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-femme-collier-perles.svg",
+   "url": "/assets/gabarit-piece-accessoires-femme-collier-perles.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Collier de perles",
+   "id_groupe": "Female_Accessories_1019",
+   "position_proposee": 1019,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#F4F3F2",
+     "groupe": "Perles",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#E7B033",
+     "groupe": "Fermoir",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     206,
+     293
+    ],
+    "y": [
+     356,
+     389
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 2,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Rang de perles sur la nuque, fermoir au milieu ; par-dessus les cheveux longs (calque accessoire)."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-casquette.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-casquette.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Casquette",
+   "id_groupe": "Male_Accessories_1020",
+   "position_proposee": 1020,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#194F6D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0E2B3B",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Patte",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     160,
+     340
+    ],
+    "y": [
+     121,
+     213
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "calotte_non_couverte_px": 22,
+     "peau_visible_px": 0,
+     "debord_max_px": 41,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "calotte_non_couverte_px": 22,
+     "peau_visible_px": 0,
+     "debord_max_px": 41,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "calotte_non_couverte_px": 22,
+     "peau_visible_px": 0,
+     "debord_max_px": 41,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "calotte_non_couverte_px": 22,
+     "peau_visible_px": 0,
+     "debord_max_px": 41,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 50 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Ouverture de réglage au-dessus de la patte, comme sur la casquette actuelle de Male_2 : zone exclue du contrôle de calotte."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-casquette-plate.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-casquette-plate.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Casquette plate",
+   "id_groupe": "Male_Accessories_1021",
+   "position_proposee": 1021,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#6D7090",
+     "groupe": "Tweed",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#53556D",
+     "groupe": "Tweed",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     156,
+     343
+    ],
+    "y": [
+     129,
+     211
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 44,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 44,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 44,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 44,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 44 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-chapeau-feutre.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-chapeau-feutre.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Chapeau de feutre",
+   "id_groupe": "Male_Accessories_1022",
+   "position_proposee": 1022,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#5A4636",
+     "groupe": "Feutre",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#3A2D23",
+     "groupe": "Feutre",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#24222C",
+     "groupe": "Ruban",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     130,
+     369
+    ],
+    "y": [
+     121,
+     226
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 54,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 54,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 54,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 54,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 44 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-panama.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-panama.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Panama",
+   "id_groupe": "Male_Accessories_1023",
+   "position_proposee": 1023,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#F6D994",
+     "groupe": "Paille",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#F0C252",
+     "groupe": "Paille",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#24222C",
+     "groupe": "Ruban",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     140,
+     359
+    ],
+    "y": [
+     128,
+     223
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 44,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 44,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 44,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 44,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 44 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-bob.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-bob.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bob",
+   "id_groupe": "Male_Accessories_1024",
+   "position_proposee": 1024,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E4AF73",
+     "groupe": "Toile",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#DA9240",
+     "groupe": "Toile",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     132,
+     367
+    ],
+    "y": [
+     126,
+     245
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 44 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-bonnet.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-bonnet.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bonnet à revers",
+   "id_groupe": "Male_Accessories_1025",
+   "position_proposee": 1025,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#273252",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#171D2F",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     157,
+     342
+    ],
+    "y": [
+     126,
+     230
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 39,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 39,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 39,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 39,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 58 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-beret.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-beret.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Béret",
+   "id_groupe": "Male_Accessories_1026",
+   "position_proposee": 1026,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#192E37",
+     "groupe": "Laine",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     154,
+     361
+    ],
+    "y": [
+     107,
+     210
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 44 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-lunettes.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-lunettes.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Lunettes",
+   "id_groupe": "Male_Accessories_1027",
+   "position_proposee": 1027,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#24222C",
+     "groupe": "Monture",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     171,
+     329
+    ],
+    "y": [
+     219,
+     261
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-lunettes-cordon.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-lunettes-cordon.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Lunettes à cordon",
+   "id_groupe": "Male_Accessories_1028",
+   "position_proposee": 1028,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#A7A39C",
+     "groupe": "Cordon",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#24222C",
+     "groupe": "Monture",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     171,
+     329
+    ],
+    "y": [
+     219,
+     385
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-echarpe.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-echarpe.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Écharpe",
+   "id_groupe": "Male_Accessories_1029",
+   "position_proposee": 1029,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#2A5E21",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#193814",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#E8B71C",
+     "groupe": "Rayures",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     181,
+     318
+    ],
+    "y": [
+     324,
+     533
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "base_du_cou_y": 361,
+     "peau_visible_px": 0,
+     "debord_max_px": 20,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "base_du_cou_y": 361,
+     "peau_visible_px": 0,
+     "debord_max_px": 20,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "base_du_cou_y": 361,
+     "peau_visible_px": 0,
+     "debord_max_px": 20,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "base_du_cou_y": 348,
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-sac-bandouliere.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-sac-bandouliere.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Sacoche en bandoulière",
+   "id_groupe": "Male_Accessories_1030",
+   "position_proposee": 1030,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#5E4A19",
+     "groupe": "Toile",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#362A0E",
+     "groupe": "Toile",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st4": {
+     "couleur": "#A7A39C",
+     "groupe": "Boucle",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     193,
+     352
+    ],
+    "y": [
+     369,
+     789
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-sac-a-dos.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-sac-a-dos.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Sac à dos",
+   "id_groupe": "Male_Accessories_1031",
+   "position_proposee": 1031,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Toile",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#850D0D",
+     "groupe": "Toile",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#273252",
+     "groupe": "Poche",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     162,
+     337
+    ],
+    "y": [
+     357,
+     639
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-bretelles.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-bretelles.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bretelles",
+   "id_groupe": "Male_Accessories_1032",
+   "position_proposee": 1032,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Élastique",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#7C0C0C",
+     "groupe": "Élastique",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#A7A39C",
+     "groupe": "Pinces",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     194,
+     305
+    ],
+    "y": [
+     362,
+     753
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Croisées en X dans le dos, de la naissance des épaules (y 362) à la ceinture (y 752)."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-casque-audio.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-casque-audio.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Casque audio",
+   "id_groupe": "Male_Accessories_1033",
+   "position_proposee": 1033,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#107CDD",
+     "groupe": "Coques",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0C5CA4",
+     "groupe": "Coques",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#24222C",
+     "groupe": "Coussinets",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     155,
+     345
+    ],
+    "y": [
+     128,
+     286
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Arceau au-dessus de v -10 pour passer par-dessus les coiffures, écouteurs sur les oreilles (u ±82, v 74 à 128)."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-homme-canne.svg",
+   "url": "/assets/gabarit-piece-accessoires-homme-canne.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Canne",
+   "id_groupe": "Male_Accessories_1034",
+   "position_proposee": 1034,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#6B3E1E",
+     "groupe": "Bois",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#24222C",
+     "groupe": "Embout",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     461,
+     486
+    ],
+    "y": [
+     629,
+     865
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 60,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 76,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 39,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 50,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Aucune place à droite de la main du gabarit rond (main jusqu'à x 487, cadre limité à x 490) ni entre la main et la hanche (3 px communs aux 4 gabarits) : la canne passe DERRIÈRE la main. Le fût (x 461 à 471) s'arrête sur le contour de la main la plus haute (celle du rond), l'embout reparaît sous la main jusqu'à l'assise. Sur les mains standard, mince et âgé, il reste un jour de 8 à 14 px entre le bas du fût et le bout des doigts."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-casquette.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-casquette.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Casquette",
+   "id_groupe": "Boy_Accessories_1035",
+   "position_proposee": 1035,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#0056AF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#003872",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#D81919",
+     "groupe": "Patte",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     158,
+     341
+    ],
+    "y": [
+     216,
+     310
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "calotte_non_couverte_px": 30,
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "calotte_non_couverte_px": 30,
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "calotte_non_couverte_px": 30,
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 50 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Ouverture de réglage au-dessus de la patte : zone exclue du contrôle de calotte."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-bob.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-bob.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bob",
+   "id_groupe": "Boy_Accessories_1036",
+   "position_proposee": 1036,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E8B71C",
+     "groupe": "Toile",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#AB8611",
+     "groupe": "Toile",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     130,
+     369
+    ],
+    "y": [
+     221,
+     342
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 44 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-bonnet-pompon.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-bonnet-pompon.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bonnet à pompon",
+   "id_groupe": "Boy_Accessories_1037",
+   "position_proposee": 1037,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#D81919",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#A11313",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Pompon",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     156,
+     343
+    ],
+    "y": [
+     193,
+     327
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 58 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-bonnet-oreilles.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-bonnet-oreilles.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bonnet à oreillettes",
+   "id_groupe": "Boy_Accessories_1038",
+   "position_proposee": 1038,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#82C3F4",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#40A4EE",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Pompon",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     156,
+     343
+    ],
+    "y": [
+     193,
+     446
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 64,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 58 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Oreillettes jusqu'à v 130 et cordons à pompons jusqu'à v 190 : ils passent par-dessus les cheveux mi-longs."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-chapeau-paille.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-chapeau-paille.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Chapeau de paille",
+   "id_groupe": "Boy_Accessories_1039",
+   "position_proposee": 1039,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#CE9D21",
+     "groupe": "Paille",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#906E17",
+     "groupe": "Paille",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#D81919",
+     "groupe": "Ruban",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     136,
+     363
+    ],
+    "y": [
+     217,
+     328
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 46 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-serre-tete.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-serre-tete.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Serre-tête",
+   "id_groupe": "Boy_Accessories_1040",
+   "position_proposee": 1040,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Serre-tête",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     163,
+     336
+    ],
+    "y": [
+     231,
+     323
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 32,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 32,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 32,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Posé sur les cheveux : il flotte de quelques pixels au-dessus d'un crâne tondu."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-noeud-cheveux.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-noeud-cheveux.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Nœud dans les cheveux",
+   "id_groupe": "Boy_Accessories_1041",
+   "position_proposee": 1041,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#0056AF",
+     "groupe": "Ruban",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#003872",
+     "groupe": "Ruban",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     204,
+     295
+    ],
+    "y": [
+     305,
+     382
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-barrettes.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-barrettes.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Barrettes",
+   "id_groupe": "Boy_Accessories_1042",
+   "position_proposee": 1042,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E8B71C",
+     "groupe": "Barrettes",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#D81919",
+     "groupe": "Strass",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     179,
+     315
+    ],
+    "y": [
+     270,
+     328
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 4,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 4,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 4,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-couronne.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-couronne.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Couronne",
+   "id_groupe": "Boy_Accessories_1043",
+   "position_proposee": 1043,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#D81919",
+     "groupe": "Velours",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#A11313",
+     "groupe": "Velours",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#E8B71C",
+     "groupe": "Or",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#82C3F4",
+     "groupe": "Pierres",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     152,
+     342
+    ],
+    "y": [
+     201,
+     305
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 61,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 61,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 61,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 46 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Couronne de roi sur un bonnet de velours qui bombe jusqu'à v -56 : le velours couvre la calotte, le cercle d'or descend jusqu'à v 49."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-echarpe.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-echarpe.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Écharpe",
+   "id_groupe": "Boy_Accessories_1044",
+   "position_proposee": 1044,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E8B71C",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#B58E12",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#0056AF",
+     "groupe": "Rayures",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     189,
+     310
+    ],
+    "y": [
+     402,
+     560
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "base_du_cou_y": 444,
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "base_du_cou_y": 444,
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "base_du_cou_y": 444,
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-sac-a-dos.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-sac-a-dos.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Cartable",
+   "id_groupe": "Boy_Accessories_1045",
+   "position_proposee": 1045,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Toile",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF4F93",
+     "groupe": "Toile",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#82C3F4",
+     "groupe": "Poche",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     172,
+     327
+    ],
+    "y": [
+     440,
+     639
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-enfant-lunettes.svg",
+   "url": "/assets/gabarit-piece-accessoires-enfant-lunettes.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Lunettes",
+   "id_groupe": "Boy_Accessories_1046",
+   "position_proposee": 1046,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#0056AF",
+     "groupe": "Monture",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     169,
+     330
+    ],
+    "y": [
+     316,
+     358
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-ado-casquette.svg",
+   "url": "/assets/gabarit-piece-accessoires-ado-casquette.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Casquette",
+   "id_groupe": "Teenage_Boy_Accessories_1047",
+   "position_proposee": 1047,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#3A3F4B",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#1F2228",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Patte",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     195,
+     356
+    ],
+    "y": [
+     154,
+     236
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "calotte_non_couverte_px": 29,
+     "peau_visible_px": 0,
+     "debord_max_px": 37,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "calotte_non_couverte_px": 29,
+     "peau_visible_px": 0,
+     "debord_max_px": 37,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 50 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Ouverture de réglage au-dessus de la patte : zone exclue du contrôle de calotte."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-ado-casquette-envers.svg",
+   "url": "/assets/gabarit-piece-accessoires-ado-casquette-envers.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Casquette à l'envers",
+   "id_groupe": "Teenage_Boy_Accessories_1048",
+   "position_proposee": 1048,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#D81919",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#A11313",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#273252",
+     "groupe": "Visière",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     195,
+     356
+    ],
+    "y": [
+     154,
+     263
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "calotte_non_couverte_px": 26,
+     "peau_visible_px": 0,
+     "debord_max_px": 37,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "calotte_non_couverte_px": 26,
+     "peau_visible_px": 0,
+     "debord_max_px": 37,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 50 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent. Visière tournée vers l'arrière, jusqu'à v 84."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-ado-bonnet.svg",
+   "url": "/assets/gabarit-piece-accessoires-ado-bonnet.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bonnet à revers",
+   "id_groupe": "Teenage_Boy_Accessories_1049",
+   "position_proposee": 1049,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E8B71C",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#BE9513",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     192,
+     358
+    ],
+    "y": [
+     158,
+     252
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 58 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-ado-bob.svg",
+   "url": "/assets/gabarit-piece-accessoires-ado-bob.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Bob",
+   "id_groupe": "Teenage_Boy_Accessories_1050",
+   "position_proposee": 1050,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#2A5E21",
+     "groupe": "Toile",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#193814",
+     "groupe": "Toile",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     170,
+     380
+    ],
+    "y": [
+     158,
+     265
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 43,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "calotte_non_couverte_px": 0,
+     "peau_visible_px": 0,
+     "debord_max_px": 43,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Couvre-chef : calotte contractuelle couverte de v -30 à v 44 ; les coiffures « volumineuses » (chignon haut, queue haute, macarons, afro…) en sortent."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-ado-casque-audio.svg",
+   "url": "/assets/gabarit-piece-accessoires-ado-casque-audio.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Casque audio",
+   "id_groupe": "Teenage_Boy_Accessories_1051",
+   "position_proposee": 1051,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FAFAFA",
+     "groupe": "Coques",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#D6D6D6",
+     "groupe": "Coques",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#24222C",
+     "groupe": "Coussinets",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     190,
+     360
+    ],
+    "y": [
+     160,
+     302
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 31,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 31,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "Arceau au-dessus de v -10 pour passer par-dessus les coiffures, écouteurs sur les oreilles (u ±82, v 74 à 128)."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-ado-lunettes.svg",
+   "url": "/assets/gabarit-piece-accessoires-ado-lunettes.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Lunettes",
+   "id_groupe": "Teenage_Boy_Accessories_1052",
+   "position_proposee": 1052,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#24222C",
+     "groupe": "Monture",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     204,
+     346
+    ],
+    "y": [
+     241,
+     279
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-ado-sac-a-dos.svg",
+   "url": "/assets/gabarit-piece-accessoires-ado-sac-a-dos.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Sac à dos",
+   "id_groupe": "Teenage_Boy_Accessories_1053",
+   "position_proposee": 1053,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#3A3F4B",
+     "groupe": "Toile",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#1F2228",
+     "groupe": "Toile",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#D81919",
+     "groupe": "Poche",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     192,
+     355
+    ],
+    "y": [
+     366,
+     595
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-ado-echarpe.svg",
+   "url": "/assets/gabarit-piece-accessoires-ado-echarpe.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Écharpe",
+   "id_groupe": "Teenage_Boy_Accessories_1054",
+   "position_proposee": 1054,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#273252",
+     "groupe": "Laine",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#171D2F",
+     "groupe": "Laine",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#9EDFBF",
+     "groupe": "Rayures",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     212,
+     338
+    ],
+    "y": [
+     345,
+     520
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "base_du_cou_y": 370,
+     "peau_visible_px": 0,
+     "debord_max_px": 13,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "base_du_cou_y": 371,
+     "peau_visible_px": 0,
+     "debord_max_px": 13,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-chat-collier-grelot.svg",
+   "url": "/assets/gabarit-piece-accessoires-chat-collier-grelot.svg",
+   "familles": [
+    "chat"
+   ],
+   "gabarits": [
+    "gabarit-dos-chat.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Collier à grelot",
+   "id_groupe": "Cat_Accessories_1055",
+   "position_proposee": 1055,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#D81919",
+     "groupe": "Collier",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#E7B033",
+     "groupe": "Grelot",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     210,
+     289
+    ],
+    "y": [
+     523,
+     557
+    ]
+   },
+   "controle": {
+    "gabarit-dos-chat.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-chat-noeud-cou.svg",
+   "url": "/assets/gabarit-piece-accessoires-chat-noeud-cou.svg",
+   "familles": [
+    "chat"
+   ],
+   "gabarits": [
+    "gabarit-dos-chat.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Nœud papillon",
+   "id_groupe": "Cat_Accessories_1056",
+   "position_proposee": 1056,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Ruban",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF4F93",
+     "groupe": "Ruban",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     213,
+     286
+    ],
+    "y": [
+     525,
+     551
+    ]
+   },
+   "controle": {
+    "gabarit-dos-chat.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 3
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-chat-noeud-tete.svg",
+   "url": "/assets/gabarit-piece-accessoires-chat-noeud-tete.svg",
+   "familles": [
+    "chat"
+   ],
+   "gabarits": [
+    "gabarit-dos-chat.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Nœud sur la tête",
+   "id_groupe": "Cat_Accessories_1057",
+   "position_proposee": 1057,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Ruban",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#850D0D",
+     "groupe": "Ruban",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     212,
+     244
+    ],
+    "y": [
+     463,
+     488
+    ]
+   },
+   "controle": {
+    "gabarit-dos-chat.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-lapin-noeud-cou.svg",
+   "url": "/assets/gabarit-piece-accessoires-lapin-noeud-cou.svg",
+   "familles": [
+    "lapin"
+   ],
+   "gabarits": [
+    "gabarit-dos-lapin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Nœud papillon",
+   "id_groupe": "Rabbit_Accessories_1058",
+   "position_proposee": 1058,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#0056AF",
+     "groupe": "Ruban",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#003872",
+     "groupe": "Ruban",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     211,
+     288
+    ],
+    "y": [
+     509,
+     538
+    ]
+   },
+   "controle": {
+    "gabarit-dos-lapin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-lapin-collier.svg",
+   "url": "/assets/gabarit-piece-accessoires-lapin-collier.svg",
+   "familles": [
+    "lapin"
+   ],
+   "gabarits": [
+    "gabarit-dos-lapin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Collier à médaille",
+   "id_groupe": "Rabbit_Accessories_1059",
+   "position_proposee": 1059,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Collier",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#E7B033",
+     "groupe": "Médaille",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     209,
+     290
+    ],
+    "y": [
+     509,
+     544
+    ]
+   },
+   "controle": {
+    "gabarit-dos-lapin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-lapin-noeud-oreille.svg",
+   "url": "/assets/gabarit-piece-accessoires-lapin-noeud-oreille.svg",
+   "familles": [
+    "lapin"
+   ],
+   "gabarits": [
+    "gabarit-dos-lapin.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Nœud à l'oreille",
+   "id_groupe": "Rabbit_Accessories_1060",
+   "position_proposee": 1060,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Ruban",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF4F93",
+     "groupe": "Ruban",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     217,
+     249
+    ],
+    "y": [
+     451,
+     472
+    ]
+   },
+   "controle": {
+    "gabarit-dos-lapin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-cheval-licol.svg",
+   "url": "/assets/gabarit-piece-accessoires-cheval-licol.svg",
+   "familles": [
+    "cheval"
+   ],
+   "gabarits": [
+    "gabarit-dos-cheval-debout.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Licol",
+   "id_groupe": "Horse_Accessories_1061",
+   "position_proposee": 1061,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Sangle",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#A7A39C",
+     "groupe": "Anneaux",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     204,
+     295
+    ],
+    "y": [
+     210,
+     291
+    ]
+   },
+   "controle": {
+    "gabarit-dos-cheval-debout.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 2
+    }
+   },
+   "volumineuse": false,
+   "notes": "Têtière derrière les oreilles (y 209 à 230), montants des deux côtés de la tête jusqu'aux anneaux (y 292)."
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-cheval-noeud-criniere.svg",
+   "url": "/assets/gabarit-piece-accessoires-cheval-noeud-criniere.svg",
+   "familles": [
+    "cheval"
+   ],
+   "gabarits": [
+    "gabarit-dos-cheval-debout.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Nœud dans la crinière",
+   "id_groupe": "Horse_Accessories_1062",
+   "position_proposee": 1062,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#82C3F4",
+     "groupe": "Ruban",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#40A4EE",
+     "groupe": "Ruban",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     214,
+     260
+    ],
+    "y": [
+     304,
+     361
+    ]
+   },
+   "controle": {
+    "gabarit-dos-cheval-debout.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-accessoires-cheval-couronne-fleurs.svg",
+   "url": "/assets/gabarit-piece-accessoires-cheval-couronne-fleurs.svg",
+   "familles": [
+    "cheval"
+   ],
+   "gabarits": [
+    "gabarit-dos-cheval-debout.svg"
+   ],
+   "slot": "accessory",
+   "view": "back",
+   "nom": "Couronne de fleurs",
+   "id_groupe": "Horse_Accessories_1063",
+   "position_proposee": 1063,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Fleurs",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF3081",
+     "groupe": "Fleurs",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#5E9A3A",
+     "groupe": "Feuilles",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     213,
+     290
+    ],
+    "y": [
+     192,
+     220
+    ]
+   },
+   "controle": {
+    "gabarit-dos-cheval-debout.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  }
+ ]
+}

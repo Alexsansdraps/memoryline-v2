@@ -1,0 +1,132 @@
+{
+ "gabarit-piece-bas-femme-jean.svg": {
+  "st0": 0.758,
+  "st2": 0.141,
+  "st3": 0.04,
+  "st4": 0.002
+ },
+ "gabarit-piece-bas-femme-pantalon-toile.svg": {
+  "st0": 0.907,
+  "st2": 0.028,
+  "st3": 0.037
+ },
+ "gabarit-piece-bas-femme-pantalon-pinces.svg": {
+  "st0": 0.929,
+  "st2": 0.045,
+  "st4": 0.001
+ },
+ "gabarit-piece-bas-femme-jupe-droite.svg": {
+  "st0": 0.958,
+  "st2": 0.027
+ },
+ "gabarit-piece-bas-femme-jupe-plissee.svg": {
+  "st0": 0.742,
+  "st2": 0.197
+ },
+ "gabarit-piece-bas-femme-jupe-longue-etalee.svg": {
+  "st0": 0.886,
+  "st2": 0.037,
+  "st3": 0.057
+ },
+ "gabarit-piece-bas-femme-short.svg": {
+  "st0": 0.811,
+  "st2": 0.146,
+  "st3": 0.013
+ },
+ "gabarit-piece-bas-femme-legging.svg": {
+  "st0": 0.948,
+  "st2": 0.042
+ },
+ "gabarit-piece-bas-femme-jogging.svg": {
+  "st0": 0.846,
+  "st2": 0.061,
+  "st3": 0.044
+ },
+ "gabarit-piece-bas-femme-robe-bas.svg": {
+  "st0": 0.923,
+  "st2": 0.049
+ },
+ "gabarit-piece-bas-homme-jean.svg": {
+  "st0": 0.769,
+  "st2": 0.135,
+  "st3": 0.037,
+  "st4": 0.002
+ },
+ "gabarit-piece-bas-homme-pantalon-toile.svg": {
+  "st0": 0.91,
+  "st2": 0.026,
+  "st3": 0.036
+ },
+ "gabarit-piece-bas-homme-pantalon-costume.svg": {
+  "st0": 0.9,
+  "st2": 0.037,
+  "st3": 0.028,
+  "st4": 0.001
+ },
+ "gabarit-piece-bas-homme-short.svg": {
+  "st0": 0.82,
+  "st2": 0.141,
+  "st3": 0.012
+ },
+ "gabarit-piece-bas-homme-jogging.svg": {
+  "st0": 0.861,
+  "st2": 0.061,
+  "st3": 0.035
+ },
+ "gabarit-piece-bas-homme-bermuda-carreaux.svg": {
+  "st0": 0.5,
+  "st2": 0.28,
+  "st3": 0.157
+ },
+ "gabarit-piece-bas-enfant-jean.svg": {
+  "st0": 0.729,
+  "st2": 0.137,
+  "st3": 0.05,
+  "st4": 0.003
+ },
+ "gabarit-piece-bas-enfant-pantalon.svg": {
+  "st0": 0.864,
+  "st2": 0.039,
+  "st3": 0.053
+ },
+ "gabarit-piece-bas-enfant-short.svg": {
+  "st0": 0.779,
+  "st2": 0.159,
+  "st3": 0.02
+ },
+ "gabarit-piece-bas-enfant-jupe.svg": {
+  "st0": 0.622,
+  "st2": 0.225,
+  "st3": 0.079
+ },
+ "gabarit-piece-bas-enfant-legging.svg": {
+  "st0": 0.918,
+  "st2": 0.067
+ },
+ "gabarit-piece-bas-enfant-robe-bas.svg": {
+  "st0": 0.83,
+  "st2": 0.063,
+  "st3": 0.07
+ },
+ "gabarit-piece-bas-ado-jean.svg": {
+  "st0": 0.755,
+  "st2": 0.135,
+  "st3": 0.044,
+  "st4": 0.002
+ },
+ "gabarit-piece-bas-ado-jogging.svg": {
+  "st0": 0.843,
+  "st2": 0.068,
+  "st3": 0.038
+ },
+ "gabarit-piece-bas-ado-short.svg": {
+  "st0": 0.809,
+  "st2": 0.146,
+  "st3": 0.015
+ },
+ "gabarit-piece-bas-ado-pantalon-cargo.svg": {
+  "st0": 0.768,
+  "st2": 0.191,
+  "st4": 0.003
+ }
+}

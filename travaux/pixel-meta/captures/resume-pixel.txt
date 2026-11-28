@@ -1,0 +1,145 @@
+Essai du pixel Meta en local — 2026-11-28T12:07:25.507Z
+Fichiers essayés (sha1) : meta-pixel.ts 1e023aac176f ; Base.astro (script du pixel) 653993207f3f ; api-navigateur.ts c88a5011cd8f ; CheckoutIsland.tsx ce9e8fc11f89
+Aucun fichier modifié pendant l'essai.
+
+VÉRIFICATIONS
+OK    [0-site-local-tel-quel] le HTML servi en local ne contient pas le pixel
+OK    [0-site-local-tel-quel] pas de window.fbq avant le choix
+OK    [0-site-local-tel-quel] « Accepter » cliqué : toujours pas de window.fbq
+OK    [0-site-local-tel-quel] page suivante : pas de window.fbq
+OK    [0-site-local-tel-quel] aucune requête vers Meta
+OK    [0b-copie-exacte-sur-localhost] script exact inséré, « Accepter » cliqué : pas de window.fbq (adresse ≠ memoryline.fr)
+OK    [0b-copie-exacte-sur-localhost] aucune requête vers Meta
+OK    [a-sans-choix] script inséré, bandeau affiché, pas de window.fbq
+OK    [a-sans-choix] page suivante sans choix : pas de window.fbq
+OK    [a-sans-choix] aucune requête vers Meta, aucun appel
+OK    [b-refuser] « Refuser » : choix gardé, bandeau caché, pas de window.fbq
+OK    [b-refuser] page suivante : toujours pas de window.fbq
+OK    [b-refuser] les 4 fonctions de meta-pixel.ts appelées sans accord : aucun appel, aucune clé ml_meta_*
+OK    [b-refuser] aucune requête vers Meta
+OK    [A-panier-cookies-refuses] aucun appel au pixel, aucune requête vers Meta
+OK    [c-accepter] avant le choix : pas de window.fbq
+OK    [c-accepter] « Accepter » : window.fbq posé, le script de Meta chargé une fois (faux, local)
+OK    [c-accepter] appels : set autoConfig false, init 1156538100082754, track PageView (dans cet ordre, une fois)
+OK    [c-page-suivante] PageView dès le chargement de la page suivante (sans clic)
+OK    [c-page-suivante] le script de Meta se charge APRÈS l'évènement load de la page
+OK    [c-page-suivante] window.fbq posé dès le <head> (file d'attente avant le script de Meta)
+OK    [c-retrait-de-l-accord-simule] « Refuser » après coup : fbq('consent','revoke'), puis plus aucune mesure
+OK    [c-retrait-de-l-accord-simule] nouvel « Accepter » : fbq('consent','grant'), sans second init ni second script
+OK    [B-panier-cookies-acceptes] 2 AddToCart (affiche, carte cadeau), pas plus
+OK    [B-panier-cookies-acceptes] AddToCart de l'affiche : 2 × 23 € = 46 €, produit 250, 2 articles, eventID = ligne du serveur, envoyé depuis la fiche avant de partir
+OK    [B-panier-cookies-acceptes] AddToCart de la carte cadeau : 30 €, 1 article, sans content_ids, eventID = ligne du serveur
+OK    [B-panier-cookies-acceptes] InitiateCheckout UNE fois (à la 1re ouverture de la caisse), 46 €, 2 articles, sans identifiant du panier
+OK    [B-panier-cookies-acceptes] pas de second InitiateCheckout : 2e arrivée sur la caisse, rechargement, quantité changée, ligne retirée
+OK    [B-panier-cookies-acceptes] l'identifiant du panier ne part dans aucun appel
+OK    [B-panier-cookies-acceptes] un PageView par page HTML chargée
+OK    [comparaison-A-B] mêmes adresses après chaque ajout (la caisse /commande)
+OK    [comparaison-A-B] même panier à chaque étape (produit, carte, quantité, prix, format)
+OK    [comparaison-A-B] mêmes montants affichés par la caisse à chaque étape
+OK    [comparaison-A-B] mêmes écritures envoyées à l'API (POST/PUT/DELETE), dans le même ordre
+OK    [comparaison-A-B] aucune erreur nouvelle avec le pixel actif (hors bruit du serveur de dev Vite)
+OK    [f1-fonctions-directes] Purchase : 53,90 € (même page) puis 123,45 € (page neuve, total relu dans l'onglet), une seule fois chacun, rien pour un numéro inconnu ou vide
+OK    [f1-fonctions-directes] le total gardé dans l'onglet est effacé après l'achat
+OK    [f3-commande-gratuite-simulee] Purchase une fois sur le « Merci », au total de la commande (69 € = 3 × 23 € + port 0 €, mode « À domicileOfferteColissimo — 2 à 3 jours ouvrés »)
+OK    [f3-commande-gratuite-simulee] pas d'InitiateCheckout de plus (déjà mesuré pour ce panier dans cet onglet)
+OK    [f3-commande-gratuite-simulee] code, création et validation SIMULÉES (rien n'a atteint l'API)
+OK    [f3-commande-gratuite-simulee] le panier est resté un panier côté serveur (aucune commande créée)
+OK    [f3-commande-gratuite-simulee] le « Merci » oublie le panier payé (la pastille en rouvre un neuf), comme avant
+OK    [f2-retour-de-redirection-simule] tant que le secret du paiement est dans l'adresse, le script de Meta ne se charge pas
+OK    [f2-retour-de-redirection-simule] adresse nettoyée par la caisse, puis script chargé une fois
+OK    [f2-retour-de-redirection-simule] Purchase 45,60 € (total gardé avant la redirection), une fois, envoyé depuis l'adresse SANS secret
+OK    [f2-retour-de-redirection-simule] total effacé de l'onglet après l'achat
+OK    [f4-adresse-a-jeton] page à jeton : le script de Meta ne se charge pas
+OK    [f4-adresse-a-jeton] page à jeton : <meta name=referrer content=strict-origin>
+OK    [f4-adresse-a-jeton] page suivante : le referrer ne porte plus le jeton (origine seule)
+OK    [f4-adresse-a-jeton] aucune mesure traitée sur la page à jeton (rien n'a pu partir avec le jeton)
+OK    [f4-adresse-a-jeton] arrivée depuis une adresse du site à jeton (referrer complet) : fbq en file d'attente, script de Meta jamais chargé
+OK    [g-stand] mode stand (?stand=1), accord donné : html[data-stand=1], pas de window.fbq
+OK    [g-stand] au stand, l'ajout mène au panier de la tablette, l'affiche y est
+OK    [g-stand] au stand : aucun appel au pixel, aucune requête vers Meta
+OK    [h-bloqueur-de-pub] script de Meta bloqué : la carte cadeau arrive au panier, la caisse s'affiche
+OK    [h-bloqueur-de-pub] les mesures restent en file d'attente, sans erreur
+OK    [bilan] toutes les requêtes vers Meta interceptées : fbevents.js servi en local (ou bloqué), aucune autre
+OK    [bilan] aucune réponse de Meta venue du réseau (pas d'adresse IP distante)
+OK    [bilan] hôtes extérieurs demandés par les pages
+
+APPELS AU PIXEL (notés par le faux fbevents.js)
+[c-accepter] / (file) ["set","autoConfig",false,"1156538100082754"]
+[c-accepter] / (file) ["init","1156538100082754"]
+[c-accepter] / (file) ["track","PageView"]
+[c-page-suivante] /affiches (file) ["set","autoConfig",false,"1156538100082754"]
+[c-page-suivante] /affiches (file) ["init","1156538100082754"]
+[c-page-suivante] /affiches (file) ["track","PageView"]
+[c-retrait-de-l-accord-simule] /affiches (direct) ["consent","revoke"]
+[c-retrait-de-l-accord-simule] /affiches (direct) ["consent","grant"]
+[B-panier-cookies-acceptes] /affiches/strasbourg-cathedrale-affiche-personnalisee (file) ["set","autoConfig",false,"1156538100082754"]
+[B-panier-cookies-acceptes] /affiches/strasbourg-cathedrale-affiche-personnalisee (file) ["init","1156538100082754"]
+[B-panier-cookies-acceptes] /affiches/strasbourg-cathedrale-affiche-personnalisee (file) ["track","PageView"]
+[B-panier-cookies-acceptes] /affiches/strasbourg-cathedrale-affiche-personnalisee (direct) ["track","AddToCart",{"value":46,"currency":"EUR","content_type":"product","content_ids":["250"],"num_items":2},{"eventID":"ajout-305"}]
+[B-panier-cookies-acceptes] /commande (file) ["set","autoConfig",false,"1156538100082754"]
+[B-panier-cookies-acceptes] /commande (file) ["init","1156538100082754"]
+[B-panier-cookies-acceptes] /commande (file) ["track","PageView"]
+[B-panier-cookies-acceptes] /commande (direct) ["track","InitiateCheckout",{"value":46,"currency":"EUR","num_items":2}]
+[B-panier-cookies-acceptes] /carte-cadeau (file) ["set","autoConfig",false,"1156538100082754"]
+[B-panier-cookies-acceptes] /carte-cadeau (file) ["init","1156538100082754"]
+[B-panier-cookies-acceptes] /carte-cadeau (file) ["track","PageView"]
+[B-panier-cookies-acceptes] /carte-cadeau (direct) ["track","AddToCart",{"value":30,"currency":"EUR","content_type":"product","num_items":1},{"eventID":"ajout-307"}]
+[B-panier-cookies-acceptes] /commande (file) ["set","autoConfig",false,"1156538100082754"]
+[B-panier-cookies-acceptes] /commande (file) ["init","1156538100082754"]
+[B-panier-cookies-acceptes] /commande (file) ["track","PageView"]
+[B-panier-cookies-acceptes] /commande (file) ["set","autoConfig",false,"1156538100082754"]
+[B-panier-cookies-acceptes] /commande (file) ["init","1156538100082754"]
+[B-panier-cookies-acceptes] /commande (file) ["track","PageView"]
+[f1-fonctions-directes] /commande (file) ["set","autoConfig",false,"1156538100082754"]
+[f1-fonctions-directes] /commande (file) ["init","1156538100082754"]
+[f1-fonctions-directes] /commande (file) ["track","PageView"]
+[f1-fonctions-directes] /commande (direct) ["track","Purchase",{"value":53.9,"currency":"EUR"},{"eventID":"achat-ESSAI-PIXEL-1"}]
+[f1-fonctions-directes] /affiches (file) ["set","autoConfig",false,"1156538100082754"]
+[f1-fonctions-directes] /affiches (file) ["init","1156538100082754"]
+[f1-fonctions-directes] /affiches (file) ["track","PageView"]
+[f1-fonctions-directes] /affiches (direct) ["track","Purchase",{"value":123.45,"currency":"EUR"},{"eventID":"achat-ESSAI-PIXEL-2"}]
+[f3-commande-gratuite-simulee] /commande (file) ["set","autoConfig",false,"1156538100082754"]
+[f3-commande-gratuite-simulee] /commande (file) ["init","1156538100082754"]
+[f3-commande-gratuite-simulee] /commande (file) ["track","PageView"]
+[f3-commande-gratuite-simulee] /commande (direct) ["track","Purchase",{"value":69,"currency":"EUR"},{"eventID":"achat-ESSAI-PIXEL-4"}]
+[f2-retour-de-redirection-simule] /affiches (file) ["set","autoConfig",false,"1156538100082754"]
+[f2-retour-de-redirection-simule] /affiches (file) ["init","1156538100082754"]
+[f2-retour-de-redirection-simule] /affiches (file) ["track","PageView"]
+[f2-retour-de-redirection-simule] /commande (file) ["set","autoConfig",false,"1156538100082754"]
+[f2-retour-de-redirection-simule] /commande (file) ["init","1156538100082754"]
+[f2-retour-de-redirection-simule] /commande (file) ["track","PageView"]
+[f2-retour-de-redirection-simule] /commande (file) ["track","Purchase",{"value":45.6,"currency":"EUR"},{"eventID":"achat-ESSAI-PIXEL-3"}]
+[f4-adresse-a-jeton] /affiches (file) ["set","autoConfig",false,"1156538100082754"]
+[f4-adresse-a-jeton] /affiches (file) ["init","1156538100082754"]
+[f4-adresse-a-jeton] /affiches (file) ["track","PageView"]
+[f4-adresse-a-jeton] / (file) ["set","autoConfig",false,"1156538100082754"]
+[f4-adresse-a-jeton] / (file) ["init","1156538100082754"]
+[f4-adresse-a-jeton] / (file) ["track","PageView"]
+
+REQUÊTES VERS META (toutes interceptées)
+[c-accepter] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[c-page-suivante] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[B-panier-cookies-acceptes] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[B-panier-cookies-acceptes] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[B-panier-cookies-acceptes] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[B-panier-cookies-acceptes] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[B-panier-cookies-acceptes] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[f1-fonctions-directes] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[f1-fonctions-directes] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[f3-commande-gratuite-simulee] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[f2-retour-de-redirection-simule] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[f2-retour-de-redirection-simule] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[f4-adresse-a-jeton] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[f4-adresse-a-jeton] GET https://connect.facebook.net/en_US/fbevents.js → faux fbevents.js servi localement
+[h-bloqueur-de-pub] GET https://connect.facebook.net/en_US/fbevents.js → bloquée (essai « bloqueur de pub »)
+[h-bloqueur-de-pub] GET https://connect.facebook.net/en_US/fbevents.js → bloquée (essai « bloqueur de pub »)
+
+RÉPONSES DE L'API SIMULÉES
+[f3-commande-gratuite-simulee] POST /api/caisse/code {"code":"ESSAIPIXEL"} → {"type":"carte","carte":{"code":"ESSAIPIXEL","masque":"XXXX-XXXX-PIXL","soldeCents":100000}}
+[f3-commande-gratuite-simulee] POST /api/orders {"cartId":"45a72ad6-5f96-4f53-a7ed-a0f72291c0af","customer":{"name":"Essai Pixel","email":"essai.pixel@exemple.invalid"},"shipping":{"method":"colissimo","name":"Essai Pixel","line1":"1 rue de l'Essai → {"orderId":990004,"number":"ESSAI-PIXEL-4","status":"pending","totalCents":6900,"shippingCents":0,"giftCardCents":6900,"aPayerCents":0}
+[f3-commande-gratuite-simulee] POST /api/payments/gratuit {"orderId":990004,"cartId":"45a72ad6-5f96-4f53-a7ed-a0f72291c0af"} → {"status":"paid","number":"ESSAI-PIXEL-4"}
+[f2-retour-de-redirection-simule] POST /api/payments/stripe/retour {"paymentIntent":"pi_essai_pixel","clientSecret":"pi_essai_pixel_secret_essai"} → {"issue":"payee","number":"ESSAI-PIXEL-3"}
+
+ERREURS (hors 302 messages du client Vite du serveur de dev)
+[h-bloqueur-de-pub] journal.network : Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector
+[h-bloqueur-de-pub] journal.network : Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector

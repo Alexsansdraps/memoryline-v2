@@ -1,0 +1,1885 @@
+{
+ "categorie": "bas",
+ "date": "2026-11-27",
+ "generateur": "garde-robe/bas/gen.mjs",
+ "pieces": [
+  {
+   "fichier": "gabarit-piece-bas-femme-jean.svg",
+   "url": "/assets/gabarit-piece-bas-femme-jean.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jean",
+   "id_groupe": "Female_Bottoms_1000",
+   "position_proposee": 1000,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#165176",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0C2E42",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#DE9A2B",
+     "groupe": "Surpiqûres",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#B8551D",
+     "groupe": "Rivets",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 370,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 10,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 8,
+     "peau_sous_main_px": 1357,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 534,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux."
+  },
+  {
+   "fichier": "gabarit-piece-bas-femme-pantalon-toile.svg",
+   "url": "/assets/gabarit-piece-bas-femme-pantalon-toile.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Pantalon de toile",
+   "id_groupe": "Female_Bottoms_1001",
+   "position_proposee": 1001,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#F4D9AE",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#EDC078",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#24222C",
+     "groupe": "Ceinture",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 367,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 7,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 8,
+     "peau_sous_main_px": 1354,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 531,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux."
+  },
+  {
+   "fichier": "gabarit-piece-bas-femme-pantalon-pinces.svg",
+   "url": "/assets/gabarit-piece-bas-femme-pantalon-pinces.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Pantalon à pinces",
+   "id_groupe": "Female_Bottoms_1002",
+   "position_proposee": 1002,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#545454",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#353535",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st4": {
+     "couleur": "#E4AF73",
+     "groupe": "Boutons",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 371,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 11,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 8,
+     "peau_sous_main_px": 1358,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 535,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux."
+  },
+  {
+   "fichier": "gabarit-piece-bas-femme-jupe-droite.svg",
+   "url": "/assets/gabarit-piece-bas-femme-jupe-droite.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jupe droite",
+   "id_groupe": "Female_Bottoms_1003",
+   "position_proposee": 1003,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#850D0D",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 372,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 12,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1359,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 536,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux. Jupe : le tissu s'étale sur l'assise jusqu'à 8 px au-delà du ras de l'assise, sous y = 850 (débord non compté)."
+  },
+  {
+   "fichier": "gabarit-piece-bas-femme-jupe-plissee.svg",
+   "url": "/assets/gabarit-piece-bas-femme-jupe-plissee.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jupe plissée",
+   "id_groupe": "Female_Bottoms_1004",
+   "position_proposee": 1004,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#2A5E21",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#163111",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 372,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 12,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1359,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 536,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux. Jupe : le tissu s'étale sur l'assise jusqu'à 12 px au-delà du ras de l'assise, sous y = 850 (débord non compté)."
+  },
+  {
+   "fichier": "gabarit-piece-bas-femme-jupe-longue-etalee.svg",
+   "url": "/assets/gabarit-piece-bas-femme-jupe-longue-etalee.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jupe longue étalée",
+   "id_groupe": "Female_Bottoms_1005",
+   "position_proposee": 1005,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#0056AF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#003872",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#F4D9AE",
+     "groupe": "Galon",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 370,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 10,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1357,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 534,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux. Jupe : le tissu s'étale sur l'assise jusqu'à 20 px au-delà du ras de l'assise, sous y = 850 (débord non compté)."
+  },
+  {
+   "fichier": "gabarit-piece-bas-femme-short.svg",
+   "url": "/assets/gabarit-piece-bas-femme-short.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Short",
+   "id_groupe": "Female_Bottoms_1006",
+   "position_proposee": 1006,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#5E9ABF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#407BA0",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#EDD7C6",
+     "groupe": "Revers",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 370,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 10,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1357,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 534,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux."
+  },
+  {
+   "fichier": "gabarit-piece-bas-femme-legging.svg",
+   "url": "/assets/gabarit-piece-bas-femme-legging.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Legging",
+   "id_groupe": "Female_Bottoms_1007",
+   "position_proposee": 1007,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#273252",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#131929",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 369,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 11,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 8,
+     "peau_sous_main_px": 1356,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 533,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux."
+  },
+  {
+   "fichier": "gabarit-piece-bas-femme-jogging.svg",
+   "url": "/assets/gabarit-piece-bas-femme-jogging.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jogging",
+   "id_groupe": "Female_Bottoms_1008",
+   "position_proposee": 1008,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#13266D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0A1439",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Bandes",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 365,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 7,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 8,
+     "peau_sous_main_px": 1352,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 529,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux."
+  },
+  {
+   "fichier": "gabarit-piece-bas-femme-robe-bas.svg",
+   "url": "/assets/gabarit-piece-bas-femme-robe-bas.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Bas de robe",
+   "id_groupe": "Female_Bottoms_1009",
+   "position_proposee": 1009,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF599A",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     78,
+     422
+    ],
+    "y": [
+     717,
+     875
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 371,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 11,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 28
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1358,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 535,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 20
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Débord jusqu'à 28 px sur le corps le plus fin : le bas couvre les hanches du corps le plus large, un seul fichier ne peut pas faire les deux. Jupe : le tissu s'étale sur l'assise jusqu'à 20 px au-delà du ras de l'assise, sous y = 850 (débord non compté). Taille sans ceinture, faite pour être cachée par l'ourlet du haut."
+  },
+  {
+   "fichier": "gabarit-piece-bas-homme-jean.svg",
+   "url": "/assets/gabarit-piece-bas-homme-jean.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jean",
+   "id_groupe": "Male_Bottoms_1010",
+   "position_proposee": 1010,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#165176",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0C2E42",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#DE9A2B",
+     "groupe": "Surpiqûres",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#B8551D",
+     "groupe": "Rivets",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     113,
+     387
+    ],
+    "y": [
+     688,
+     865
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 587,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 27,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1893,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1195,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-homme-pantalon-toile.svg",
+   "url": "/assets/gabarit-piece-bas-homme-pantalon-toile.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Pantalon de toile",
+   "id_groupe": "Male_Bottoms_1011",
+   "position_proposee": 1011,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#F4D9AE",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#EDC078",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#431A00",
+     "groupe": "Ceinture",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     113,
+     387
+    ],
+    "y": [
+     688,
+     865
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 584,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 24,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1890,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1192,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-homme-pantalon-costume.svg",
+   "url": "/assets/gabarit-piece-bas-homme-pantalon-costume.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Pantalon de costume",
+   "id_groupe": "Male_Bottoms_1012",
+   "position_proposee": 1012,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#273252",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#131929",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#000000",
+     "groupe": "Ceinture",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#E4AF73",
+     "groupe": "Boutons",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     113,
+     387
+    ],
+    "y": [
+     688,
+     865
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 584,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 24,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1890,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1192,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-homme-short.svg",
+   "url": "/assets/gabarit-piece-bas-homme-short.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Short",
+   "id_groupe": "Male_Bottoms_1013",
+   "position_proposee": 1013,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#5E4A19",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#2E240C",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#F4D9AE",
+     "groupe": "Revers",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     113,
+     387
+    ],
+    "y": [
+     688,
+     865
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 587,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 27,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1892,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1195,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-homme-jogging.svg",
+   "url": "/assets/gabarit-piece-bas-homme-jogging.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jogging",
+   "id_groupe": "Male_Bottoms_1014",
+   "position_proposee": 1014,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#13266D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0A1439",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Bandes",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     113,
+     387
+    ],
+    "y": [
+     688,
+     865
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 581,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 21,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1887,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 6,
+     "peau_sous_main_px": 1189,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-homme-bermuda-carreaux.svg",
+   "url": "/assets/gabarit-piece-bas-homme-bermuda-carreaux.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Bermuda à carreaux",
+   "id_groupe": "Male_Bottoms_1015",
+   "position_proposee": 1015,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#2A5E21",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#163111",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#F4D9AE",
+     "groupe": "Filets",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     113,
+     387
+    ],
+    "y": [
+     688,
+     865
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 3,
+     "peau_sous_main_px": 584,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 3,
+     "peau_sous_main_px": 24,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 3,
+     "peau_sous_main_px": 1889,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 3,
+     "peau_sous_main_px": 1192,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 5
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-enfant-jean.svg",
+   "url": "/assets/gabarit-piece-bas-enfant-jean.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jean",
+   "id_groupe": "Boy_Bottoms_1016",
+   "position_proposee": 1016,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#5E9ABF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#407BA0",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#DE9A2B",
+     "groupe": "Surpiqûres",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#B8551D",
+     "groupe": "Rivets",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     140,
+     360
+    ],
+    "y": [
+     657,
+     778
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 292,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 2
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 75,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1462,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-enfant-pantalon.svg",
+   "url": "/assets/gabarit-piece-bas-enfant-pantalon.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Pantalon",
+   "id_groupe": "Boy_Bottoms_1017",
+   "position_proposee": 1017,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#B8551D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#833D15",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#431A00",
+     "groupe": "Ceinture",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     140,
+     360
+    ],
+    "y": [
+     657,
+     778
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 288,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 2
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 71,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1458,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-enfant-short.svg",
+   "url": "/assets/gabarit-piece-bas-enfant-short.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Short",
+   "id_groupe": "Boy_Bottoms_1018",
+   "position_proposee": 1018,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#13266D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0A1439",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#5E9ABF",
+     "groupe": "Revers",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     140,
+     360
+    ],
+    "y": [
+     657,
+     778
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 292,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 2
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 75,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1462,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-enfant-jupe.svg",
+   "url": "/assets/gabarit-piece-bas-enfant-jupe.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jupe plissée",
+   "id_groupe": "Boy_Bottoms_1019",
+   "position_proposee": 1019,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF599A",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Ceinture",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     140,
+     360
+    ],
+    "y": [
+     657,
+     778
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 290,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 2
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 73,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1460,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Jupe : le tissu s'étale sur l'assise jusqu'à 10 px au-delà du ras de l'assise, sous y = 753 (débord non compté)."
+  },
+  {
+   "fichier": "gabarit-piece-bas-enfant-legging.svg",
+   "url": "/assets/gabarit-piece-bas-enfant-legging.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Legging",
+   "id_groupe": "Boy_Bottoms_1020",
+   "position_proposee": 1020,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#850D0D",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     140,
+     360
+    ],
+    "y": [
+     657,
+     778
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 292,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 2
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 75,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1462,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-enfant-robe-bas.svg",
+   "url": "/assets/gabarit-piece-bas-enfant-robe-bas.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Bas de robe",
+   "id_groupe": "Boy_Bottoms_1021",
+   "position_proposee": 1021,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#0056AF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#003872",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Ourlet",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     140,
+     360
+    ],
+    "y": [
+     657,
+     778
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 294,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 2
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 77,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "peau_sous_main_px": 1464,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas. Jupe : le tissu s'étale sur l'assise jusqu'à 14 px au-delà du ras de l'assise, sous y = 753 (débord non compté). Taille sans ceinture, faite pour être cachée par l'ourlet du haut."
+  },
+  {
+   "fichier": "gabarit-piece-bas-ado-jean.svg",
+   "url": "/assets/gabarit-piece-bas-ado-jean.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jean",
+   "id_groupe": "Teenage_Boy_Bottoms_1022",
+   "position_proposee": 1022,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#165176",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0C2E42",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#DE9A2B",
+     "groupe": "Surpiqûres",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#B8551D",
+     "groupe": "Rivets",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     153,
+     400
+    ],
+    "y": [
+     662,
+     821
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 356,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 49,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-ado-jogging.svg",
+   "url": "/assets/gabarit-piece-bas-ado-jogging.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Jogging",
+   "id_groupe": "Teenage_Boy_Bottoms_1023",
+   "position_proposee": 1023,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#545454",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#353535",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Bandes",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     153,
+     400
+    ],
+    "y": [
+     662,
+     821
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 353,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 46,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-ado-short.svg",
+   "url": "/assets/gabarit-piece-bas-ado-short.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Short",
+   "id_groupe": "Teenage_Boy_Bottoms_1024",
+   "position_proposee": 1024,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#DE9A2B",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#B0781B",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st3": {
+     "couleur": "#F4D9AE",
+     "groupe": "Revers",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     153,
+     400
+    ],
+    "y": [
+     662,
+     821
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 357,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 50,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  },
+  {
+   "fichier": "gabarit-piece-bas-ado-pantalon-cargo.svg",
+   "url": "/assets/gabarit-piece-bas-ado-pantalon-cargo.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "pants",
+   "view": "back",
+   "nom": "Pantalon cargo",
+   "id_groupe": "Teenage_Boy_Bottoms_1025",
+   "position_proposee": 1025,
+   "nuancier": "pantalon",
+   "zones": {
+    "st0": {
+     "couleur": "#5E4A19",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#2E240C",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    },
+    "st4": {
+     "couleur": "#DE9A2B",
+     "groupe": "Boutons",
+     "role": "detail"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     153,
+     400
+    ],
+    "y": [
+     662,
+     821
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 354,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 1
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 1,
+     "peau_sous_main_px": 47,
+     "mains_couvertes_px": 0,
+     "debord_max_px": 3
+    }
+   },
+   "volumineuse": false,
+   "notes": "Peau laissée sous la main des corps larges (peau_sous_main_px) : la main du corps le plus fin passe à cet endroit, on ne la couvre pas."
+  }
+ ]
+}

@@ -127,5 +127,8 @@ export function messagesDuConfigurateur(
     textePlace: tr("cfg.texte_place"),
     texteHaut: tr("cfg.texte_haut"),
     texteBas: tr("cfg.texte_bas"),
+    // Un emoji tapé que le papier n'aura pas (28/11).
+    emojiNonImprime: tr("cfg.emoji_non_imprime"),
+    emojisNonImprimes: tr("cfg.emojis_non_imprimes"),
   };
 }

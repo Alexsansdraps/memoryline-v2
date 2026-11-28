@@ -164,6 +164,13 @@ export interface MessagesConfigurateur {
   textePlace: string;
   texteHaut: string;
   texteBas: string;
+  /**
+   * Sous une ligne, quand un emoji tapé ne sera pas imprimé (28/11, A-FAIRE
+   * § 2 : « les emojis plus récents que Twemoji 15.0 disparaissent du papier
+   * sans avertissement ») : `{emojis}` = le ou les emojis en cause.
+   */
+  emojiNonImprime: string;
+  emojisNonImprimes: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -257,6 +264,10 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   textePlace: "Place du texte",
   texteHaut: "En haut",
   texteBas: "En bas",
+  emojiNonImprime:
+    "Cet emoji ne sera pas imprimé sur l'affiche : {emojis}. Vous pouvez en choisir un autre.",
+  emojisNonImprimes:
+    "Ces emojis ne seront pas imprimés sur l'affiche : {emojis}. Vous pouvez en choisir d'autres.",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

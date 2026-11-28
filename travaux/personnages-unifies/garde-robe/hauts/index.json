@@ -1,0 +1,2793 @@
+{
+ "categorie": "hauts",
+ "date": "2026-11-27",
+ "generateur": "garde-robe/hauts/gen.mjs",
+ "pieces": [
+  {
+   "fichier": "gabarit-piece-hauts-femme-t-shirt.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-t-shirt.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "T-shirt",
+   "id_groupe": "Female_Clothes_1000",
+   "position_proposee": 1000,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#CD6122",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#8B4217",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     49,
+     451
+    ],
+    "y": [
+     369,
+     822
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 31,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 22 px, femme-fine 31 px, femme-ronde 16 px, femme-agee 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-t-shirt-raye.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-t-shirt-raye.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "T-shirt rayé",
+   "id_groupe": "Female_Clothes_1001",
+   "position_proposee": 1001,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FAFAFA",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#0056AF",
+     "groupe": "Rayures",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#D4D4D4",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     49,
+     451
+    ],
+    "y": [
+     369,
+     822
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 31,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 22 px, femme-fine 31 px, femme-ronde 16 px, femme-agee 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-debardeur.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-debardeur.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Débardeur",
+   "id_groupe": "Female_Clothes_1002",
+   "position_proposee": 1002,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF4A90",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     77,
+     424
+    ],
+    "y": [
+     369,
+     816
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 30,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 2
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 22 px, femme-fine 30 px, femme-ronde 16 px, femme-agee 21.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-chemisier.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-chemisier.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Chemisier col Claudine",
+   "id_groupe": "Female_Clothes_1003",
+   "position_proposee": 1003,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#82C3F4",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Col",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#3CA1EE",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     39,
+     461
+    ],
+    "y": [
+     368,
+     822
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 27 px, femme-fine 42 px, femme-ronde 16 px, femme-agee 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-pull-col-rond.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-pull-col-rond.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Pull col rond",
+   "id_groupe": "Female_Clothes_1004",
+   "position_proposee": 1004,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#2A5E21",
+     "groupe": "Tricot",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#193814",
+     "groupe": "Tricot",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     39,
+     461
+    ],
+    "y": [
+     369,
+     822
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 27 px, femme-fine 42 px, femme-ronde 16 px, femme-agee 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-pull-col-roule.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-pull-col-roule.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Pull col roulé",
+   "id_groupe": "Female_Clothes_1005",
+   "position_proposee": 1005,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E8B71C",
+     "groupe": "Tricot",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#A78311",
+     "groupe": "Tricot",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     39,
+     461
+    ],
+    "y": [
+     342,
+     822
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 5.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 5.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 27 px, femme-fine 42 px, femme-ronde 16 px, femme-agee 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-sweat-capuche.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-sweat-capuche.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Sweat à capuche",
+   "id_groupe": "Female_Clothes_1006",
+   "position_proposee": 1006,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#6D7090",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FFC7D0",
+     "groupe": "Doublure",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#4C4E64",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     39,
+     461
+    ],
+    "y": [
+     368,
+     822
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 27 px, femme-fine 42 px, femme-ronde 16 px, femme-agee 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-gilet-boutonne.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-gilet-boutonne.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Gilet boutonné",
+   "id_groupe": "Female_Clothes_1007",
+   "position_proposee": 1007,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E4AF73",
+     "groupe": "Tricot",
+     "role": "principale"
+    },
+    "st4": {
+     "couleur": "#194F6D",
+     "groupe": "Coudières",
+     "role": "detail"
+    },
+    "st2": {
+     "couleur": "#D88A33",
+     "groupe": "Tricot",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     39,
+     461
+    ],
+    "y": [
+     369,
+     822
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "De dos, les boutons ne se voient pas : le gilet se reconnaît à ses côtes et à ses coudières. Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 27 px, femme-fine 42 px, femme-ronde 16 px, femme-agee 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-robe-longue.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-robe-longue.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Robe longue",
+   "id_groupe": "Female_Clothes_1008",
+   "position_proposee": 1008,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#273252",
+     "groupe": "Ceinture",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#850D0D",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     49,
+     451
+    ],
+    "y": [
+     369,
+     880
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 31,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 12.3,
+   "volumineuse": false,
+   "notes": "Descend jusqu'à l'assise et cache le bas, c'est voulu. Le bas de la jupe s'étale sur l'assise : jusqu'à 13 px hors de l'enveloppe des corps. Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 12.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 22 px, femme-fine 31 px, femme-ronde 16 px, femme-agee 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-tunique.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-tunique.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Tunique brodée",
+   "id_groupe": "Female_Clothes_1009",
+   "position_proposee": 1009,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#9EDFBF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#194F6D",
+     "groupe": "Broderie",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#64CC99",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     40,
+     461
+    ],
+    "y": [
+     369,
+     877
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 42,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 9.3,
+   "volumineuse": false,
+   "notes": "Manches trois-quarts : l'avant-bras reste nu. Descend jusqu'à l'assise et s'étale un peu dessus (jusqu'à 13 px hors de l'enveloppe). Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 9.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 24 px, femme-fine 42 px, femme-ronde 16 px, femme-agee 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-doudoune.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-doudoune.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Doudoune",
+   "id_groupe": "Female_Clothes_1010",
+   "position_proposee": 1010,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#194F6D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0F3144",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     32,
+     468
+    ],
+    "y": [
+     353,
+     806
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 32,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 16.7,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 10,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 10 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 32 px, femme-fine 48 px, femme-agee 27.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-femme-manteau.svg",
+   "url": "/assets/gabarit-piece-hauts-femme-manteau.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Manteau",
+   "id_groupe": "Female_Clothes_1011",
+   "position_proposee": 1011,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#B8551D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#273252",
+     "groupe": "Col et martingale",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#F6D994",
+     "groupe": "Boutons",
+     "role": "detail"
+    },
+    "st2": {
+     "couleur": "#833D15",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     36,
+     464
+    ],
+    "y": [
+     355,
+     852
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 30,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 45,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 12,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 25,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 6,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 6 px) : sur les corps plus minces, manches et hanches paraissent plus amples (femme-standard-v2 30 px, femme-fine 45 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-t-shirt.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-t-shirt.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "T-shirt",
+   "id_groupe": "Male_Clothes_1012",
+   "position_proposee": 1012,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#194F6D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0F3144",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     59,
+     442
+    ],
+    "y": [
+     351,
+     774
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 2163
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 30,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 5484
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 594
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Compromis : le bord du torse doit couvrir le torse du corps le plus large, il mord donc un peu sur le bras nu des corps minces (homme-standard-v2 2163 px, homme-mince 5484 px, homme-age 594 px). Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 16 px, homme-mince 30 px, homme-rond 12.3 px, homme-age 21.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-t-shirt-raye.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-t-shirt-raye.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "T-shirt rayé",
+   "id_groupe": "Male_Clothes_1013",
+   "position_proposee": 1013,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#273252",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#F6D994",
+     "groupe": "Rayures",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#171D2F",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     59,
+     442
+    ],
+    "y": [
+     351,
+     774
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 2178
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 30,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 5502
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 603
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Compromis : le bord du torse doit couvrir le torse du corps le plus large, il mord donc un peu sur le bras nu des corps minces (homme-standard-v2 2178 px, homme-mince 5502 px, homme-age 603 px). Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 16 px, homme-mince 30 px, homme-rond 12.3 px, homme-age 21.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-debardeur.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-debardeur.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Débardeur",
+   "id_groupe": "Male_Clothes_1014",
+   "position_proposee": 1014,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FAFAFA",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#D4D4D4",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     106,
+     394
+    ],
+    "y": [
+     351,
+     774
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 2301
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 6789
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 0,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 594
+    }
+   },
+   "debord_enveloppe_px": 0,
+   "volumineuse": false,
+   "notes": "Compromis : le bord du torse doit couvrir le torse du corps le plus large, il mord donc un peu sur le bras nu des corps minces (homme-standard-v2 2301 px, homme-mince 6789 px, homme-age 594 px). Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 0 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 10.3 px, homme-mince 10.3 px, homme-rond 10.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-chemise.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-chemise.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Chemise",
+   "id_groupe": "Male_Clothes_1015",
+   "position_proposee": 1015,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#82C3F4",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Col et poignets",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     49,
+     451
+    ],
+    "y": [
+     338,
+     798
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 15,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.7,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.7 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 24 px, homme-mince 40 px, homme-rond 15 px, homme-age 21.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-chemise-carreaux.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-chemise-carreaux.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Chemise à carreaux",
+   "id_groupe": "Male_Clothes_1016",
+   "position_proposee": 1016,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#273252",
+     "groupe": "Carreaux",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#850D0D",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     59,
+     442
+    ],
+    "y": [
+     339,
+     774
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 2178
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 30,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 5504
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 14.7,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 605
+    }
+   },
+   "debord_enveloppe_px": 3.7,
+   "volumineuse": false,
+   "notes": "Compromis : le bord du torse doit couvrir le torse du corps le plus large, il mord donc un peu sur le bras nu des corps minces (homme-standard-v2 2178 px, homme-mince 5504 px, homme-age 605 px). Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.7 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 16 px, homme-mince 30 px, homme-rond 14.7 px, homme-age 22 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-pull-col-rond.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-pull-col-rond.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Pull col rond",
+   "id_groupe": "Male_Clothes_1017",
+   "position_proposee": 1017,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#6D7090",
+     "groupe": "Tricot",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#4C4E64",
+     "groupe": "Tricot",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     49,
+     451
+    ],
+    "y": [
+     351,
+     798
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 24 px, homme-mince 40 px, homme-rond 12.3 px, homme-age 21.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-pull-col-v.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-pull-col-v.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Pull col V",
+   "id_groupe": "Male_Clothes_1018",
+   "position_proposee": 1018,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#2A5E21",
+     "groupe": "Tricot",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Liseré du col",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#193814",
+     "groupe": "Tricot",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     49,
+     451
+    ],
+    "y": [
+     351,
+     798
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "De dos, le V ne se voit pas : on le signale par le double liseré du col. Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 24 px, homme-mince 40 px, homme-rond 12.3 px, homme-age 21.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-sweat-capuche.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-sweat-capuche.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Sweat à capuche",
+   "id_groupe": "Male_Clothes_1019",
+   "position_proposee": 1019,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E8B71C",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#A78311",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     49,
+     451
+    ],
+    "y": [
+     350,
+     798
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 4,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 4 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 24 px, homme-mince 40 px, homme-rond 12.3 px, homme-age 21.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-gilet-boutonne.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-gilet-boutonne.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Gilet boutonné",
+   "id_groupe": "Male_Clothes_1020",
+   "position_proposee": 1020,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#C8E4D6",
+     "groupe": "Tricot",
+     "role": "principale"
+    },
+    "st4": {
+     "couleur": "#273252",
+     "groupe": "Coudières",
+     "role": "detail"
+    },
+    "st2": {
+     "couleur": "#95CBB0",
+     "groupe": "Tricot",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     49,
+     451
+    ],
+    "y": [
+     351,
+     798
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "De dos, les boutons ne se voient pas : le gilet se reconnaît à ses côtes et à ses coudières. Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 24 px, homme-mince 40 px, homme-rond 12.3 px, homme-age 21.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-doudoune.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-doudoune.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Doudoune",
+   "id_groupe": "Male_Clothes_1021",
+   "position_proposee": 1021,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#850D0D",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     42,
+     458
+    ],
+    "y": [
+     335,
+     798
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 30,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 47,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 15.7,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 26.7,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 10,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 10 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 30 px, homme-mince 47 px, homme-age 26.7 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-manteau.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-manteau.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Manteau",
+   "id_groupe": "Male_Clothes_1022",
+   "position_proposee": 1022,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#273252",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#545454",
+     "groupe": "Col et martingale",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#E4AF73",
+     "groupe": "Boutons",
+     "role": "detail"
+    },
+    "st2": {
+     "couleur": "#171D2F",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     46,
+     454
+    ],
+    "y": [
+     337,
+     812
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 43,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 15.7,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 23.7,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 6,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 6 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 27 px, homme-mince 43 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-homme-veste.svg",
+   "url": "/assets/gabarit-piece-hauts-homme-veste.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Veste",
+   "id_groupe": "Male_Clothes_1023",
+   "position_proposee": 1023,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#B8551D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st4": {
+     "couleur": "#273252",
+     "groupe": "Coudières",
+     "role": "detail"
+    },
+    "st2": {
+     "couleur": "#833D15",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     48,
+     452
+    ],
+    "y": [
+     341,
+     798
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 25,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 41,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 15.7,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 4,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 4 px) : sur les corps plus minces, manches et hanches paraissent plus amples (homme-standard-v2 25 px, homme-mince 41 px, homme-rond 15.7 px, homme-age 22.3 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-enfant-t-shirt.svg",
+   "url": "/assets/gabarit-piece-hauts-enfant-t-shirt.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "T-shirt raglan",
+   "id_groupe": "Boy_Clothes_1024",
+   "position_proposee": 1024,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#F2D08D",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#004946",
+     "groupe": "Manches",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#EAB448",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     91,
+     409
+    ],
+    "y": [
+     441,
+     722
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 892
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 2393
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 16,
+     "debord_max_px": 3.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Compromis : le bord du torse doit couvrir le torse du corps le plus large, il mord donc un peu sur le bras nu des corps minces (enfant-standard-v2 892 px, enfant-fin 2393 px). Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (enfant-standard-v2 17 px, enfant-fin 27 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-enfant-t-shirt-raye.svg",
+   "url": "/assets/gabarit-piece-hauts-enfant-t-shirt-raye.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "T-shirt rayé",
+   "id_groupe": "Boy_Clothes_1025",
+   "position_proposee": 1025,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FFC7D0",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#BD1212",
+     "groupe": "Rayures",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#FF7A90",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     91,
+     409
+    ],
+    "y": [
+     441,
+     722
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 898
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 2399
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 16,
+     "debord_max_px": 3.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Compromis : le bord du torse doit couvrir le torse du corps le plus large, il mord donc un peu sur le bras nu des corps minces (enfant-standard-v2 898 px, enfant-fin 2399 px). Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (enfant-standard-v2 17 px, enfant-fin 27 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-enfant-pull.svg",
+   "url": "/assets/gabarit-piece-hauts-enfant-pull.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Pull à empiècement",
+   "id_groupe": "Boy_Clothes_1026",
+   "position_proposee": 1026,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#0056AF",
+     "groupe": "Tricot",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Empiècement",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#003872",
+     "groupe": "Tricot",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     81,
+     419
+    ],
+    "y": [
+     441,
+     722
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 23,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 16,
+     "debord_max_px": 3.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (enfant-standard-v2 23 px, enfant-fin 35 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-enfant-sweat-capuche.svg",
+   "url": "/assets/gabarit-piece-hauts-enfant-sweat-capuche.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Sweat à capuche",
+   "id_groupe": "Boy_Clothes_1027",
+   "position_proposee": 1027,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#9EDFBF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#E8B71C",
+     "groupe": "Doublure",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#64CC99",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     81,
+     419
+    ],
+    "y": [
+     440,
+     722
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 23,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 16,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (enfant-standard-v2 23 px, enfant-fin 35 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-enfant-robe.svg",
+   "url": "/assets/gabarit-piece-hauts-enfant-robe.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Robe",
+   "id_groupe": "Boy_Clothes_1028",
+   "position_proposee": 1028,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FF96BF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Ceinture",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#FF4A90",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     95,
+     405
+    ],
+    "y": [
+     441,
+     779
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 14.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 1002
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 23,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 2705
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 16,
+     "debord_max_px": 7.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 7.3,
+   "volumineuse": false,
+   "notes": "Descend jusqu'à l'assise et cache le bas, c'est voulu. Le bas de la jupe s'étale sur l'assise : jusqu'à 13 px hors de l'enveloppe des corps. Compromis : le bord du torse doit couvrir le torse du corps le plus large, il mord donc un peu sur le bras nu des corps minces (enfant-standard-v2 1002 px, enfant-fin 2705 px). Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 7.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (enfant-standard-v2 14.3 px, enfant-fin 23 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-enfant-salopette-haut.svg",
+   "url": "/assets/gabarit-piece-hauts-enfant-salopette-haut.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Salopette (haut) et t-shirt",
+   "id_groupe": "Boy_Clothes_1029",
+   "position_proposee": 1029,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FAFAFA",
+     "groupe": "T-shirt",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#5E9ABF",
+     "groupe": "Salopette",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#E8B71C",
+     "groupe": "Boutons",
+     "role": "detail"
+    },
+    "st2": {
+     "couleur": "#D4D4D4",
+     "groupe": "T-shirt",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     91,
+     409
+    ],
+    "y": [
+     441,
+     722
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 892
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 2393
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 16,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3,
+   "volumineuse": false,
+   "notes": "Le t-shirt dessous est compris dans la pièce, pour qu'il n'y ait jamais de peau entre les bretelles. Compromis : le bord du torse doit couvrir le torse du corps le plus large, il mord donc un peu sur le bras nu des corps minces (enfant-standard-v2 892 px, enfant-fin 2393 px). Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (enfant-standard-v2 17 px, enfant-fin 27 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-enfant-doudoune.svg",
+   "url": "/assets/gabarit-piece-hauts-enfant-doudoune.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Doudoune",
+   "id_groupe": "Boy_Clothes_1030",
+   "position_proposee": 1030,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E8B71C",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#A78311",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     74,
+     426
+    ],
+    "y": [
+     429,
+     720
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 30,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 41.7,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 16,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 10,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 10 px) : sur les corps plus minces, manches et hanches paraissent plus amples (enfant-standard-v2 30 px, enfant-fin 41.7 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-enfant-mariniere.svg",
+   "url": "/assets/gabarit-piece-hauts-enfant-mariniere.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Marinière",
+   "id_groupe": "Boy_Clothes_1031",
+   "position_proposee": 1031,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FAFAFA",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#194F6D",
+     "groupe": "Rayures",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#D4D4D4",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     81,
+     419
+    ],
+    "y": [
+     441,
+     722
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 23.7,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 36,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 7,
+     "debord_max_px": 3.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (enfant-standard-v2 23.7 px, enfant-fin 36 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-ado-t-shirt.svg",
+   "url": "/assets/gabarit-piece-hauts-ado-t-shirt.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "T-shirt",
+   "id_groupe": "Teenage_Boy_Clothes_1032",
+   "position_proposee": 1032,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#2A5E21",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#193814",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     116,
+     436
+    ],
+    "y": [
+     367,
+     738
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 26
+    }
+   },
+   "debord_enveloppe_px": 3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (ado-fin 16 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-ado-sweat-capuche.svg",
+   "url": "/assets/gabarit-piece-hauts-ado-sweat-capuche.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Sweat à capuche",
+   "id_groupe": "Teenage_Boy_Clothes_1033",
+   "position_proposee": 1033,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#273252",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Bandes",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#171D2F",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     104,
+     438
+    ],
+    "y": [
+     366,
+     766
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (ado-fin 16 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-ado-chemise.svg",
+   "url": "/assets/gabarit-piece-hauts-ado-chemise.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Chemisette",
+   "id_groupe": "Teenage_Boy_Clothes_1034",
+   "position_proposee": 1034,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#E4AF73",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#194F6D",
+     "groupe": "Col",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     116,
+     436
+    ],
+    "y": [
+     355,
+     738
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "debord_max_px": 4,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 26
+    }
+   },
+   "debord_enveloppe_px": 4,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 4 px) : sur les corps plus minces, manches et hanches paraissent plus amples (ado-fin 16 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-ado-debardeur.svg",
+   "url": "/assets/gabarit-piece-hauts-ado-debardeur.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Débardeur de sport",
+   "id_groupe": "Teenage_Boy_Clothes_1035",
+   "position_proposee": 1035,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#0056AF",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Bordures",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     156,
+     398
+    ],
+    "y": [
+     367,
+     738
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 138
+    }
+   },
+   "debord_enveloppe_px": 3,
+   "volumineuse": false,
+   "notes": "Compromis : le bord du torse doit couvrir le torse du corps le plus large, il mord donc un peu sur le bras nu des corps minces (ado-fin 138 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-ado-doudoune.svg",
+   "url": "/assets/gabarit-piece-hauts-ado-doudoune.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Doudoune",
+   "id_groupe": "Teenage_Boy_Clothes_1036",
+   "position_proposee": 1036,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#82C3F4",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#3CA1EE",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     99,
+     445
+    ],
+    "y": [
+     351,
+     766
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 22,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 10,
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-hauts-ado-maillot-sport.svg",
+   "url": "/assets/gabarit-piece-hauts-ado-maillot-sport.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Maillot de sport",
+   "id_groupe": "Teenage_Boy_Clothes_1037",
+   "position_proposee": 1037,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#FAFAFA",
+     "groupe": "Tissu",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#BD1212",
+     "groupe": "Manches",
+     "role": "partie"
+    },
+    "st4": {
+     "couleur": "#273252",
+     "groupe": "Numéro",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#D4D4D4",
+     "groupe": "Tissu",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     116,
+     436
+    ],
+    "y": [
+     367,
+     738
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "debord_max_px": 3.3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 26
+    }
+   },
+   "debord_enveloppe_px": 3.3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3.3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (ado-fin 16 px)."
+  },
+  {
+   "fichier": "gabarit-piece-hauts-ado-pull.svg",
+   "url": "/assets/gabarit-piece-hauts-ado-pull.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "clothes",
+   "view": "back",
+   "nom": "Pull à bande",
+   "id_groupe": "Teenage_Boy_Clothes_1038",
+   "position_proposee": 1038,
+   "nuancier": "vetements",
+   "zones": {
+    "st0": {
+     "couleur": "#BD1212",
+     "groupe": "Tricot",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#FAFAFA",
+     "groupe": "Bande",
+     "role": "partie"
+    },
+    "st2": {
+     "couleur": "#850D0D",
+     "groupe": "Tricot",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     104,
+     438
+    ],
+    "y": [
+     367,
+     766
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 1,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0,
+     "bras_nus_couverts_px": 0
+    }
+   },
+   "debord_enveloppe_px": 3,
+   "volumineuse": false,
+   "notes": "Dessiné sur l'enveloppe de la famille (écart max à l'enveloppe 3 px) : sur les corps plus minces, manches et hanches paraissent plus amples (ado-fin 16 px)."
+  }
+ ]
+}

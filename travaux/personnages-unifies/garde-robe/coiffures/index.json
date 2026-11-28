@@ -1,0 +1,3845 @@
+{
+ "categorie": "coiffures",
+ "date": "2026-11-27",
+ "generateur": "garde-robe/coiffures/gen.mjs",
+ "pieces": [
+  {
+   "fichier": "gabarit-piece-coiffures-femme-longs-raides.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-longs-raides.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Longs raides",
+   "id_groupe": "Female_Hair_1000",
+   "position_proposee": 1000,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#593314",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#1F1207",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     159,
+     341
+    ],
+    "y": [
+     174,
+     500
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 36,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 6)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-longs-ondules.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-longs-ondules.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Longs ondulés",
+   "id_groupe": "Female_Hair_1001",
+   "position_proposee": 1001,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#583721",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     148,
+     352
+    ],
+    "y": [
+     173,
+     490
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 36,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-longs-boucles.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-longs-boucles.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Longs à grandes boucles",
+   "id_groupe": "Female_Hair_1002",
+   "position_proposee": 1002,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#CE6000",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#873F00",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     149,
+     350
+    ],
+    "y": [
+     172,
+     488
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 39,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 39,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 39,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 37,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-frises-longs.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-frises-longs.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Longs frisés",
+   "id_groupe": "Female_Hair_1003",
+   "position_proposee": 1003,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     145,
+     355
+    ],
+    "y": [
+     173,
+     480
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 36,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-mi-longs.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-mi-longs.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Mi-longs aux épaules",
+   "id_groupe": "Female_Hair_1004",
+   "position_proposee": 1004,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#CC9245",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#9E6D2B",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     148,
+     352
+    ],
+    "y": [
+     174,
+     403
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 6)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-carre.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-carre.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Carré",
+   "id_groupe": "Female_Hair_1005",
+   "position_proposee": 1005,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     161,
+     339
+    ],
+    "y": [
+     173,
+     341
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-carre-plongeant.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-carre-plongeant.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Carré plongeant",
+   "id_groupe": "Female_Hair_1006",
+   "position_proposee": 1006,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#A05325",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#663518",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     160,
+     341
+    ],
+    "y": [
+     174,
+     385
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 40,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 36,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 6)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-carre-court-gris.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-carre-court-gris.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Carré court gris",
+   "id_groupe": "Female_Hair_1007",
+   "position_proposee": 1007,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#A7A39C",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#837F78",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     161,
+     339
+    ],
+    "y": [
+     173,
+     324
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 18,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 18,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 18,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 18,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-pixie.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-pixie.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Coupe garçonne",
+   "id_groupe": "Female_Hair_1008",
+   "position_proposee": 1008,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#E7B033",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     174,
+     326
+    ],
+    "y": [
+     173,
+     335
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-court-boucle.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-court-boucle.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Court bouclé",
+   "id_groupe": "Female_Hair_1009",
+   "position_proposee": 1009,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#593314",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     164,
+     336
+    ],
+    "y": [
+     172,
+     333
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-queue-de-cheval.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-queue-de-cheval.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Queue de cheval",
+   "id_groupe": "Female_Hair_1010",
+   "position_proposee": 1010,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#593314",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF96BF",
+     "groupe": "Élastique",
+     "role": "partie"
+    },
+    "st3": {
+     "couleur": "#1F1207",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     173,
+     476
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-queue-basse.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-queue-basse.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Queue de cheval basse",
+   "id_groupe": "Female_Hair_1011",
+   "position_proposee": 1011,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0056AF",
+     "groupe": "Élastique",
+     "role": "partie"
+    },
+    "st3": {
+     "couleur": "#583721",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     173,
+     461
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-queue-haute.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-queue-haute.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Queue de cheval haute",
+   "id_groupe": "Female_Hair_1012",
+   "position_proposee": 1012,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#E7B033",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF96BF",
+     "groupe": "Élastique",
+     "role": "partie"
+    },
+    "st3": {
+     "couleur": "#BC8A16",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     173,
+     436
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 8,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 8,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 8,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 8,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": true,
+   "notes": "sort du volume des couvre-chefs : à ne pas proposer sous un chapeau"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-chignon-haut.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-chignon-haut.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Chignon haut",
+   "id_groupe": "Female_Hair_1013",
+   "position_proposee": 1013,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     123,
+     328
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 54,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 54,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 54,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 54,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": true,
+   "notes": "sort du volume des couvre-chefs : à ne pas proposer sous un chapeau"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-chignon-bas.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-chignon-bas.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Chignon bas",
+   "id_groupe": "Female_Hair_1014",
+   "position_proposee": 1014,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#A05325",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#663518",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     173,
+     343
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-natte.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-natte.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Natte",
+   "id_groupe": "Female_Hair_1015",
+   "position_proposee": 1015,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#CC9245",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0056AF",
+     "groupe": "Élastique",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     173,
+     508
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "pend hors silhouette, débord non limité ; dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-deux-nattes.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-deux-nattes.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Deux nattes",
+   "id_groupe": "Female_Hair_1016",
+   "position_proposee": 1016,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#CE6000",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF96BF",
+     "groupe": "Élastique",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     324
+    ],
+    "y": [
+     173,
+     476
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 25,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 25,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 25,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "pend hors silhouette, débord non limité ; dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-afro.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-afro.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Afro",
+   "id_groupe": "Female_Hair_1017",
+   "position_proposee": 1017,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     137,
+     363
+    ],
+    "y": [
+     132,
+     361
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": true,
+   "notes": "sort du volume des couvre-chefs : à ne pas proposer sous un chapeau"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-permanente-courte-grise.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-permanente-courte-grise.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Permanente courte grise",
+   "id_groupe": "Female_Hair_1018",
+   "position_proposee": 1018,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#A7A39C",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     160,
+     340
+    ],
+    "y": [
+     174,
+     336
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 6,
+     "debord_max_px": 19,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 6,
+     "debord_max_px": 19,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 6,
+     "debord_max_px": 19,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 6,
+     "debord_max_px": 19,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 6)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-chignon-grand-mere.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-chignon-grand-mere.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Chignon de grand-mère",
+   "id_groupe": "Female_Hair_1019",
+   "position_proposee": 1019,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#DEDAD2",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#BAB6AE",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     172,
+     329
+    ],
+    "y": [
+     173,
+     324
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-femme-courte-blanche.svg",
+   "url": "/assets/gabarit-piece-coiffures-femme-courte-blanche.svg",
+   "familles": [
+    "femme"
+   ],
+   "gabarits": [
+    "gabarit-dos-femme-standard-v2.svg",
+    "gabarit-dos-femme-fine.svg",
+    "gabarit-dos-femme-ronde.svg",
+    "gabarit-dos-femme-agee.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Courte blanche",
+   "id_groupe": "Female_Hair_1020",
+   "position_proposee": 1020,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#DEDAD2",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#BAB6AE",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     171,
+     329
+    ],
+    "y": [
+     173,
+     332
+    ]
+   },
+   "controle": {
+    "gabarit-dos-femme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-fine.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-ronde.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-femme-agee.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 11,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-court-classique.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-court-classique.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Court classique",
+   "id_groupe": "Male_Hair_1021",
+   "position_proposee": 1021,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#593314",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     156,
+     329
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-court-epis.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-court-epis.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Court en épis",
+   "id_groupe": "Male_Hair_1022",
+   "position_proposee": 1022,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     170,
+     330
+    ],
+    "y": [
+     154,
+     327
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 16,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-court-brosse.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-court-brosse.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Brosse courte",
+   "id_groupe": "Male_Hair_1023",
+   "position_proposee": 1023,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     179,
+     322
+    ],
+    "y": [
+     155,
+     326
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-tondu.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-tondu.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Tondu ras",
+   "id_groupe": "Male_Hair_1024",
+   "position_proposee": 1024,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#6B3E1E",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     178,
+     322
+    ],
+    "y": [
+     158,
+     309
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 3,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "crâne nu = peau du gabarit, dispensée de la zone à couvrir"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-degrade.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-degrade.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Dégradé",
+   "id_groupe": "Male_Hair_1025",
+   "position_proposee": 1025,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#583721",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     156,
+     327
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-boucles-courtes.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-boucles-courtes.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Boucles courtes",
+   "id_groupe": "Male_Hair_1026",
+   "position_proposee": 1026,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     166,
+     334
+    ],
+    "y": [
+     155,
+     326
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-afro.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-afro.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Afro",
+   "id_groupe": "Male_Hair_1027",
+   "position_proposee": 1027,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     139,
+     361
+    ],
+    "y": [
+     115,
+     340
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 51,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": true,
+   "notes": "sort du volume des couvre-chefs : à ne pas proposer sous un chapeau"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-mi-longs.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-mi-longs.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Mi-longs dans le cou",
+   "id_groupe": "Male_Hair_1028",
+   "position_proposee": 1028,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#CC9245",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#9E6D2B",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     169,
+     332
+    ],
+    "y": [
+     156,
+     356
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 33,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 33,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 33,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-chignon-homme.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-chignon-homme.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Chignon",
+   "id_groupe": "Male_Hair_1029",
+   "position_proposee": 1029,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#583721",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     179,
+     322
+    ],
+    "y": [
+     156,
+     311
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-queue-basse.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-queue-basse.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Queue de cheval basse",
+   "id_groupe": "Male_Hair_1030",
+   "position_proposee": 1030,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#A05325",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#EAAA0A",
+     "groupe": "Élastique",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     178,
+     322
+    ],
+    "y": [
+     156,
+     411
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-locs.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-locs.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Dreadlocks",
+   "id_groupe": "Male_Hair_1031",
+   "position_proposee": 1031,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     171,
+     330
+    ],
+    "y": [
+     156,
+     394
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 31,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-poivre-sel-court.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-poivre-sel-court.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Court poivre et sel",
+   "id_groupe": "Male_Hair_1032",
+   "position_proposee": 1032,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8E8A84",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#6A6660",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     176,
+     323
+    ],
+    "y": [
+     156,
+     330
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-blancs-raie.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-blancs-raie.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Blancs, raie sur le côté",
+   "id_groupe": "Male_Hair_1033",
+   "position_proposee": 1033,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#DEDAD2",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     155,
+     327
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 9,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 9,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 9,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 9,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-degarni-tonsure.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-degarni-tonsure.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Dégarni sur le dessus",
+   "id_groupe": "Male_Hair_1034",
+   "position_proposee": 1034,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8E8A84",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     178,
+     323
+    ],
+    "y": [
+     156,
+     329
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 6,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "crâne nu = peau du gabarit, dispensée de la zone à couvrir ; dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-calvitie-couronne.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-calvitie-couronne.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Calvitie, couronne de cheveux",
+   "id_groupe": "Male_Hair_1035",
+   "position_proposee": 1035,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#A7A39C",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     324
+    ],
+    "y": [
+     199,
+     327
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "crâne nu = peau du gabarit, dispensée de la zone à couvrir"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-court-classique-barbe.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-court-classique-barbe.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Court classique et barbe",
+   "id_groupe": "Male_Hair_1036",
+   "position_proposee": 1036,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#593314",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#8E8A84",
+     "groupe": "Barbe",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     173,
+     327
+    ],
+    "y": [
+     156,
+     329
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 12,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-tondu-barbe-3-jours.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-tondu-barbe-3-jours.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Tondu et barbe de trois jours",
+   "id_groupe": "Male_Hair_1037",
+   "position_proposee": 1037,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#24222C",
+     "groupe": "Barbe",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     176,
+     324
+    ],
+    "y": [
+     158,
+     310
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 8,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 8,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 8,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 8,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "crâne nu = peau du gabarit, dispensée de la zone à couvrir"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-mi-longs-barbe.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-mi-longs-barbe.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Mi-longs et barbe",
+   "id_groupe": "Male_Hair_1038",
+   "position_proposee": 1038,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#E7B033",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#6B3E1E",
+     "groupe": "Barbe",
+     "role": "partie"
+    },
+    "st3": {
+     "couleur": "#BC8A16",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     168,
+     333
+    ],
+    "y": [
+     156,
+     368
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 33,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-degarni-barbe-grise.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-degarni-barbe-grise.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Dégarni et barbe grise",
+   "id_groupe": "Male_Hair_1039",
+   "position_proposee": 1039,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#DEDAD2",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#8E8A84",
+     "groupe": "Barbe",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     165,
+     335
+    ],
+    "y": [
+     156,
+     344
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 31,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 31,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 31,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 30,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "crâne nu = peau du gabarit, dispensée de la zone à couvrir ; dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-homme-calvitie-barbe-blanche.svg",
+   "url": "/assets/gabarit-piece-coiffures-homme-calvitie-barbe-blanche.svg",
+   "familles": [
+    "homme"
+   ],
+   "gabarits": [
+    "gabarit-dos-homme-standard-v2.svg",
+    "gabarit-dos-homme-mince.svg",
+    "gabarit-dos-homme-rond.svg",
+    "gabarit-dos-homme-age.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Calvitie et barbe blanche",
+   "id_groupe": "Male_Hair_1040",
+   "position_proposee": 1040,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#A7A39C",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#F4F3F2",
+     "groupe": "Barbe",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     163,
+     337
+    ],
+    "y": [
+     199,
+     362
+    ]
+   },
+   "controle": {
+    "gabarit-dos-homme-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-mince.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 38,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-homme-age.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "crâne nu = peau du gabarit, dispensée de la zone à couvrir"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-court-garcon.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-court-garcon.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Court de garçon",
+   "id_groupe": "Boy_Hair_1041",
+   "position_proposee": 1041,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#593314",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     176,
+     324
+    ],
+    "y": [
+     251,
+     418
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 10,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-bol.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-bol.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Coupe au bol",
+   "id_groupe": "Boy_Hair_1042",
+   "position_proposee": 1042,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#CC9245",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     168,
+     333
+    ],
+    "y": [
+     251,
+     410
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 17,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-epis.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-epis.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Épis",
+   "id_groupe": "Boy_Hair_1043",
+   "position_proposee": 1043,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     169,
+     331
+    ],
+    "y": [
+     250,
+     418
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 20,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 20,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 20,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-boucles-courtes.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-boucles-courtes.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Boucles courtes",
+   "id_groupe": "Boy_Hair_1044",
+   "position_proposee": 1044,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     164,
+     336
+    ],
+    "y": [
+     250,
+     424
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-afro.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-afro.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Afro",
+   "id_groupe": "Boy_Hair_1045",
+   "position_proposee": 1045,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     137,
+     363
+    ],
+    "y": [
+     210,
+     439
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 52,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 52,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 52,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": true,
+   "notes": "sort du volume des couvre-chefs : à ne pas proposer sous un chapeau"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-carre.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-carre.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Carré",
+   "id_groupe": "Boy_Hair_1046",
+   "position_proposee": 1046,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#A05325",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#663518",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     161,
+     339
+    ],
+    "y": [
+     251,
+     412
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 24,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-mi-longs.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-mi-longs.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Mi-longs aux épaules",
+   "id_groupe": "Boy_Hair_1047",
+   "position_proposee": 1047,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#E7B033",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#BC8A16",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     148,
+     352
+    ],
+    "y": [
+     252,
+     465
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 34,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 34,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 34,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 6)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-longs-raides.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-longs-raides.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Longs raides",
+   "id_groupe": "Boy_Hair_1048",
+   "position_proposee": 1048,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#CE6000",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#873F00",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     159,
+     341
+    ],
+    "y": [
+     252,
+     522
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 34,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 34,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 34,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 6)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-queue-de-cheval.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-queue-de-cheval.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Queue de cheval",
+   "id_groupe": "Boy_Hair_1049",
+   "position_proposee": 1049,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#593314",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF96BF",
+     "groupe": "Élastique",
+     "role": "partie"
+    },
+    "st3": {
+     "couleur": "#1F1207",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     323
+    ],
+    "y": [
+     252,
+     488
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 9,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 9,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 9,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-couettes.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-couettes.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Couettes",
+   "id_groupe": "Boy_Hair_1050",
+   "position_proposee": 1050,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#FF96BF",
+     "groupe": "Élastique",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     137,
+     363
+    ],
+    "y": [
+     251,
+     437
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "pend hors silhouette, débord non limité ; dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-deux-nattes.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-deux-nattes.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Deux nattes",
+   "id_groupe": "Boy_Hair_1051",
+   "position_proposee": 1051,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#CE6000",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0056AF",
+     "groupe": "Élastique",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     324
+    ],
+    "y": [
+     252,
+     498
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 27,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "pend hors silhouette, débord non limité ; dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-enfant-macarons.svg",
+   "url": "/assets/gabarit-piece-coiffures-enfant-macarons.svg",
+   "familles": [
+    "enfant"
+   ],
+   "gabarits": [
+    "gabarit-dos-enfant-standard-v2.svg",
+    "gabarit-dos-enfant-fin.svg",
+    "gabarit-dos-enfant-rond.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Deux petits chignons",
+   "id_groupe": "Boy_Hair_1052",
+   "position_proposee": 1052,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#EAAA0A",
+     "groupe": "Élastique",
+     "role": "partie"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     177,
+     325
+    ],
+    "y": [
+     220,
+     404
+    ]
+   },
+   "controle": {
+    "gabarit-dos-enfant-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-enfant-rond.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 49,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": true,
+   "notes": "sort du volume des couvre-chefs : à ne pas proposer sous un chapeau"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-ado-court-classique.svg",
+   "url": "/assets/gabarit-piece-coiffures-ado-court-classique.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Court classique",
+   "id_groupe": "Teenage_Boy_Hair_1053",
+   "position_proposee": 1053,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#593314",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     210,
+     341
+    ],
+    "y": [
+     185,
+     340
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-ado-degrade.svg",
+   "url": "/assets/gabarit-piece-coiffures-ado-degrade.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Dégradé",
+   "id_groupe": "Teenage_Boy_Hair_1054",
+   "position_proposee": 1054,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#583721",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     210,
+     341
+    ],
+    "y": [
+     185,
+     339
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-ado-epis.svg",
+   "url": "/assets/gabarit-piece-coiffures-ado-epis.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Épis",
+   "id_groupe": "Teenage_Boy_Hair_1055",
+   "position_proposee": 1055,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#CC9245",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     204,
+     347
+    ],
+    "y": [
+     183,
+     339
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 14,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 14,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-ado-boucles.svg",
+   "url": "/assets/gabarit-piece-coiffures-ado-boucles.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Boucles",
+   "id_groupe": "Teenage_Boy_Hair_1056",
+   "position_proposee": 1056,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     200,
+     351
+    ],
+    "y": [
+     184,
+     338
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 15,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 15,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": ""
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-ado-mi-longs.svg",
+   "url": "/assets/gabarit-piece-coiffures-ado-mi-longs.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Mi-longs dans le cou",
+   "id_groupe": "Teenage_Boy_Hair_1057",
+   "position_proposee": 1057,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#A05325",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#663518",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     203,
+     349
+    ],
+    "y": [
+     185,
+     366
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 29,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-ado-frange-longue.svg",
+   "url": "/assets/gabarit-piece-coiffures-ado-frange-longue.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Frange longue",
+   "id_groupe": "Teenage_Boy_Hair_1058",
+   "position_proposee": 1058,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#E7B033",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#BC8A16",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     201,
+     350
+    ],
+    "y": [
+     185,
+     339
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 21,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-ado-longs-raides.svg",
+   "url": "/assets/gabarit-piece-coiffures-ado-longs-raides.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Longs raides",
+   "id_groupe": "Teenage_Boy_Hair_1059",
+   "position_proposee": 1059,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#593314",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st3": {
+     "couleur": "#1F1207",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     195,
+     356
+    ],
+    "y": [
+     186,
+     476
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 35,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 6)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-ado-queue-de-cheval.svg",
+   "url": "/assets/gabarit-piece-coiffures-ado-queue-de-cheval.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Queue de cheval",
+   "id_groupe": "Teenage_Boy_Hair_1060",
+   "position_proposee": 1060,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#8C5834",
+     "groupe": "Cheveux",
+     "role": "principale"
+    },
+    "st2": {
+     "couleur": "#0056AF",
+     "groupe": "Élastique",
+     "role": "partie"
+    },
+    "st3": {
+     "couleur": "#583721",
+     "groupe": "Cheveux",
+     "role": "nuance",
+     "de": "st0"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     211,
+     340
+    ],
+    "y": [
+     185,
+     455
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 5,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": false,
+   "notes": "dessus resserré pour le contrat de volume (marge 4)"
+  },
+  {
+   "fichier": "gabarit-piece-coiffures-ado-chignon-haut.svg",
+   "url": "/assets/gabarit-piece-coiffures-ado-chignon-haut.svg",
+   "familles": [
+    "ado"
+   ],
+   "gabarits": [
+    "gabarit-dos-ado-standard-v2.svg",
+    "gabarit-dos-ado-fin.svg"
+   ],
+   "slot": "hair",
+   "view": "back",
+   "nom": "Chignon haut",
+   "id_groupe": "Teenage_Boy_Hair_1061",
+   "position_proposee": 1061,
+   "nuancier": "cheveux",
+   "zones": {
+    "st0": {
+     "couleur": "#281B13",
+     "groupe": "Cheveux",
+     "role": "principale"
+    }
+   },
+   "ombre": "st1",
+   "emprise": {
+    "x": [
+     211,
+     340
+    ],
+    "y": [
+     141,
+     322
+    ]
+   },
+   "controle": {
+    "gabarit-dos-ado-standard-v2.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0
+    },
+    "gabarit-dos-ado-fin.svg": {
+     "peau_visible_px": 0,
+     "debord_max_px": 48,
+     "mains_couvertes_px": 0
+    }
+   },
+   "volumineuse": true,
+   "notes": "sort du volume des couvre-chefs : à ne pas proposer sous un chapeau"
+  }
+ ]
+}

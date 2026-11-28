@@ -47,6 +47,7 @@ import { apercuAbsolu, urlApercu } from "../lib/ia.ts";
 import {
   catalogue,
   estPretAImprimer,
+  motifsEtPersonnages,
   nomDeLaLigne,
   visuelBoutique,
 } from "../lib/catalogue-panier.ts";
@@ -289,12 +290,35 @@ export default function CartIsland(props: {
       out.push(
         tr("ponct.guillemets").replace("{texte}", () => lignes.join(" — ")),
       );
-    const n = it.config.characters?.length ?? 0;
-    if (n > 0)
-      out.push(
-        `${n} ${n > 1 ? tr("panier.personnages") : tr("panier.personnage")}`,
-      );
+    const persos = resumePersonnages(config);
+    if (persos) out.push(persos);
     return out;
+  }
+
+  /**
+   * Les personnages d'une affiche, en clair : « 2 personnages ».
+   *
+   * Une affiche à motifs (28/11, stand de Mulhouse) range son motif parmi
+   * ses personnages (motifsEtPersonnages) : le motif se nomme, il ne se compte
+   * pas — « Sapin de Noël, 2 personnages », « Sapin de Noël » seul. Compté, le
+   * sapin seul faisait « 1 personnage » à la tablette.
+   *
+   * Seule la bibliothèque dit ce qui est un motif : la phrase suit donc la
+   * vignette, qui l'attend aussi, plutôt que d'annoncer un compte faux. En
+   * route, sa ligne est gardée vide (la page ne saute pas quand elle
+   * arrive) ; si elle ne vient pas, pas de phrase. Affichage seulement : la
+   * configuration enregistrée ne change pas.
+   */
+  function resumePersonnages(config: PosterConfig): string | null {
+    if (!config.characters?.length) return null;
+    if (biblio.loading) return "\u00a0";
+    if (!biblio()) return null;
+    const { motifs, personnages: n } = motifsEtPersonnages(config, personnageParId);
+    const morceaux = [
+      ...motifs,
+      ...(n > 0 ? [`${n} ${n > 1 ? tr("panier.personnages") : tr("panier.personnage")}`] : []),
+    ];
+    return morceaux.length ? morceaux.join(tr("panier.virgule")) : null;
   }
 
   /** Le nombre d'affiches, exemplaires compris : « mon affiche » ou « mes affiches ». */

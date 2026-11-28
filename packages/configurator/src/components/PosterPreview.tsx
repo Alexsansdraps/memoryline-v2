@@ -32,6 +32,7 @@ import {
   aLaLargeur,
 } from "@memoryline/types";
 import { CharacterStack } from "./CharacterLayer";
+import { enFormeEmoji } from "./emojis-imprimables";
 import { Filigrane } from "./Filigrane";
 import { createReductionDesLignes } from "./ReductionTexte";
 import {
@@ -811,14 +812,17 @@ export function PosterPreview(props: {
                       vides ne laissent pas de trou (sousLignes). Chaque bout
                       s'écrit dans la police qui sait l'écrire : la manuscrite
                       ne connaît pas les chiffres, ils s'écrivent alors en
-                      Caveat — ici comme à l'impression. */}
+                      Caveat — ici comme à l'impression. ♥ ☀ ❄ et les autres
+                      symboles écrits en texte par défaut se montrent en
+                      emoji, en couleur, comme sur le papier (enFormeEmoji,
+                      28/11) ; le texte enregistré ne change pas. */}
                   <For each={sousLignes(ligne.value)}>
                     {(sousLigne) => (
                       <div data-sous-ligne>
                         <For each={morceauxDeTexte(sousLigne, police())}>
                           {(morceau) => (
                             <span style={{ "font-family": familleCss(morceau.police) }}>
-                              {morceau.texte}
+                              {enFormeEmoji(morceau.texte)}
                             </span>
                           )}
                         </For>
@@ -880,7 +884,7 @@ export function PosterPreview(props: {
                             <For each={morceauxDeTexte(sousLigne, police())}>
                               {(morceau) => (
                                 <span style={{ "font-family": familleCss(morceau.police) }}>
-                                  {morceau.texte}
+                                  {enFormeEmoji(morceau.texte)}
                                 </span>
                               )}
                             </For>

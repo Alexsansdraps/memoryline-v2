@@ -1,0 +1,47 @@
+fr        768     ok      gauche 530 | recherche - | icônes 167 | coupées : Affiches personnalisables / Affiches prêtes à imprimer / Carte cadeau
+fr        768 BO  ok      gauche 486 | recherche - | icônes 211 (BO 28 icône) | coupées : Affiches personnalisables / Affiches prêtes à imprimer / Carte cadeau
+fr        820     ok      gauche 582 | recherche - | icônes 167 | coupées : Affiches personnalisables / Affiches prêtes à imprimer / Carte cadeau
+fr        820 BO  ok      gauche 538 | recherche - | icônes 211 (BO 28 icône) | coupées : Affiches personnalisables / Affiches prêtes à imprimer / Carte cadeau
+fr        900     ok      gauche 598 | recherche - | icônes 167
+fr        900 BO  ok      gauche 598 | recherche - | icônes 211 (BO 28 icône)
+fr       1000     ok      gauche 598 | recherche - | icônes 167
+fr       1000 BO  ok      gauche 598 | recherche - | icônes 211 (BO 28 icône)
+fr       1023     ok      gauche 598 | recherche - | icônes 167
+fr       1023 BO  ok      gauche 598 | recherche - | icônes 211 (BO 28 icône)
+fr stand  768     ok      gauche 568 | recherche - | icônes 129 | coupées : Affiches personnalisables / Affiches prêtes à imprimer / Carte cadeau
+fr stand  820     ok      gauche 598 | recherche - | icônes 129
+fr stand  900     ok      gauche 598 | recherche - | icônes 129
+fr stand 1000     ok      gauche 598 | recherche - | icônes 129
+fr stand 1023     ok      gauche 598 | recherche - | icônes 129
+de        768     ok      gauche 529 | recherche - | icônes 168 | coupées : Personalisierbare Poster / Druckfertige Poster
+de        768 BO  ok      gauche 485 | recherche - | icônes 212 (BO 28 icône) | coupées : Personalisierbare Poster / Druckfertige Poster
+de        820     ok      gauche 581 | recherche - | icônes 168 | coupées : Personalisierbare Poster / Druckfertige Poster
+de        820 BO  ok      gauche 537 | recherche - | icônes 212 (BO 28 icône) | coupées : Personalisierbare Poster / Druckfertige Poster
+de        900     ok      gauche 586 | recherche - | icônes 168
+de        900 BO  ok      gauche 586 | recherche - | icônes 212 (BO 28 icône)
+de       1000     ok      gauche 586 | recherche - | icônes 168
+de       1000 BO  ok      gauche 586 | recherche - | icônes 212 (BO 28 icône)
+de       1023     ok      gauche 586 | recherche - | icônes 168
+de       1023 BO  ok      gauche 586 | recherche - | icônes 212 (BO 28 icône)
+de stand  768     ok      gauche 567 | recherche - | icônes 130 | coupées : Personalisierbare Poster / Druckfertige Poster
+de stand  820     ok      gauche 586 | recherche - | icônes 130
+de stand  900     ok      gauche 586 | recherche - | icônes 130
+de stand 1000     ok      gauche 586 | recherche - | icônes 130
+de stand 1023     ok      gauche 586 | recherche - | icônes 130
+es        768     ok      gauche 530 | recherche - | icônes 167 | coupées : Láminas personalizables / Láminas listas para imprimir / Tarjeta regalo
+es        768 BO  ok      gauche 486 | recherche - | icônes 211 (BO 28 icône) | coupées : Láminas personalizables / Láminas listas para imprimir / Tarjeta regalo
+es        820     ok      gauche 582 | recherche - | icônes 167 | coupées : Láminas personalizables / Láminas listas para imprimir / Tarjeta regalo
+es        820 BO  ok      gauche 538 | recherche - | icônes 211 (BO 28 icône) | coupées : Láminas personalizables / Láminas listas para imprimir / Tarjeta regalo
+es        900     ok      gauche 601 | recherche - | icônes 167
+es        900 BO  ok      gauche 601 | recherche - | icônes 211 (BO 28 icône)
+es       1000     ok      gauche 601 | recherche - | icônes 167
+es       1000 BO  ok      gauche 601 | recherche - | icônes 211 (BO 28 icône)
+es       1023     ok      gauche 601 | recherche - | icônes 167
+es       1023 BO  ok      gauche 601 | recherche - | icônes 211 (BO 28 icône)
+es stand  768     ok      gauche 568 | recherche - | icônes 129 | coupées : Láminas personalizables / Láminas listas para imprimir / Tarjeta regalo
+es stand  820     ok      gauche 601 | recherche - | icônes 129
+es stand  900     ok      gauche 601 | recherche - | icônes 129
+es stand 1000     ok      gauche 601 | recherche - | icônes 129
+es stand 1023     ok      gauche 601 | recherche - | icônes 129
+
+45 mesures, 0 débordements entre 768 et 1280 px.

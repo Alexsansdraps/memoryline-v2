@@ -23,6 +23,16 @@ Même fabrication que decoupe-ombres.py / decoupe4.py (scripts-precedents/) :
   Si une lecture douteuse change (adulte <-> ado), changer le type et le drapeau F/H du
   membre dans SCENES puis relancer : l'échelle de la case suit.
 
+Retouche du chat (28/11 après-midi, B r5c1 « Papa, trois enfants et un chat ») : sur la
+planche, la tête du chat touche le bras du papa (l'écart y fait moins d'un pixel) et son
+oreille gauche s'y fond ; en vignette et à l'échelle de l'affiche, on lisait une bosse à
+une seule oreille, un 4e enfant. Alexandra a choisi « Retoucher le chat » : la tête est
+redessinée dans le masque de la case (RETOUCHES, retouche_chat), un peu plus étroite et
+détachée du bras par un jour de 3 à 4 px (2,6 à 3,2 cm une fois vectorisée), avec ses
+deux oreilles pointues et son cou ; le corps du chat, le papa et les enfants ne bougent
+pas. Le tracé garde les sommets d'avant partout où le masque n'a pas changé (raccorder) :
+dans `d`, seul le chat change. Contrôles : travaux/ombres/retouche-chat/.
+
 Usage :  python -I decoupe-B.py <ombres-familles-b.png> <dossier planche-B> <controle-B.jpg>
 Sorties : <dossier>/case-r<rangée>c<colonne>.json (une scène par fichier), <dossier>/ombres-B.json
 (les 36 dans une liste, pour ecrire-ombres2.py) et la planche de contrôle (chaque case originale
@@ -147,6 +157,54 @@ SCENES = {
                  membres=[('femme', 'chignon haut', 62, F), ('homme', 'cheveux bouclés', 111, F), ('garcon', 'cheveux courts', 166, H)]),
 }
 
+# ------------------------------------------------------------------------------------
+# Retouches du masque, case par case (voir plus haut), en px de la planche (x, y).
+# B r5c1 : la tête du chat, son cou et ses deux oreilles, à la place de la tête collée
+# au bras du papa ; ellipse (cx, cy, rx, ry) ou polygone, l'union est dessinée.
+# ------------------------------------------------------------------------------------
+CHAT = [
+    ('ellipse', 125.5, 740.0, 8.6, 8.2),                                          # tête
+    ('poly', [(119.5, 744.0), (131.5, 744.0), (131.0, 752.6), (118.6, 752.6)]),  # cou, jusqu'au corps
+    ('poly', [(117.6, 736.0), (117.2, 726.8), (122.8, 732.6)]),                  # oreille gauche
+    ('poly', [(133.4, 736.0), (133.8, 726.8), (128.2, 732.6)]),                  # oreille droite
+]
+
+
+def couverture(formes, xs, ys, ss=8):
+    """Part de chaque pixel (centres xs, ys en px de la planche) couverte par l'union des formes (ys x xs)."""
+    off = (np.arange(ss) + 0.5) / ss - 0.5
+    px = xs[None, :, None, None] + off[None, None, None, :] + 0 * (ys[:, None, None, None] + off[None, None, :, None])
+    py = ys[:, None, None, None] + off[None, None, :, None] + 0 * px
+    pts = np.stack([px.ravel(), py.ravel()], axis=1)
+    dedans = np.zeros(len(pts), bool)
+    for f in formes:
+        if f[0] == 'ellipse':
+            _, cx, cy, rx, ry = f
+            dedans |= ((pts[:, 0] - cx) / rx) ** 2 + ((pts[:, 1] - cy) / ry) ** 2 <= 1
+        else:
+            dedans |= measure.points_in_poly(pts, np.array(f[1]))
+    return dedans.reshape(px.shape).mean(axis=(2, 3))
+
+
+def retouche_chat(m, y0, x0):
+    """B r5c1 : tête du chat redessinée, détachée du bras du papa, deux oreilles pointues (28/11).
+
+    Dans le masque m (rangée 0 = y0, colonne 0 = x0 de la planche), rangées 724 à 751 : tout
+    est effacé entre le bras du papa (gardé jusqu'à x = 113, puis 112 dès que le jour
+    d'origine s'ouvre sous la tête) et le bras du garçon (gardé dès x = 136, puis 135), puis
+    CHAT y est dessiné (pixel noir s'il est couvert à moitié au moins).
+    """
+    ys, xs = np.arange(724, 752), np.arange(113, 136)
+    cov = couverture(CHAT, xs, ys)
+    for i, y in enumerate(ys):
+        xa, xb = (114 if y <= 742 else 113), (135 if y <= 749 else 134)
+        for j, x in enumerate(xs):
+            if xa <= x <= xb:
+                m[y - y0, x - x0] = cov[i, j] >= 0.5
+
+
+RETOUCHES = {(5, 1): retouche_chat}
+
 img = np.asarray(Image.open(SRC).convert('L')).astype(float)
 noir = img < SEUIL
 HH, WW = noir.shape
@@ -221,11 +279,13 @@ def courbe(pts):
     return "".join(out) + "Z"
 
 
-def masque_case(a, b, x0, x1):
-    """Masque de la scène, ombre portée coupée, poussières retirées, recadré en haut."""
+def masque_case(a, b, x0, x1, retouche=None):
+    """Masque de la scène, ombre portée coupée, retouché s'il le faut, poussières retirées, recadré en haut."""
     m = noir[max(0, a - 3):min(HH, b + 3), x0:x1]
     yb = int(np.nonzero(m.any(axis=1))[0].max())
     m = m[: yb + 1 - OMBRE].copy()
+    if retouche:
+        retouche(m, max(0, a - 3), x0)
     lab, n = ndimage.label(m, structure=np.ones((3, 3)))
     tailles = ndimage.sum(m, lab, range(1, n + 1))
     garde = np.zeros_like(m)
@@ -241,6 +301,56 @@ def hauteur_tete(mk, x):
     """Du sol au sommet de la tête, en px, autour de la colonne x (± 3)."""
     col = mk[:, max(0, x - 3):x + 4].any(axis=1)
     return mk.shape[0] - int(np.nonzero(col)[0].min())
+
+
+def sous_contours(mk):
+    """Les sous-chemins du masque : [(contour brut, sommets gardés par RDP)], en px du masque bordé de 2."""
+    lisse = ndimage.gaussian_filter(np.pad(mk.astype(float), 2), 0.6)
+    out = []
+    for cont in measure.find_contours(lisse, 0.5):
+        if len(cont) < 8:
+            continue
+        if np.allclose(cont[0], cont[-1]):
+            cont = cont[:-1]
+        loin = int(np.argmax(np.hypot(*(cont - cont[0]).T)))
+        sommets = np.vstack([rdp(cont[: loin + 1], 0.8)[:-1], rdp(np.vstack([cont[loin:], cont[:1]]), 0.8)[:-1]])
+        if len(sommets) < 3:
+            continue
+        out.append((cont, sommets))
+    return out
+
+
+def raccorder(mk0, mk1, marge=4):
+    """Les sommets du masque retouché mk1, raccordés à ceux du masque d'origine mk0.
+
+    Vectoriser mk1 de zéro déplacerait les sommets de RDP tout le long du grand contour
+    (jusqu'à 1 cm sur la tête du garçon voisin du chat) : on garde ceux de mk0 partout où le
+    masque n'a pas changé, et l'on ne re-simplifie que le tronçon retouché, entre les deux
+    sommets d'avant les plus proches restés hors de la retouche (à plus de `marge` px des
+    pixels changés, et sur le nouveau contour au point près). Les sous-chemins intacts restent
+    tels quels, dans leur ordre ; un trou absorbé par la retouche disparaît (en B r5c1, celui
+    entre le bras du papa et le corps du chat, qui s'ouvre désormais sur le jour).
+    """
+    avant, apres = sous_contours(mk0), sous_contours(mk1)
+    meme = lambda p, q: p.shape == q.shape and np.array_equal(p, q)
+    changes_avant = [k for k, (c, _) in enumerate(avant) if not any(meme(c, q) for q, _ in apres)]
+    changes_apres = [k for k, (c, _) in enumerate(apres) if not any(meme(c, p) for p, _ in avant)]
+    assert len(changes_apres) == 1, ('la retouche doit changer un seul sous-chemin', changes_apres)
+    neuf = apres[changes_apres[0]][0]
+    index = {tuple(p): k for k, p in enumerate(neuf)}
+    # L'ancien sous-chemin retouché : celui qui partage le plus de points avec le nouveau.
+    i = max(changes_avant, key=lambda k: sum(tuple(p) in index for p in avant[k][0]))
+    sommets = avant[i][1]
+    zone = ndimage.binary_dilation(np.pad(mk0 ^ mk1, 2), iterations=marge)
+    hors = [tuple(p) in index and not zone[int(round(p[0])), int(round(p[1]))] for p in sommets]
+    dedans = [k for k, h in enumerate(hors) if not h]
+    ia, ib = dedans[0] - 1, dedans[-1] + 1
+    assert ia >= 0 and ib < len(sommets) and ib - ia < len(sommets) / 2, ('tronçon retouché inattendu', ia, ib)
+    ja, jb = index[tuple(sommets[ia])], index[tuple(sommets[ib])]
+    troncon = neuf[ja:jb + 1] if ja < jb else np.vstack([neuf[ja:], neuf[:jb + 1]])
+    assert len(troncon) < len(neuf) / 2, 'sens de parcours inattendu'
+    retouche = np.vstack([sommets[:ia + 1], rdp(troncon, 0.8)[1:-1], sommets[ib:]])
+    return [retouche if k == i else s for k, (_, s) in enumerate(avant) if k == i or k not in changes_avant]
 
 
 # --- Rendu d'un tracé (pour la planche de contrôle) : Bézier aplaties, règle nonzero ---
@@ -279,29 +389,27 @@ os.makedirs(SORTIE, exist_ok=True)
 resultats = []
 for (r, c, a, b, x0, x1) in CASES:
     sc = SCENES[(r, c)]
-    mk, y_abs_haut, y_abs_bas = masque_case(a, b, x0, x1)
+    retouche = RETOUCHES.get((r, c))
+    mk, y_abs_haut, y_abs_bas = masque_case(a, b, x0, x1, retouche)
     hpx, wpx = mk.shape
     adultes = [hauteur_tete(mk, x) for (_, _, x, ref) in sc['membres'] if ref]
     px_par_cm = float(np.mean(adultes)) / 90.0
     tailles_cm = [round(hauteur_tete(mk, x) / px_par_cm) for (_, _, x, _) in sc['membres']]
-    lisse = ndimage.gaussian_filter(np.pad(mk.astype(float), 2), 0.6)
+    if retouche:
+        mk0, h0, _ = masque_case(a, b, x0, x1)
+        assert mk0.shape == mk.shape and h0 == y_abs_haut, 'la retouche ne doit pas changer le cadre de la case'
+        sommets = raccorder(mk0, mk)
+    else:
+        sommets = [s for _, s in sous_contours(mk)]
     chemins = []
     gauche, droite, haut = 1e9, -1e9, 0.0
-    for cont in measure.find_contours(lisse, 0.5):
-        if len(cont) < 8:
-            continue
-        if np.allclose(cont[0], cont[-1]):
-            cont = cont[:-1]
-        loin = int(np.argmax(np.hypot(*(cont - cont[0]).T)))
-        cont = np.vstack([rdp(cont[: loin + 1], 0.8)[:-1], rdp(np.vstack([cont[loin:], cont[:1]]), 0.8)[:-1]])
-        if len(cont) < 3:
-            continue
+    for cont in sommets:
         ycm = (cont[:, 0] - 2 - hpx) / px_par_cm
         xcm = (cont[:, 1] - 2 - wpx / 2) / px_par_cm
         gauche, droite, haut = min(gauche, xcm.min()), max(droite, xcm.max()), min(haut, ycm.min())
         chemins.append(courbe(np.stack([xcm, ycm], axis=1)))
     d = " ".join(chemins)
-    # Fidélité : le tracé rendu à l'échelle de la case contre le masque d'origine.
+    # Fidélité : le tracé rendu à l'échelle de la case contre le masque d'origine (retouché s'il l'est).
     rendu = rendre(d, px_par_cm, wpx / 2, hpx, wpx, hpx) > 0.5
     iou = float((rendu & mk).sum() / max(1, (rendu | mk).sum()))
     composition = ' + '.join(f'{t}' for (t, _, _, _) in sc['membres'])
@@ -311,6 +419,8 @@ for (r, c, a, b, x0, x1) in CASES:
         'membres': [{'type': t, 'detail': det, 'tailleCm': tc} for (t, det, _, _), tc in zip(sc['membres'], tailles_cm)],
         'certitude': sc['certitude'], 'pxParCm': round(px_par_cm, 4), 'fidelite': round(iou, 4),
     }
+    if retouche:
+        o['retouche'] = retouche.__doc__.split('\n')[0]
     with open(os.path.join(SORTIE, f'case-r{r}c{c}.json'), 'w', encoding='utf-8') as f:
         json.dump(o, f, ensure_ascii=False)
     resultats.append((o, mk, (a, b, x0, x1, y_abs_haut, y_abs_bas), px_par_cm, composition, tailles_cm))
@@ -350,7 +460,8 @@ for i, (o, mk, (a, b, x0, x1, yh, yb), ppc, compo, tcm) in enumerate(resultats):
     tr.line([(0, hpx * K), (w_tot * K, hpx * K)], fill=(220, 40, 40), width=1)  # y = 0
     pl.paste(trace, (gx + 20 + orig.width, gy + 8))
     dr.rectangle([gx + 2, gy + 2, gx + LARG_CELL - 4, gy + CH - 4], outline=(200, 200, 200))
-    dr.text((gx + 10, gy + CH - 62), f"{o['case']}  ·  {o['id']}  ·  {o['certitude']}", fill=(0, 0, 0), font=police_g)
+    dr.text((gx + 10, gy + CH - 62), f"{o['case']}  ·  {o['id']}  ·  {o['certitude']}" + ('  ·  chat retouché' if 'retouche' in o else ''),
+            fill=(0, 0, 0), font=police_g)
     dr.text((gx + 10, gy + CH - 42), ' + '.join(f"{m['type']} {m['tailleCm']}" for m in o['membres']) + ' (cm)', fill=(30, 30, 30), font=police)
     dr.text((gx + 10, gy + CH - 22), f"{o['droite'] - o['gauche']:.0f} x {-o['haut']:.0f} cm  ·  fidélité {o['fidelite']:.3f}", fill=(90, 90, 90), font=police)
 pl.save(CONTROLE, quality=88)

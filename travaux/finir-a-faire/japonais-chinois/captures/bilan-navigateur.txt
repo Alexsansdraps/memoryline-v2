@@ -1,0 +1,24 @@
+OK  /ja/pages/conditions-de-vente : « 一般販売条件 », 3834 caractères, 0 mot anglais, liens /ja/pages/confidentialite /ja/contact
+OK  /zh/pages/conditions-de-vente : « 通用销售条款 », 2674 caractères, 0 mot anglais, liens /zh/pages/confidentialite /zh/contact
+NON /ja/pages/confidentialite : « undefined », 0 caractères, 0 mot anglais, liens —
+OK  /zh/pages/confidentialite : « 隐私政策 », 1718 caractères, 0 mot anglais, liens —
+OK  /ja/pages/cookies : « Cookie について », 1115 caractères, 0 mot anglais, liens /ja/contact
+OK  /zh/pages/mentions-legales : « 法律声明 », 745 caractères, 0 mot anglais, liens /zh/contact /zh/pages/conditions-de-vente /zh/pages/confidentialite /zh/pages/cookies
+OK  /en/pages/confidentialite complète (4979 caractères, « Your rights » et « Children » présents, plus d'OpenAI)
+OK  /ja/pages/mentions-legales sur 375 px : pas de défilement horizontal
+OK  /ja/recherche, « 港 » tapé : 5 点のポスターが見つかりました (5 vignettes)
+OK  /zh/recherche, « 港 » tapé : 5 张海报符合条件 (5 vignettes)
+OK  /ja/recherche, « ビーチ » tapé : 11 点のポスターが見つかりました (11 vignettes)
+OK  /ja/recherche, « びーち » tapé : 11 点のポスターが見つかりました (11 vignettes)
+OK  /zh/recherche, « 海滩 » tapé : 12 张海报符合条件 (12 vignettes)
+OK  /ja/recherche, « エッフェル塔 » tapé : 9 点のポスターが見つかりました (9 vignettes)
+OK  /ja/recherche, clavier japonais en train de composer « ぱり » : 0 requête, adresse « (vide) »
+OK  /ja/recherche, mot choisi « ビーチ » : 11 点のポスターが見つかりました
+OK  /recherche, « p » seul : pas de recherche (Cherchez une ville, un lieu, un thème.)
+OK  /recherche, « phare » : 4 affiches trouvées
+OK  /recherche, composition en cours « cath » : la recherche part comme avant (6 affiches trouvées)
+OK  /ja/recherche?q=城 servie directement : 7 点のポスターが見つかりました
+OK  /zh/recherche?q=塔 servie directement : 20 张海报符合条件
+OK  /ja/recherche?q=の servie directement : 2文字以上入力してください。
+OK  /recherche?q=a servie directement : Tapez au moins deux lettres.
+OK  erreurs JavaScript : aucune
