@@ -678,7 +678,10 @@ function silhouettesDuCiel(
     // rendu ? ») : le groupe seul se lit mieux. Même taille texte en haut et en
     // bas (« les persos doivent pas changer de taille »).
     catalogue: SILHOUETTES_ASSISES_PAR_ID,
-    ecart: 22,
+    // Les scènes plus proches les unes des autres (28/11 vers 1 h 40, Alexandra :
+    // « les compositions doivent être plus proches les unes des autres, il faut
+    // réduire l'espace ») : 6 cm au lieu de 22, elles restent distinctes.
+    ecart: 6,
     // Centrés au milieu (27/11, Alexandra : « les personnages doivent être
     // centrés au milieu »).
     centre: 0.5,
