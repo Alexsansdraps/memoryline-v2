@@ -14,6 +14,13 @@ Faits le 27/11 au soir et EN LIGNE (`e4bb63c`) : couleur des ombres par thème (
 
 1. **Personnages unifiés des affiches classiques** (voir 0.4) : planche du 27/11 au soir refaite (`travaux/personnages-unifies/gabarits-final/planche-gabarits.jpg`, copie dans `Documents/memory-line/planche-personnages-27-11-soir.jpg`) : âgés au dos rond et aux épaules tombantes, ado aux épaules souples, cheval DEBOUT de dos (lui donner un facteur de taille d'environ 2 à la création), chat dont la queue s'enroule au sol. **Attend l'avis d'Alexandra sur la planche**, puis : garde-robe (hauts, bas, coiffures, accessoires) dessinée SUR les gabarits, NAC, puis les lots du plan (`travaux/personnages-unifies/plan.md`). Relancer la planche : `bash travaux/personnages-unifies/gabarits-final/run.sh` (conteneur `memoryline-api` local).
 
+## 0.1 ter EN COURS le 28/11 vers 1 h 40 — PRIORITÉ D'ALEXANDRA : en prod CETTE NUIT
+
+- **EN LIGNE cette nuit** : écart texte/cercle du ciel égal en haut et en bas (`37cdd93`, minuit) ; scènes d'ombres plus proches, 6 cm au lieu de 22 (`090372f`, 1 h 37).
+- **PRIO 1 — nouvelles ombres de familles** (`travaux/ombres/`, planches `Documents/memory-line/protos/ombres-familles-a.png` et `-b.png`, copiées depuis Téléchargements) : « prends ce qui n'existe pas encore […] une femme avec 2 enfants, une femme avec 2 filles, une femme avec 2 garçons, une femme avec un garçon et une fille, un homme seul avec ses 2 enfants, etc. Vraiment, être précis » ; une scène par composition nouvelle, noms exacts (fille/garçon/ado/bébé) ; onglets Famille éventuellement séparés (maman / papa / parents). Chantier en agents ; puis commit (attention : `ui.ts` est aussi modifié par le chantier du stand, ne commiter que les clés `ciel.*`) et mise en prod.
+- **PRIO 2 — affiche éphémère du stand** : voir 0.1 bis (réalisation en cours ; 19 motifs des planches 3-5 dans `travaux/affiche-stand-mulhouse/motifs-3/`, à intégrer s'ils ne l'ont pas été).
+- **STAND-BY** (Alexandra, 28/11 vers 1 h 30 : « personnage des affiches classiques, mets en stand by ») : garde-robe des personnages classiques ; peau, coiffures (62), bas (26) faits dans `travaux/personnages-unifies/garde-robe/` ; reprendre le chantier là où il s'est arrêté (hauts et accessoires en fabrication) seulement quand elle le demande.
+
 ## 0.1 bis EN COURS le 27/11 vers 23 h 35 (chantiers lancés en agents, en local)
 
 - **Affiche éphémère du stand de Mulhouse** (`travaux/affiche-stand-mulhouse/`, consigne complète dans `workflow.js`) — Alexandra, 27/11 au soir :
