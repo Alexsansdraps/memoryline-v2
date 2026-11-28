@@ -147,6 +147,8 @@ import { clientFictif } from "./jeu-essai.ts";
 // Le même découpage que la fiche client : deux versions finiraient par
 // proposer deux noms pour la même personne.
 import { decouperNom as decouper } from "../lib/compte.ts";
+// Le pixel Meta (28/11) : mesures seulement, après accord des cookies.
+import { retenirCommande, suivreAchat, suivreDebutPaiement } from "../lib/meta-pixel.ts";
 
 /**
  * Tunnel de commande (§11 — canal web), en DEUX phases :
@@ -405,6 +407,24 @@ export default function CheckoutIsland(props: {
       (s, it) => s + it.unitPriceCents * it.quantity,
       0,
     );
+  // Pixel Meta (28/11) : « début de paiement », une fois par panier et par
+  // onglet, quand la caisse s'ouvre sur un panier non vide. Rien sans accord
+  // des cookies ; ne change rien à la caisse. L'identifiant est celui du
+  // panier lu, et non getCartId(), qui en créerait un s'il manquait.
+  createEffect(() => {
+    try {
+      const panier = cart();
+      const items = panier?.items ?? [];
+      if (!panier?.cartId || !items.length) return;
+      suivreDebutPaiement(
+        panier.cartId,
+        subtotal(),
+        items.reduce((n, it) => n + it.quantity, 0),
+      );
+    } catch {
+      /* une mesure ne casse jamais la caisse */
+    }
+  });
 
   /*
    * Le récapitulatif se MODIFIE ici (17/11) : la page /panier n'existe plus
@@ -1400,6 +1420,9 @@ export default function CheckoutIsland(props: {
     setSubmitting(false);
     // Marque la commande comme finalisée pour l'affichage.
     setPaid(true);
+    // Pixel Meta (28/11) : l'achat, avec le total de la commande (une fois),
+    // APRÈS tout le reste ; ne lève jamais rien.
+    suivreAchat(orderNumber());
   }
   const [paid, setPaid] = createSignal(false);
 
@@ -1571,6 +1594,7 @@ export default function CheckoutIsland(props: {
       );
       setOrderId(order.orderId);
       setOrderNumber(order.number);
+      retenirCommande(order.number, order.totalCents);
 
       // Le reste à payer que le SERVEUR a calculé. À 0 €, rien à encaisser :
       // la commande se valide sans prestataire, après un dernier recalcul.

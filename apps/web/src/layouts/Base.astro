@@ -105,6 +105,21 @@ const {
 const pageDeCaisse = /^\/(?:[a-z]{2}\/)?(?:panier|commande)(?:\/|$)/.test(Astro.url.pathname);
 const bandeauxPartout = !bandeauxDansLaPage && !pageDeCaisse;
 
+/**
+ * Une adresse qui porte un secret (28/11, pixel Meta) : le jeton d'un mot de
+ * passe oublié ou d'un panier à reprendre, le secret d'un paiement au retour
+ * de la banque. La page suivante ne reçoit alors, comme « page d'où l'on
+ * vient », que l'origine du site — sans quoi ses mesures (Meta, Google)
+ * enverraient l'adresse entière chez leur éditeur. Le panier à reprendre
+ * mène tout droit à la caisse. « strict-origin » et non « no-referrer » : un
+ * formulaire envoyé à la même adresse garde son en-tête Origin, que le
+ * contrôle d'Astro exige.
+ */
+const adresseASecret =
+  /[?&](?:jeton|token|payment_intent_client_secret|setup_intent_client_secret)=/i.test(
+    Astro.url.search,
+  );
+
 const tr = t(langue);
 
 /**
@@ -449,6 +464,7 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {adresseASecret && <meta name="referrer" content="strict-origin" />}
     {/* La police du site (« ML Inter », global.css), demandée avant tout le
         reste : le texte l'attend au lieu de s'afficher dans celle du
         système puis de changer (18/11). Le seul fichier dont chaque page a
@@ -495,6 +511,84 @@ const lienBackOffice = import.meta.env.PUBLIC_BO_URL ?? "/bo";
           })();
         </script>
       </>
+    )}
+    {/* Le pixel Meta (28/11, demande de Margaux), en production seulement et
+        SEULEMENT après « Accepter » dans le bandeau cookies : sans accord,
+        rien n'est chargé et rien ne part chez Meta. Le code de base de Meta,
+        découpé en deux : `fbq` (une simple file d'attente, sans réseau) est
+        posé dès l'accord, pour que les évènements de la page (achat au retour
+        d'un paiement, lib/meta-pixel.ts) ne se perdent pas ; le script de
+        Meta, lui, se charge après la page, comme Tag Manager. Ni en local, ni
+        sur une copie du site (adresse ≠ memoryline.fr), ni à la tablette d'un
+        stand. Pas de <noscript> : sans JavaScript, on ne peut pas lire
+        l'accord, donc rien ne doit partir. Un « Refuser » après coup coupe le
+        pixel (consent revoke).
+        Meta reçoit, avec chaque évènement, l'adresse de la page et celle d'où
+        l'on vient. Une adresse du site qui porte un secret — le jeton d'un mot
+        de passe oublié ou d'un panier à reprendre (liens des courriers), le
+        secret d'un paiement au retour de la banque — ne doit pas lui
+        parvenir : le script de Meta attend que la page l'ait effacée (la
+        caisse le fait dès le paiement vérifié), et sinon ne vient pas (voir
+        aussi `adresseASecret`, plus haut). Ni clics de boutons ni contenu de
+        page envoyés d'office (autoConfig) : un bouton du carnet d'adresses de
+        la caisse porte l'adresse de la cliente. */}
+    {import.meta.env.PROD && (
+      <script is:inline>
+        (function () {
+          if (location.hostname !== "memoryline.fr") return;
+          if (document.documentElement.getAttribute("data-stand") === "1") return;
+          var ID = "1156538100082754";
+          var SECRET = /[?&](jeton|token|payment_intent_client_secret|setup_intent_client_secret)=/i;
+          function venantDUnSecret() {
+            var r = document.referrer || "";
+            return r.indexOf(location.origin + "/") === 0 && SECRET.test(r);
+          }
+          var pret = false;
+          var charge = false;
+          var essais = 0;
+          function preparer() {
+            if (pret || window.fbq) return;
+            pret = true;
+            var n = (window.fbq = function () {
+              n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+            });
+            if (!window._fbq) window._fbq = n;
+            n.push = n;
+            n.loaded = true;
+            n.version = "2.0";
+            n.queue = [];
+            window.fbq("set", "autoConfig", false, ID);
+            window.fbq("init", ID);
+            window.fbq("track", "PageView");
+          }
+          function charger() {
+            if (charge || venantDUnSecret()) return;
+            if (SECRET.test(location.search)) {
+              if (++essais <= 120) setTimeout(charger, 500);
+              return;
+            }
+            charge = true;
+            var s = document.createElement("script");
+            s.async = true;
+            s.src = "https://connect.facebook.net/en_US/fbevents.js";
+            document.head.appendChild(s);
+          }
+          function accepter() {
+            preparer();
+            if (document.readyState === "complete") setTimeout(charger, 0);
+            else window.addEventListener("load", function () { setTimeout(charger, 0); });
+          }
+          var choix = null;
+          try { choix = localStorage.getItem("ml_cookie_consent"); } catch (e) {}
+          if (choix === "accept") accepter();
+          document.addEventListener("ml:consent", function (e) {
+            if (e.detail && e.detail.consent === "accept") {
+              if (pret && window.fbq) window.fbq("consent", "grant");
+              accepter();
+            } else if (pret && window.fbq) window.fbq("consent", "revoke");
+          });
+        })();
+      </script>
     )}
     <meta name="generator" content={Astro.generator} />
     <link rel="sitemap" href="/sitemap.xml" />

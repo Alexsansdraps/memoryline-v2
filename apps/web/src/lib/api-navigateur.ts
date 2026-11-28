@@ -14,7 +14,9 @@
  *
  * Rien d'autre ne doit entrer ici, et surtout aucun import de
  * @memoryline/types ni de i18n : ce module ne sert qu'à rester léger.
+ * Seule exception : meta-pixel.ts (28/11), quelques lignes sans aucun import.
  */
+import { suivreAjoutPanier } from "./meta-pixel.ts";
 
 /**
  * URL de l'API joignable depuis le NAVIGATEUR (pour les <img>, etc.).
@@ -175,11 +177,16 @@ export async function ajouterAuPanier<T>(
     }
     return res.json() as Promise<T>;
   };
+  let ajoutee: T;
   try {
-    return await envoyer(cartId);
+    ajoutee = await envoyer(cartId);
   } catch (e) {
     if (!String(e).includes("panier_clos")) throw e;
     oublierCartId();
-    return envoyer(getCartId());
+    ajoutee = await envoyer(getCartId());
   }
+  // Le pixel Meta (28/11) : « ajout au panier », seulement si la cliente a
+  // accepté les cookies ; ne lève jamais rien et n'attend rien.
+  suivreAjoutPanier(ligne, ajoutee);
+  return ajoutee;
 }
