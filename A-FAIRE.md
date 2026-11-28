@@ -24,6 +24,13 @@ Faits le 27/11 au soir et EN LIGNE (`e4bb63c`) : couleur des ombres par thème (
 - **Aussi en ligne cette nuit** : écart texte/cercle du ciel égal en haut et en bas ; scènes d'ombres à 6 cm ; plus d'onglet « Animaux » ; « Voir sur un mur » : plus de « Mon mur », plante de l'entrée décalée, titre de la fenêtre « Voir sur un mur », titres longs réduits, personnages à leur place.
 - **STAND-BY jusqu'en début de semaine prochaine** (Alexandra, 28/11 vers 1 h 55 : « on mettra pas en prod les nouveaux personnages des affiches classiques pour l'instant, ça sera début de semaine pro ») : garde-robe des personnages classiques (`travaux/personnages-unifies/garde-robe/`, non commité : peau, coiffures 62, bas 26 faits ; hauts et accessoires à reprendre).
 
+## 0.1 quater Pixel Meta — EN LIGNE le 28/11 à 13 h 15 (`dd2c0ef`, demande de Margaux, « et met prod » d'Alexandra)
+
+- `apps/web/src/layouts/Base.astro` (code de base, prod + memoryline.fr seulement, jamais à la tablette du stand, seulement après « Accepter » du bandeau cookies, pas de <noscript>, autoConfig coupé, script de Meta retenu tant que l'adresse porte un jeton ou un secret de paiement) ; `apps/web/src/lib/meta-pixel.ts` (AddToCart via `ajouterAuPanier`, InitiateCheckout à l'ouverture de la caisse, Purchase sur « Merci » avec `totalCents`, une fois par commande, retour de banque compris). Essais : `travaux/pixel-meta/` (29 tests, 59 vérifications au navigateur sans rien envoyer à Meta, et `verif-prod-sans-accord.mjs` : en prod, rien sans accord).
+- **À dire à Margaux** : dans Events Manager, DÉSACTIVER la « Correspondance avancée automatique » (sinon Meta hache et envoie e-mail, nom et téléphone saisis à la caisse) ; ne PAS ajouter aussi le pixel dans GTM (double comptage).
+- Limites : un paiement confirmé plus tard (webhook) ou un onglet fermé avant « Merci » ne donne pas de Purchase (il faudrait l'API Conversions, eventID `achat-<numéro>` déjà prêt) ; une commande réglée par carte cadeau compte son total entier.
+- Déjà là avant, à décider : aucun lien « Gérer les cookies » pour revenir sur son choix (exigence CNIL, vaut aussi pour Google) ; GA4 reçoit les adresses à jeton dans page_location (à masquer dans les réglages de GA4).
+
 ## 0.2 Règles
 
 - **Mise en ligne** : hors ouverture du marché (avant 11 h, après 20 h), Claude met en ligne directement en mode « hotfix ». Pendant l'ouverture : seulement sur un « met en prod » d'Alexandra pour CE changement, après avoir vérifié qu'il n'y a aucune activité (`docker compose -f docker-compose.prod.yml logs --since 15m api | grep -ciE 'cart|checkout|commande'`). Recette : § 5.
