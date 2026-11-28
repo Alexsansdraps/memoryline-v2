@@ -426,7 +426,9 @@ export function ApercuAuMur(props: {
         >
           <div style={{ display: "flex", "align-items": "center", gap: "12px", "margin-bottom": "12px" }}>
             <h2 id="ml-mur-titre" style={{ "font-size": "18px", "font-weight": "700", margin: "0", flex: "1" }}>
-              {m().murTitre}
+              {/* Le titre reprend le bouton qui ouvre la fenêtre (28/11, Alexandra :
+                  « change "voir sur mon mur" en "voir sur un mur" »). */}
+              {m().murVoir}
             </h2>
             <button
               ref={fermer}
