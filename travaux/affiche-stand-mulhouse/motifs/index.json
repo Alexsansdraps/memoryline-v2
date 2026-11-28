@@ -1,0 +1,688 @@
+[
+  {
+    "id": "hotel-de-ville",
+    "fichier": "motif-hotel-de-ville.svg",
+    "categorie": "mulhouse",
+    "nom": "Hôtel de ville",
+    "noms": {
+      "fr": "Hôtel de ville",
+      "en": "Town Hall",
+      "de": "Rathaus",
+      "it": "Municipio",
+      "es": "Ayuntamiento",
+      "ja": "市庁舎",
+      "zh": "市政厅"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r1c1"
+  },
+  {
+    "id": "temple-saint-etienne",
+    "fichier": "motif-temple-saint-etienne.svg",
+    "categorie": "mulhouse",
+    "nom": "Temple Saint-Étienne",
+    "noms": {
+      "fr": "Temple Saint-Étienne",
+      "en": "Temple Saint-Étienne",
+      "de": "Temple Saint-Étienne",
+      "it": "Temple Saint-Étienne",
+      "es": "Temple Saint-Étienne",
+      "ja": "Temple Saint-Étienne",
+      "zh": "Temple Saint-Étienne"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r1c2"
+  },
+  {
+    "id": "tour-de-l-europe",
+    "fichier": "motif-tour-de-l-europe.svg",
+    "categorie": "mulhouse",
+    "nom": "Tour de l'Europe",
+    "noms": {
+      "fr": "Tour de l'Europe",
+      "en": "Tour de l'Europe",
+      "de": "Tour de l'Europe",
+      "it": "Tour de l'Europe",
+      "es": "Tour de l'Europe",
+      "ja": "Tour de l'Europe",
+      "zh": "Tour de l'Europe"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r1c2"
+  },
+  {
+    "id": "tour-bollwerk",
+    "fichier": "motif-tour-bollwerk.svg",
+    "categorie": "mulhouse",
+    "nom": "Tour du Bollwerk",
+    "noms": {
+      "fr": "Tour du Bollwerk",
+      "en": "Tour du Bollwerk",
+      "de": "Tour du Bollwerk",
+      "it": "Tour du Bollwerk",
+      "es": "Tour du Bollwerk",
+      "ja": "Tour du Bollwerk",
+      "zh": "Tour du Bollwerk"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r1c1"
+  },
+  {
+    "id": "tour-ronde",
+    "fichier": "motif-tour-ronde.svg",
+    "categorie": "mulhouse",
+    "nom": "Tour ronde",
+    "noms": {
+      "fr": "Tour ronde",
+      "en": "Round Tower",
+      "de": "Runder Turm",
+      "it": "Torre rotonda",
+      "es": "Torre redonda",
+      "ja": "円塔",
+      "zh": "圆塔"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r2c1"
+  },
+  {
+    "id": "klapperstein",
+    "fichier": "motif-klapperstein.svg",
+    "categorie": "mulhouse",
+    "nom": "Klapperstein",
+    "noms": {
+      "fr": "Klapperstein",
+      "en": "Klapperstein",
+      "de": "Klapperstein",
+      "it": "Klapperstein",
+      "es": "Klapperstein",
+      "ja": "Klapperstein",
+      "zh": "Klapperstein"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r3c1"
+  },
+  {
+    "id": "chapelle",
+    "fichier": "motif-chapelle.svg",
+    "categorie": "mulhouse",
+    "nom": "Chapelle",
+    "noms": {
+      "fr": "Chapelle",
+      "en": "Chapel",
+      "de": "Kapelle",
+      "it": "Cappella",
+      "es": "Capilla",
+      "ja": "礼拝堂",
+      "zh": "小教堂"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r2c4"
+  },
+  {
+    "id": "maisons-ouvrieres",
+    "fichier": "motif-maisons-ouvrieres.svg",
+    "categorie": "mulhouse",
+    "nom": "Cité ouvrière",
+    "noms": {
+      "fr": "Cité ouvrière",
+      "en": "Workers' Houses",
+      "de": "Arbeitersiedlung",
+      "it": "Quartiere operaio",
+      "es": "Barrio obrero",
+      "ja": "労働者住宅",
+      "zh": "工人住宅"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#E9C46A",
+      "st2": "#E8A598",
+      "st3": "#9CC3D5",
+      "st4": "#A9C5A0",
+      "st5": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "grande maison de gauche (et son auvent), jaune ocre",
+      "st2": "deuxième maison, rose saumon",
+      "st3": "troisième maison, bleu ciel",
+      "st4": "quatrième maison (la plus petite), vert sauge",
+      "st5": "palissade, fenêtres et liserés des toits (crème)"
+    },
+    "source": "planche 2 r3c2"
+  },
+  {
+    "id": "usine-textile",
+    "fichier": "motif-usine-textile.svg",
+    "categorie": "textile-musees",
+    "nom": "Usine textile",
+    "noms": {
+      "fr": "Usine textile",
+      "en": "Textile Mill",
+      "de": "Textilfabrik",
+      "it": "Fabbrica tessile",
+      "es": "Fábrica textil",
+      "ja": "織物工場",
+      "zh": "纺织厂"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r2c1"
+  },
+  {
+    "id": "metier-a-tisser",
+    "fichier": "motif-metier-a-tisser.svg",
+    "categorie": "textile-musees",
+    "nom": "Métier à tisser",
+    "noms": {
+      "fr": "Métier à tisser",
+      "en": "Loom",
+      "de": "Webstuhl",
+      "it": "Telaio",
+      "es": "Telar",
+      "ja": "織機",
+      "zh": "织布机"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r2c3"
+  },
+  {
+    "id": "tampon-textile",
+    "fichier": "motif-tampon-textile.svg",
+    "categorie": "textile-musees",
+    "nom": "Impression sur étoffes",
+    "noms": {
+      "fr": "Impression sur étoffes",
+      "en": "Fabric Printing",
+      "de": "Stoffdruck",
+      "it": "Stampa su tessuto",
+      "es": "Estampado textil",
+      "ja": "布のプリント",
+      "zh": "织物印花"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r2c2"
+  },
+  {
+    "id": "bobine-et-tissu",
+    "fichier": "motif-bobine-et-tissu.svg",
+    "categorie": "textile-musees",
+    "nom": "Bobine et tissu",
+    "noms": {
+      "fr": "Bobine et tissu",
+      "en": "Spool and Fabric",
+      "de": "Garnrolle und Stoff",
+      "it": "Rocchetto e tessuto",
+      "es": "Carrete y tela",
+      "ja": "糸巻きと布",
+      "zh": "线轴与布料"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r2c3"
+  },
+  {
+    "id": "tissu-fleuri",
+    "fichier": "motif-tissu-fleuri.svg",
+    "categorie": "textile-musees",
+    "nom": "Tissu fleuri",
+    "noms": {
+      "fr": "Tissu fleuri",
+      "en": "Floral Fabric",
+      "de": "Blumenstoff",
+      "it": "Tessuto a fiori",
+      "es": "Tela floreada",
+      "ja": "花柄の布",
+      "zh": "花布"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r2c2"
+  },
+  {
+    "id": "locomotive",
+    "fichier": "motif-locomotive.svg",
+    "categorie": "textile-musees",
+    "nom": "Locomotive",
+    "noms": {
+      "fr": "Locomotive",
+      "en": "Locomotive",
+      "de": "Lokomotive",
+      "it": "Locomotiva",
+      "es": "Locomotora",
+      "ja": "蒸気機関車",
+      "zh": "蒸汽机车"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r1c3"
+  },
+  {
+    "id": "voiture-ancienne",
+    "fichier": "motif-voiture-ancienne.svg",
+    "categorie": "textile-musees",
+    "nom": "Voiture ancienne",
+    "noms": {
+      "fr": "Voiture ancienne",
+      "en": "Vintage Car",
+      "de": "Oldtimer",
+      "it": "Auto d'epoca",
+      "es": "Coche antiguo",
+      "ja": "クラシックカー",
+      "zh": "老爷车"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r1c4"
+  },
+  {
+    "id": "maisons-alsaciennes",
+    "fichier": "motif-maisons-alsaciennes.svg",
+    "categorie": "maisons-alsace",
+    "nom": "Maisons alsaciennes",
+    "noms": {
+      "fr": "Maisons alsaciennes",
+      "en": "Alsatian Houses",
+      "de": "Elsässer Fachwerkhäuser",
+      "it": "Case alsaziane",
+      "es": "Casas alsacianas",
+      "ja": "アルザスの家並み",
+      "zh": "阿尔萨斯民居"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#E8A598",
+      "st2": "#E9C46A",
+      "st3": "#9CC3D5",
+      "st4": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "façade de la maison de gauche (étroite), rose saumon",
+      "st2": "façade de la grande maison du milieu, jaune ocre",
+      "st3": "façade de la maison de droite, bleu ciel",
+      "st4": "parasols, chaises, porte et liserés des toits (crème)"
+    },
+    "source": "planche 1 r1c3"
+  },
+  {
+    "id": "chalet-de-noel",
+    "fichier": "motif-chalet-de-noel.svg",
+    "categorie": "noel",
+    "nom": "Chalet de Noël",
+    "noms": {
+      "fr": "Chalet de Noël",
+      "en": "Christmas Market Stall",
+      "de": "Weihnachtsmarktbude",
+      "it": "Casetta di Natale",
+      "es": "Caseta navideña",
+      "ja": "クリスマスマーケットの屋台",
+      "zh": "圣诞集市小屋"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r1c4"
+  },
+  {
+    "id": "sapin",
+    "fichier": "motif-sapin.svg",
+    "categorie": "noel",
+    "nom": "Sapin de Noël",
+    "noms": {
+      "fr": "Sapin de Noël",
+      "en": "Christmas Tree",
+      "de": "Weihnachtsbaum",
+      "it": "Albero di Natale",
+      "es": "Árbol de Navidad",
+      "ja": "クリスマスツリー",
+      "zh": "圣诞树"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r3c1"
+  },
+  {
+    "id": "etoile",
+    "fichier": "motif-etoile.svg",
+    "categorie": "noel",
+    "nom": "Étoile",
+    "noms": {
+      "fr": "Étoile",
+      "en": "Star",
+      "de": "Stern",
+      "it": "Stella",
+      "es": "Estrella",
+      "ja": "星",
+      "zh": "星星"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r3c3"
+  },
+  {
+    "id": "lanterne",
+    "fichier": "motif-lanterne.svg",
+    "categorie": "noel",
+    "nom": "Lanterne",
+    "noms": {
+      "fr": "Lanterne",
+      "en": "Lantern",
+      "de": "Laterne",
+      "it": "Lanterna",
+      "es": "Farol",
+      "ja": "ランタン",
+      "zh": "提灯"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r3c4"
+  },
+  {
+    "id": "couronne-avent",
+    "fichier": "motif-couronne-avent.svg",
+    "categorie": "noel",
+    "nom": "Couronne de l'Avent",
+    "noms": {
+      "fr": "Couronne de l'Avent",
+      "en": "Advent Wreath",
+      "de": "Adventskranz",
+      "it": "Corona dell'Avvento",
+      "es": "Corona de Adviento",
+      "ja": "アドベントリース",
+      "zh": "将临期花环"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r4c4"
+  },
+  {
+    "id": "poinsettia",
+    "fichier": "motif-poinsettia.svg",
+    "categorie": "noel",
+    "nom": "Poinsettia",
+    "noms": {
+      "fr": "Poinsettia",
+      "en": "Poinsettia",
+      "de": "Weihnachtsstern",
+      "it": "Stella di Natale",
+      "es": "Flor de Pascua",
+      "ja": "ポインセチア",
+      "zh": "一品红"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r2c4"
+  },
+  {
+    "id": "bonhomme-pain-epice",
+    "fichier": "motif-bonhomme-pain-epice.svg",
+    "categorie": "gourmandises",
+    "nom": "Bonhomme en pain d'épices",
+    "noms": {
+      "fr": "Bonhomme en pain d'épices",
+      "en": "Gingerbread Man",
+      "de": "Lebkuchenmann",
+      "it": "Omino di pan di zenzero",
+      "es": "Hombre de jengibre",
+      "ja": "ジンジャーブレッドマン",
+      "zh": "姜饼人"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r4c1"
+  },
+  {
+    "id": "coeur-pain-epice",
+    "fichier": "motif-coeur-pain-epice.svg",
+    "categorie": "gourmandises",
+    "nom": "Cœur en pain d'épices",
+    "noms": {
+      "fr": "Cœur en pain d'épices",
+      "en": "Gingerbread Heart",
+      "de": "Lebkuchenherz",
+      "it": "Cuore di pan di zenzero",
+      "es": "Corazón de jengibre",
+      "ja": "ハートのジンジャーブレッド",
+      "zh": "姜饼心"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r3c2"
+  },
+  {
+    "id": "kougelhopf",
+    "fichier": "motif-kougelhopf.svg",
+    "categorie": "gourmandises",
+    "nom": "Kougelhopf",
+    "noms": {
+      "fr": "Kougelhopf",
+      "en": "Kougelhopf",
+      "de": "Gugelhupf",
+      "it": "Kougelhopf",
+      "es": "Kougelhopf",
+      "ja": "クグロフ",
+      "zh": "Kougelhopf"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r4c2"
+  },
+  {
+    "id": "bretzel",
+    "fichier": "motif-bretzel.svg",
+    "categorie": "gourmandises",
+    "nom": "Bretzel",
+    "noms": {
+      "fr": "Bretzel",
+      "en": "Pretzel",
+      "de": "Brezel",
+      "it": "Bretzel",
+      "es": "Pretzel",
+      "ja": "プレッツェル",
+      "zh": "椒盐卷饼"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 1 r4c3"
+  },
+  {
+    "id": "cigogne",
+    "fichier": "motif-cigogne.svg",
+    "categorie": "alsace",
+    "nom": "Cigogne",
+    "noms": {
+      "fr": "Cigogne",
+      "en": "Stork",
+      "de": "Storch",
+      "it": "Cicogna",
+      "es": "Cigüeña",
+      "ja": "コウノトリ",
+      "zh": "白鹳"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 2 r3c4"
+  },
+  {
+    "id": "vignoble",
+    "fichier": "motif-vignoble.svg",
+    "categorie": "alsace",
+    "nom": "Vignoble",
+    "noms": {
+      "fr": "Vignoble",
+      "en": "Vineyard",
+      "de": "Weinberg",
+      "it": "Vigneto",
+      "es": "Viñedo",
+      "ja": "ブドウ畑",
+      "zh": "葡萄园"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "collines et champs (crème)"
+    },
+    "source": "planche 2 r3c3"
+  }
+]

@@ -594,6 +594,10 @@ if (Astro.request.method === "POST") {
         // back-office, la liste n'est plus figée ici.
         defaultView: String(form.get("defaultView") || "") || null,
         foregroundUrl: (form.get("foregroundUrl") as string)?.trim() || null,
+        // L'affiche éphémère d'un stand (28/11) : son jeu de motifs et son
+        // stand. Vides : une affiche classique, en vente comme les autres.
+        vueMotifs: String(form.get("vueMotifs") || "") || null,
+        standId: form.get("standId") ? Number(form.get("standId")) : null,
       });
       flash = "Configuration enregistrée.";
     }
@@ -672,6 +676,43 @@ try {
 } catch (e) {
   error = String(e);
 }
+
+/*
+ * L'affiche éphémère d'un stand (28/11, Alexandra : « le produit doit
+ * disparaître quand le stand sera clôturé ») : à quel stand elle est
+ * rattachée, et s'il est encore en service. La règle vit dans l'API
+ * (affiches-de-stand.ts) ; la fiche ne fait que dire son verdict.
+ */
+const ETATS_DU_STAND: Record<string, string> = {
+  "en-service": "en service",
+  desactive: "désactivé",
+  archive: "archivé",
+  termine: "terminé",
+};
+/** « 2026-12-27 » → « 27/12/2026 » ; une date illisible reste telle quelle. */
+function jourDuStand(jour: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(jour ?? "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : (jour ?? "");
+}
+const standRattache =
+  config?.standId != null ? ((config.stands ?? []).find((s) => s.id === config!.standId) ?? null) : null;
+/** Le bandeau sous le titre : rien pour une affiche ordinaire. */
+const bandeauStand: { texte: string; horsLigne: boolean } | null =
+  config?.standId == null
+    ? null
+    : !standRattache
+      ? { texte: "Rattachée à un stand qui n'existe plus : l'affiche est hors ligne.", horsLigne: true }
+      : standRattache.etat === "en-service"
+        ? {
+            texte:
+              `Rattachée au stand « ${standRattache.nom} » : en ligne tant qu'il est en service` +
+              (standRattache.dateFin ? ` (dernier jour : ${jourDuStand(standRattache.dateFin)}).` : "."),
+            horsLigne: false,
+          }
+        : {
+            texte: `Rattachée au stand « ${standRattache.nom} ». Hors ligne : le stand est ${ETATS_DU_STAND[standRattache.etat] ?? standRattache.etat}.`,
+            horsLigne: true,
+          };
 
 // La fiche marchande : nom, description, images, formats, classement. Elle est
 // relue APRÈS le POST pour que l'écran montre ce qui vient d'être enregistré.
@@ -995,6 +1036,17 @@ try {
       <p class="mt-1 text-sm text-bo-muted">
         /affiches/{produit?.slug ?? config?.slug}
       </p>
+      {bandeauStand && (
+        <p
+          class={`mt-2 rounded border px-3 py-1.5 text-sm ${
+            bandeauStand.horsLigne
+              ? "border-amber-300 bg-amber-50 text-amber-900"
+              : "border-green-200 bg-green-50 text-green-900"
+          }`}
+        >
+          {bandeauStand.texte}
+        </p>
+      )}
     </div>
     {produit && (
       <a
@@ -1991,6 +2043,71 @@ try {
               <a class="underline" href={url("/types-affiche")}>
                 {" "}Types d'affiche</a
               >.
+            </p>
+          </section>
+
+          {/* L'affiche éphémère d'un stand (28/11) : un motif au choix du
+              client, et le stand dont elle suit la vie. */}
+          <section class="bg-bo-surface border border-bo-border rounded-lg p-5">
+            <h3 class="font-semibold mb-3">Affiche éphémère d'un stand</h3>
+            <label class="block max-w-md">
+              <span class="text-bo-muted text-sm">Motifs au choix du client</span>
+              <select
+                name="vueMotifs"
+                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+              >
+                <option value="" selected={!config.vueMotifs}>Aucun (affiche classique)</option>
+                {/* Seuls les jeux de motifs (type d'affiche « Motifs… », adresse
+                    « motifs-… ») : choisir « De dos » ici ferait de tous les
+                    personnages de dos des motifs, et le site comme le contrôle
+                    du panier ne reconnaissent un motif qu'à ce préfixe. */}
+                {vues
+                  .filter((v) => v.slug.startsWith("motifs-"))
+                  .map((v) => (
+                    <option value={v.slug} selected={config!.vueMotifs === v.slug}>
+                      {v.name}
+                    </option>
+                  ))}
+                {/* Le réglage en place reste choisi même si la liste des
+                    types n'a pas pu être lue : enregistrer ne doit pas l'effacer. */}
+                {config.vueMotifs &&
+                  !vues.some((v) => v.slug === config!.vueMotifs && v.slug.startsWith("motifs-")) && (
+                  <option value={config.vueMotifs} selected>{config.vueMotifs}</option>
+                )}
+              </select>
+            </label>
+            <p class="mt-2 text-xs text-bo-muted">
+              Le client choisit un motif parmi les personnages de ce type
+              d'affiche (Personnages), rangés par catégorie. Un jeu de motifs
+              est un type d'affiche dont le nom commence par « Motifs ». Les
+              couleurs qu'il peut lui donner se règlent dans
+              <a class="underline" href={url("/motifs-couleurs")}>Couleurs des motifs</a>.
+            </p>
+
+            <label class="block max-w-md mt-4">
+              <span class="text-bo-muted text-sm">Stand</span>
+              <select
+                name="standId"
+                class="mt-1 w-full border border-bo-border rounded px-3 py-2 text-sm"
+              >
+                <option value="" selected={config.standId == null}>
+                  Aucun : en vente comme les autres affiches
+                </option>
+                {(config.stands ?? []).map((s) => (
+                  <option value={String(s.id)} selected={config!.standId === s.id}>
+                    {`${s.nom} — ${ETATS_DU_STAND[s.etat] ?? s.etat}${
+                      s.dateFin ? `, dernier jour le ${jourDuStand(s.dateFin)}` : ""
+                    }`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p class="mt-2 text-xs text-bo-muted">
+              Rattachée à un stand, l'affiche n'est proposée (site, tablette,
+              rayons, recherche, plan du site) que tant que ce stand est
+              activé, non archivé et que son dernier jour n'est pas passé. Elle
+              disparaît ensuite d'elle-même ; un stand fermé pour la nuit ne
+              change rien ; les paniers qui la contiennent ne bougent pas.
             </p>
           </section>
 

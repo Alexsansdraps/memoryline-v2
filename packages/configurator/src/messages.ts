@@ -12,6 +12,12 @@ export interface MessagesConfigurateur {
   etapeFond: string;
   etapePersonnages: string;
   etapeFormat: string;
+  /**
+   * Les deux premières étapes d'une affiche à motifs (28/11, Alexandra :
+   * « Faut faire un 2. texte ») : « Motif et fond », puis « Texte ».
+   */
+  etapeMotifFond: string;
+  etapeTexte: string;
   /** Libellé de chaque ligne de texte, dans l'ordre (« Ligne 1 »…). */
   champsLignes: string[];
   /** 27/11 : libellé du choix de taille d'une ligne, et ses trois positions. */
@@ -148,6 +154,16 @@ export interface MessagesConfigurateur {
   murTaille: string;
   /** Sous la pièce ; `{affiche}` = « A3 · 29,7 × 42 cm », `{meuble}` = sa largeur. */
   murEchelle: string;
+  /**
+   * L'affiche à motifs (28/11, stand de Mulhouse) : le choix du motif et son
+   * aide, sa couleur, et la place du texte (en haut ou en bas).
+   */
+  motif: string;
+  motifAide: string;
+  couleurMotif: string;
+  textePlace: string;
+  texteHaut: string;
+  texteBas: string;
 }
 
 export const MESSAGES_DEFAUT: MessagesConfigurateur = {
@@ -155,6 +171,8 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   etapeFond: "Fond & texte",
   etapePersonnages: "Personnages",
   etapeFormat: "Format",
+  etapeMotifFond: "Motif et fond",
+  etapeTexte: "Texte",
   champsLignes: ["Ligne 1", "Ligne 2", "Ligne 3"],
   tailleLigne: "Taille du texte",
   taillesLigne: ["Petit", "Moyen", "Grand"],
@@ -233,6 +251,12 @@ export const MESSAGES_DEFAUT: MessagesConfigurateur = {
   murPhotoPrivee: "Votre photo reste sur votre appareil.",
   murTaille: "Taille",
   murEchelle: "Affiche {affiche}, meuble de {meuble} cm de large.",
+  motif: "Motif",
+  motifAide: "Son nom s'écrit sur la ligne 1 ; vous pouvez le changer.",
+  couleurMotif: "Couleur du motif",
+  textePlace: "Place du texte",
+  texteHaut: "En haut",
+  texteBas: "En bas",
 };
 
 /** Complète un dictionnaire partiel par les valeurs françaises. */

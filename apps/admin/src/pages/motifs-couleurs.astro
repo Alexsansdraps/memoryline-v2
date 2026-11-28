@@ -1,0 +1,394 @@
+---
+/**
+ * Personnages › Couleurs des motifs (28/11, Alexandra, devant « Couleur du
+ * motif » sur l'affiche du stand de Mulhouse : « faut qu'on puisse mettre des
+ * couleurs pour les images dans le BO, dans un premier temps mets en 10 par
+ * défaut qui pourraient aller à tous, modifiable dans le BO »).
+ *
+ * La palette proposée à la cliente pour peindre le motif d'une affiche à
+ * motifs (fiche › « Motifs au choix du client ») : un nom, une couleur, et
+ * l'ordre où elle les voit. La silhouette du motif prend la couleur ; ses
+ * détails crème restent lisibles (ils passent au sombre sur une couleur
+ * claire) ; les façades colorées des maisons gardent leurs couleurs.
+ *
+ * Rangée dans le réglage `motifs.couleurs`, comme les thèmes du ciel étoilé
+ * (ciel.astro). Tant que la boutique n'y a pas touché, ce sont les dix
+ * couleurs de base de l'API (apps/api/src/motifs-couleurs.ts, recopiées
+ * ci-dessous). Une couleur désactivée n'est plus proposée ; les affiches déjà
+ * au panier ou commandées gardent la leur (elle est écrite dans l'affiche).
+ */
+import Admin from "../layouts/Admin.astro";
+import { adminApi } from "../lib/api.ts";
+import { apiUrl, url } from "../lib/url.ts";
+
+const api = adminApi(Astro.request);
+const REGLAGE = "motifs.couleurs";
+const LANGUES = ["en", "de", "it", "es", "ja", "zh"] as const;
+type Langue = (typeof LANGUES)[number];
+const NOMS_LANGUES: Record<Langue, string> = {
+  en: "Anglais",
+  de: "Allemand",
+  it: "Italien",
+  es: "Espagnol",
+  ja: "Japonais",
+  zh: "Chinois",
+};
+
+interface Couleur {
+  id: string;
+  nom: string;
+  hex: string;
+  actif: boolean;
+  noms?: Partial<Record<Langue, string>>;
+}
+
+/** Les dix couleurs de base : les mêmes que l'API (motifs-couleurs.ts). */
+const DE_BASE: Couleur[] = [
+  { id: "anthracite", nom: "Anthracite", hex: "#2B2B2B", actif: true, noms: { en: "Charcoal", de: "Anthrazit", it: "Antracite", es: "Antracita", ja: "チャコール", zh: "炭灰色" } },
+  { id: "creme", nom: "Crème", hex: "#F4ECDD", actif: true, noms: { en: "Cream", de: "Creme", it: "Crema", es: "Crema", ja: "クリーム", zh: "奶油色" } },
+  { id: "rouge-noel", nom: "Rouge Noël", hex: "#A4161A", actif: true, noms: { en: "Christmas red", de: "Weihnachtsrot", it: "Rosso Natale", es: "Rojo Navidad", ja: "クリスマスレッド", zh: "圣诞红" } },
+  { id: "vert-sapin", nom: "Vert sapin", hex: "#1F4D3A", actif: true, noms: { en: "Fir green", de: "Tannengrün", it: "Verde abete", es: "Verde abeto", ja: "モミの緑", zh: "冷杉绿" } },
+  { id: "bleu-nuit", nom: "Bleu nuit", hex: "#1B2A4A", actif: true, noms: { en: "Midnight blue", de: "Nachtblau", it: "Blu notte", es: "Azul noche", ja: "ミッドナイトブルー", zh: "午夜蓝" } },
+  { id: "or", nom: "Or", hex: "#D4A73B", actif: true, noms: { en: "Gold", de: "Gold", it: "Oro", es: "Oro", ja: "ゴールド", zh: "金色" } },
+  { id: "bordeaux", nom: "Bordeaux", hex: "#6B1F2A", actif: true, noms: { en: "Burgundy", de: "Bordeauxrot", it: "Bordeaux", es: "Burdeos", ja: "ボルドー", zh: "酒红色" } },
+  { id: "ocre", nom: "Ocre", hex: "#C27A2C", actif: true, noms: { en: "Ochre", de: "Ocker", it: "Ocra", es: "Ocre", ja: "オーカー", zh: "赭石色" } },
+  { id: "bleu-ciel", nom: "Bleu ciel", hex: "#9CC3D5", actif: true, noms: { en: "Sky blue", de: "Himmelblau", it: "Azzurro", es: "Azul cielo", ja: "スカイブルー", zh: "天蓝色" } },
+  { id: "rose-poudre", nom: "Rose poudré", hex: "#E3A6A0", actif: true, noms: { en: "Powder pink", de: "Puderrosa", it: "Rosa cipria", es: "Rosa empolvado", ja: "パウダーピンク", zh: "粉红色" } },
+];
+
+const HEX = /^#[0-9a-f]{6}$/i;
+const couleur = (v: unknown, repli: string) =>
+  HEX.test(String(v ?? "").trim()) ? String(v).trim().toUpperCase() : repli;
+
+/** Les noms traduits lus d'un objet ou d'un formulaire, sans les vides. */
+function nomsDe(lire: (l: Langue) => unknown): Partial<Record<Langue, string>> | undefined {
+  const noms: Partial<Record<Langue, string>> = {};
+  for (const l of LANGUES) {
+    const n = String(lire(l) ?? "").trim().slice(0, 40);
+    if (n) noms[l] = n;
+  }
+  return Object.keys(noms).length ? noms : undefined;
+}
+
+function lire(valeur: unknown): Couleur[] {
+  if (!Array.isArray(valeur) || !valeur.length) return DE_BASE;
+  const liste = valeur
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+    .map((c, i) => {
+      const noms = nomsDe((l) => (c.noms as Record<string, unknown> | undefined)?.[l]);
+      return {
+        id: String(c.id ?? `couleur-${i + 1}`),
+        nom: String(c.nom ?? "").trim() || `Couleur ${i + 1}`,
+        hex: couleur(c.hex, "#2B2B2B"),
+        actif: c.actif !== false,
+        ...(noms ? { noms } : {}),
+      };
+    });
+  return liste.length ? liste : DE_BASE;
+}
+
+/** Un identifiant stable tiré du nom : « Bleu nuit » → « bleu-nuit ». */
+function identifiant(nom: string, pris: Set<string>): string {
+  const base =
+    nom
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/\p{M}/gu, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 30) || "couleur";
+  let id = base;
+  for (let n = 2; pris.has(id); n++) id = `${base}-${n}`;
+  return id;
+}
+
+let flash: string | null = null;
+let flashErreur = false;
+let couleurs: Couleur[] = DE_BASE;
+
+try {
+  couleurs = lire((await api.settings())[REGLAGE]);
+} catch (e) {
+  flash = "Les couleurs n'ont pas pu être relues : " + String(e);
+  flashErreur = true;
+}
+
+if (Astro.request.method === "POST" && !flashErreur) {
+  const f = await Astro.request.formData();
+  const action = String(f.get("_action") ?? "");
+  try {
+    if (action === "enregistrer") {
+      // L'ordre des blocs dans la page est l'ordre enregistré : les flèches
+      // ↑ ↓ déplacent les blocs avant l'enregistrement.
+      const ids = f.getAll("id").map(String);
+      const suivantes: Couleur[] = ids.map((id, i) => {
+        const noms = nomsDe((l) => f.getAll(`nom_${l}`)[i]);
+        return {
+          id,
+          nom: String(f.getAll("nom")[i] ?? "").trim().slice(0, 40) || `Couleur ${i + 1}`,
+          hex: couleur(f.getAll("hex")[i], "#2B2B2B"),
+          actif: f.getAll("actif").map(String).includes(id),
+          ...(noms ? { noms } : {}),
+        };
+      });
+      if (!suivantes.some((c) => c.actif)) {
+        flash = "Gardez au moins une couleur activée : sans elle, le motif n'aurait plus de couleur à proposer. Rien n'a été enregistré.";
+        flashErreur = true;
+      } else {
+        await api.setSetting(REGLAGE, suivantes);
+        couleurs = suivantes;
+        flash = "Couleurs enregistrées. Les clientes les voient dès la prochaine ouverture de la fiche.";
+      }
+    } else if (action === "ajouter") {
+      const nom = String(f.get("nom") ?? "").trim().slice(0, 40);
+      if (!nom) {
+        flash = "Donnez un nom à la couleur.";
+        flashErreur = true;
+      } else {
+        const noms = nomsDe((l) => f.get(`nom_${l}`));
+        const nouvelle: Couleur = {
+          id: identifiant(nom, new Set(couleurs.map((c) => c.id))),
+          nom,
+          hex: couleur(f.get("hex"), "#2B2B2B"),
+          actif: true,
+          ...(noms ? { noms } : {}),
+        };
+        couleurs = [...couleurs, nouvelle];
+        await api.setSetting(REGLAGE, couleurs);
+        flash = `Couleur « ${nom} » ajoutée et activée, en dernier dans la liste.`;
+      }
+    } else if (action === "supprimer") {
+      const id = String(f.get("id") ?? "");
+      const reste = couleurs.filter((c) => c.id !== id);
+      if (!reste.some((c) => c.actif)) {
+        flash = "C'est la dernière couleur activée : elle ne peut pas être supprimée.";
+        flashErreur = true;
+      } else {
+        const nom = couleurs.find((c) => c.id === id)?.nom ?? "Cette couleur";
+        couleurs = reste;
+        await api.setSetting(REGLAGE, couleurs);
+        flash = `Couleur « ${nom} » supprimée. Les affiches déjà au panier ou commandées gardent la leur.`;
+      }
+    } else if (action === "base") {
+      couleurs = DE_BASE;
+      await api.setSetting(REGLAGE, couleurs);
+      flash = "Les dix couleurs de base sont revenues.";
+    }
+  } catch (e) {
+    flash = "Erreur : " + String(e);
+    flashErreur = true;
+  }
+}
+
+/** Le motif de l'aperçu : l'hôtel de ville, un trait et des intérieurs crème. */
+const motifApercu = apiUrl("/assets/motif-alsace-hotel-de-ville-v1.svg");
+---
+
+<Admin title="Couleurs des motifs">
+  <h1 class="mb-2 text-2xl font-semibold">Couleurs des motifs</h1>
+  <p class="mb-2 max-w-3xl text-sm text-bo-muted">
+    Les couleurs proposées à la cliente pour son <strong>motif</strong>, sur
+    les affiches à motifs (l'affiche du stand de Mulhouse : fiche produit ›
+    « Motifs au choix du client »). La silhouette du motif prend la couleur ;
+    ses détails crème restent lisibles — ils passent au gris foncé sur une
+    couleur claire — et les façades des maisons gardent leurs couleurs.
+  </p>
+  <p class="mb-6 max-w-3xl text-sm text-bo-muted">
+    La cliente les voit dans cet ordre (flèches ↑ ↓, puis « Enregistrer »). Le
+    nom s'affiche au survol de la pastille, dans sa langue : sans traduction,
+    c'est le nom français. Une couleur désactivée n'est plus proposée ; les
+    affiches déjà au panier ou commandées gardent la leur. Les motifs
+    eux-mêmes se rangent dans <a class="underline" href={url("/personnages")}>Personnages</a>.
+  </p>
+
+  {flash && (
+    <p
+      class={`mb-4 rounded border px-3 py-2 text-sm ${
+        flashErreur ? "border-red-200 bg-red-50 text-red-800" : "border-green-200 bg-green-50"
+      }`}
+    >
+      {flash}
+    </p>
+  )}
+
+  <form method="POST" class="mb-10">
+    <input type="hidden" name="_action" value="enregistrer" />
+    <div class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-4" data-liste>
+      {couleurs.map((c) => (
+        <div class="rounded-lg border border-bo-border bg-bo-surface p-3" data-couleur-bloc>
+          <input type="hidden" name="id" value={c.id} />
+          <div
+            class="mb-3 flex h-28 items-center justify-center rounded border border-bo-border bg-[#e9e4da] p-2 [&_svg]:h-full [&_svg]:w-auto"
+            data-apercu
+            aria-hidden="true"
+          />
+          <div class="flex items-end gap-2">
+            <label class="block flex-1 text-sm">
+              <span class="text-bo-muted">Nom</span>
+              <input name="nom" value={c.nom} maxlength="40" class="mt-1 w-full rounded border border-bo-border px-2 py-1" />
+            </label>
+            <label class="block w-16 text-xs">
+              <span class="text-bo-muted">Couleur</span>
+              <input type="color" name="hex" value={c.hex.toLowerCase()} class="mt-1 block h-9 w-full cursor-pointer" data-hex />
+            </label>
+          </div>
+          <details class="mt-2 text-xs">
+            <summary class="cursor-pointer text-bo-muted">Traductions du nom</summary>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              {LANGUES.map((l) => (
+                <label class="block">
+                  <span class="text-bo-muted">{NOMS_LANGUES[l]}</span>
+                  <input name={`nom_${l}`} value={c.noms?.[l] ?? ""} maxlength="40" class="mt-1 w-full rounded border border-bo-border px-2 py-1" />
+                </label>
+              ))}
+            </div>
+          </details>
+          <div class="mt-3 flex items-center justify-between gap-2">
+            {/* « Activé / Désactivé » (27/11, Alexandra) : le mot du BO pour
+                tout ce qui s'allume et s'éteint. */}
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="actif" value={c.id} checked={c.actif} data-etat />
+              <span data-etat-texte>{c.actif ? "Activé" : "Désactivé"}</span>
+            </label>
+            <span class="flex items-center gap-1">
+              <button type="button" class="rounded border border-bo-border px-2 py-0.5 text-sm" title="Monter" aria-label={`Monter « ${c.nom} »`} data-monter>↑</button>
+              <button type="button" class="rounded border border-bo-border px-2 py-0.5 text-sm" title="Descendre" aria-label={`Descendre « ${c.nom} »`} data-descendre>↓</button>
+            </span>
+            <button
+              type="submit"
+              form={`suppr-${c.id}`}
+              class="text-xs text-red-700 underline underline-offset-2"
+              onclick={`return confirm(${JSON.stringify(`Supprimer la couleur « ${c.nom} » ? Les affiches déjà au panier ou commandées gardent la leur.`)})`}
+            >
+              Supprimer
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+    <div class="mt-4 flex flex-wrap items-center gap-4">
+      <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">Enregistrer les couleurs</button>
+      <button
+        type="submit"
+        form="remettre-base"
+        class="text-sm text-bo-muted underline underline-offset-2"
+        onclick="return confirm('Remettre les dix couleurs de base ? Vos couleurs ajoutées et vos changements seront remplacés.')"
+      >
+        Remettre les dix couleurs de base
+      </button>
+    </div>
+  </form>
+
+  {couleurs.map((c) => (
+    <form method="POST" id={`suppr-${c.id}`} class="hidden">
+      <input type="hidden" name="_action" value="supprimer" />
+      <input type="hidden" name="id" value={c.id} />
+    </form>
+  ))}
+  <form method="POST" id="remettre-base" class="hidden">
+    <input type="hidden" name="_action" value="base" />
+  </form>
+
+  <section class="max-w-md rounded-lg border border-bo-border bg-bo-surface p-4" data-couleur-bloc>
+    <h2 class="mb-3 text-lg font-semibold">Ajouter une couleur</h2>
+    <form method="POST" class="space-y-3">
+      <input type="hidden" name="_action" value="ajouter" />
+      <div
+        class="flex h-28 w-40 items-center justify-center rounded border border-bo-border bg-[#e9e4da] p-2 [&_svg]:h-full [&_svg]:w-auto"
+        data-apercu
+        aria-hidden="true"
+      />
+      <div class="flex items-end gap-2">
+        <label class="block flex-1 text-sm">
+          <span class="text-bo-muted">Nom</span>
+          <input name="nom" required maxlength="40" placeholder="Vert d'eau" class="mt-1 w-full rounded border border-bo-border px-2 py-1" />
+        </label>
+        <label class="block w-16 text-xs">
+          <span class="text-bo-muted">Couleur</span>
+          <input type="color" name="hex" value="#5f8f86" class="mt-1 block h-9 w-full cursor-pointer" data-hex />
+        </label>
+      </div>
+      <details class="text-xs">
+        <summary class="cursor-pointer text-bo-muted">Traductions du nom</summary>
+        <div class="mt-2 grid grid-cols-2 gap-2">
+          {LANGUES.map((l) => (
+            <label class="block">
+              <span class="text-bo-muted">{NOMS_LANGUES[l]}</span>
+              <input name={`nom_${l}`} maxlength="40" class="mt-1 w-full rounded border border-bo-border px-2 py-1" />
+            </label>
+          ))}
+        </div>
+      </details>
+      <button class="rounded bg-bo-accent px-4 py-2 text-sm text-white">Ajouter cette couleur</button>
+    </form>
+  </section>
+
+  <script is:inline define:vars={{ motifApercu }}>
+    // « Activé » / « Désactivé » suit la case.
+    document.querySelectorAll("[data-etat]").forEach(function (c) {
+      c.addEventListener("change", function () {
+        var t = c.parentElement && c.parentElement.querySelector("[data-etat-texte]");
+        if (t) t.textContent = c.checked ? "Activé" : "Désactivé";
+      });
+    });
+    // L'ordre : les flèches déplacent le bloc ; « Enregistrer » garde l'ordre
+    // de la page.
+    document.querySelectorAll("[data-monter], [data-descendre]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var bloc = b.closest("[data-couleur-bloc]");
+        if (!bloc) return;
+        if (b.hasAttribute("data-monter") && bloc.previousElementSibling)
+          bloc.parentElement.insertBefore(bloc, bloc.previousElementSibling);
+        if (b.hasAttribute("data-descendre") && bloc.nextElementSibling)
+          bloc.parentElement.insertBefore(bloc.nextElementSibling, bloc);
+        b.focus();
+      });
+    });
+    // L'aperçu : un motif peint comme le configurateur le peint (couleursDuMotif,
+    // packages/configurator/src/store.ts) — la silhouette dans la couleur, les
+    // détails crème, ou gris foncé si la couleur est claire.
+    var TRAIT = "#2B2B2B";
+    function lum(h) {
+      var v = [1, 3, 5].map(function (i) {
+        var c = parseInt(h.slice(i, i + 2), 16) / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+    }
+    function contraste(a, b) {
+      var x = lum(a), y = lum(b);
+      return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+    }
+    /** Le motif peint en `hex`, ses classes préfixées par `pre`. */
+    function peindre(svg, hex, pre) {
+      var c = hex.toUpperCase();
+      return svg
+        .replace(/\.st(\d+)\{fill:(#[0-9A-Fa-f]{6})/g, function (m, n, h) {
+          if (n === "0") return ".st0{fill:" + c;
+          var clair = [1, 3, 5].every(function (i) { return parseInt(h.slice(i, i + 2), 16) >= 0xe6; });
+          if (clair && contraste(c, h) < contraste(c, TRAIT)) return ".st" + n + "{fill:" + TRAIT;
+          return m;
+        })
+        // Un préfixe par aperçu : les styles d'un SVG posé dans la page
+        // s'appliquent à toute la page.
+        .replace(/\.st(\d+)/g, "." + pre + "st$1")
+        .replace(/class="st(\d+)"/g, 'class="' + pre + 'st$1"');
+    }
+    fetch(motifApercu)
+      .then(function (r) { return r.ok ? r.text() : ""; })
+      .then(function (svg) {
+        if (!svg) return;
+        var n = 0;
+        document.querySelectorAll("[data-couleur-bloc]").forEach(function (bloc) {
+          var zone = bloc.querySelector("[data-apercu]");
+          var champ = bloc.querySelector("[data-hex]");
+          if (!zone || !champ) return;
+          var pre = "ap" + n++;
+          var dessiner = function () { zone.innerHTML = peindre(svg, champ.value, pre); };
+          champ.addEventListener("input", dessiner);
+          dessiner();
+        });
+      })
+      .catch(function () {});
+  </script>
+</Admin>

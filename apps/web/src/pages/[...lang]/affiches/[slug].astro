@@ -769,6 +769,8 @@ const pageDesVoisines = retourAuStand ?? (voisinesDuRayon ? pageDuRayon! : pageD
               product.variants.map((v) => [v.format, v.priceCents]),
             )}
             foregroundUrl={product.foregroundUrl ?? null}
+            vueMotifs={product.vueMotifs ?? null}
+            couleursMotif={product.couleursMotif ?? null}
             formatInitial={product.variants[0]?.format}
             defaults={{
               lignes: [

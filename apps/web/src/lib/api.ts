@@ -252,6 +252,18 @@ export interface ProductDetail {
   defaultView?: string | null;
   foregroundUrl?: string | null;
   /**
+   * Le jeu de motifs que la fiche propose (28/11, affiche éphémère du stand
+   * de Mulhouse) : le client choisit un motif, rangé par catégorie, et place
+   * son texte en haut ou en bas. Null ou absent : affiche classique.
+   */
+  vueMotifs?: string | null;
+  /**
+   * La palette des couleurs du motif (28/11, réglage « motifs.couleurs » du
+   * back-office) : seulement sur une affiche à motifs, les couleurs
+   * activées, dans leur ordre, le nom dans la langue demandée.
+   */
+  couleursMotif?: { id: string; nom: string; hex: string }[] | null;
+  /**
    * Affiche générée par IA à partir d'une photo du client. Ce n'est pas un
    * autre genre de produit : c'est une affiche ordinaire dont la fiche propose
    * un parcours différent (envoi de photo) au lieu du configurateur.

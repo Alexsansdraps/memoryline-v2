@@ -22,6 +22,9 @@ export function messagesDuConfigurateur(
     etapeFond: tr("cfg.etape.fond"),
     etapePersonnages: tr("cfg.etape.personnages"),
     etapeFormat: tr("cfg.etape.format"),
+    // L'affiche à motifs (28/11) : quatre étapes, le texte à part.
+    etapeMotifFond: tr("cfg.etape.motif_fond"),
+    etapeTexte: tr("cfg.etape.texte"),
     // 27/11 : les trois tailles par ligne (petit / moyen / grand).
     tailleLigne: tr("cfg.taille_ligne"),
     taillesLigne: [tr("cfg.taille_s"), tr("cfg.taille_m"), tr("cfg.taille_l")],
@@ -117,5 +120,12 @@ export function messagesDuConfigurateur(
     murPhotoPrivee: tr("cfg.mur.photo_privee"),
     murTaille: tr("cfg.mur.taille"),
     murEchelle: tr("cfg.mur.echelle"),
+    // L'affiche à motifs (28/11, stand de Mulhouse).
+    motif: tr("cfg.motif"),
+    motifAide: tr("cfg.motif_aide"),
+    couleurMotif: tr("cfg.couleur_motif"),
+    textePlace: tr("cfg.texte_place"),
+    texteHaut: tr("cfg.texte_haut"),
+    texteBas: tr("cfg.texte_bas"),
   };
 }

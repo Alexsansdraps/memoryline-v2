@@ -18,6 +18,7 @@
 import type { Hono } from "hono";
 import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { enVente } from "./affiches-de-stand.js";
 import { AFFICHAGES_SITE } from "./cms.js";
 import {
   genreDuRayon,
@@ -39,8 +40,9 @@ export function mountPlanDuSite(app: Hono): void {
           updatedAt: schema.products.updatedAt,
         })
         .from(schema.products)
-        // Même règle que la fiche : seule une affiche en vente a une adresse.
-        .where(eq(schema.products.status, "active")),
+        // Même règle que la fiche : seule une affiche en vente a une adresse
+        // (une affiche de stand, tant que son stand est en service).
+        .where(enVente()),
       // Même sélection que GET /collections : ouvertes, non archivées, et
       // contenant au moins une affiche en vente. Un rayon vide répond 404 :
       // le lister enverrait Google sur une page introuvable.
@@ -62,7 +64,7 @@ export function mountPlanDuSite(app: Hono): void {
           schema.products,
           and(
             eq(schema.products.id, schema.productCollections.productId),
-            eq(schema.products.status, "active"),
+            enVente(),
           ),
         )
         .where(
@@ -104,7 +106,7 @@ export function mountPlanDuSite(app: Hono): void {
           schema.products,
           and(
             eq(schema.products.id, schema.productImages.productId),
-            eq(schema.products.status, "active"),
+            enVente(),
           ),
         )
         .orderBy(asc(schema.productImages.position), asc(schema.productImages.id)),

@@ -247,6 +247,25 @@ export const products = pgTable(
      */
     foregroundUrl: text("foreground_url"),
     /**
+     * Le jeu de motifs que la fiche propose au client (28/11, affiche éphémère
+     * du stand de Mulhouse) : le slug d'un type d'affiche « motifs-… », dont
+     * les personnages sont les motifs, rangés par catégorie (BO › Personnages).
+     * Vide : affiche classique, sans choix de motif.
+     */
+    vueMotifs: text("vue_motifs"),
+    /**
+     * Le stand de rattachement (28/11, Alexandra : « le produit doit
+     * disparaître quand le stand sera clôturé donc désactivé »). L'affiche
+     * n'est proposée (site, tablette, rayons, recherche, plan du site) que
+     * tant que ce stand est en service : voir affiches-de-stand.ts. Vide :
+     * affiche ordinaire.
+     *
+     * Sans clé étrangère, exprès : un stand supprimé laisse l'affiche cachée
+     * (la règle échoue fermée) au lieu de la remettre en vente, comme le
+     * ferait un « on delete set null ».
+     */
+    standId: integer("stand_id"),
+    /**
      * Traductions HUMAINES du contenu éditorial, par code langue :
      *   { en: { name, description, seoTitle, seoDescription }, de: { … }, … }
      *

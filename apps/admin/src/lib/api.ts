@@ -1734,6 +1734,24 @@ export interface ProductConfig {
   aiEnabled?: boolean;
   /** Consignes de style propres à cette affiche, ajoutées au style commun. */
   aiStylePrompt?: string | null;
+  /**
+   * Le jeu de motifs proposé au client (28/11, affiche éphémère d'un stand) :
+   * le slug d'un type d'affiche dont les personnages sont les motifs. Null :
+   * affiche classique.
+   */
+  vueMotifs: string | null;
+  /**
+   * Le stand de rattachement (28/11) : l'affiche n'est proposée que tant que
+   * ce stand est en service. Null : affiche ordinaire.
+   */
+  standId: number | null;
+  /** Tous les stands, archivés compris, avec leur état (jamais leur code). */
+  stands: {
+    id: number;
+    nom: string;
+    dateFin: string | null;
+    etat: "en-service" | "desactive" | "archive" | "termine";
+  }[];
 }
 
 /** Réglages IA d'une affiche, tels que l'API les renvoie après écriture. */
@@ -4142,6 +4160,10 @@ export function adminApi(request?: Request) {
         /** Slug du type d'affiche (« front », « back », ou créé au BO). */
         defaultView?: string | null;
         foregroundUrl?: string | null;
+        /** Le jeu de motifs au choix du client (28/11) ; null : aucun. */
+        vueMotifs?: string | null;
+        /** Le stand de rattachement (28/11) ; null : aucun. */
+        standId?: number | null;
       },
     ) =>
       req<ProductConfig>(

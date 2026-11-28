@@ -34,6 +34,7 @@
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, schema } from "./db/client.js";
+import { enVente } from "./affiches-de-stand.js";
 import { ordreManuelDuGenre } from "./ordre-affichage.js";
 import { genreDuRayon } from "./referencement.js";
 import { champTraduit, texteDansLaLangue } from "./traductions.js";
@@ -125,7 +126,8 @@ export async function maillageDeLaFiche(
         schema.products,
         and(
           eq(schema.products.id, schema.productCollections.productId),
-          eq(schema.products.status, "active"),
+          // En vente, stand en service compris (affiches-de-stand.ts).
+          enVente(),
         ),
       )
       .where(
@@ -207,13 +209,13 @@ export async function maillageDeLaFiche(
         schema.collections,
         eq(schema.collections.id, schema.productCollections.collectionId),
       )
-      .where(and(eq(schema.products.status, "active"), eq(schema.collections.slug, slug)))
+      .where(and(enVente(), eq(schema.collections.slug, slug)))
       .orderBy(sql`${schema.productCollections.position} asc nulls last`, asc(schema.products.id));
   const duGenre = () =>
     db
       .select({ id: schema.products.id, name: schema.products.name })
       .from(schema.products)
-      .where(and(eq(schema.products.status, "active"), eq(schema.products.kind, fiche.kind)))
+      .where(and(enVente(), eq(schema.products.kind, fiche.kind)))
       .orderBy(...ordreManuelDuGenre());
 
   let liste = rayonPrincipal ? await duRayon(rayonPrincipal.slug) : [];

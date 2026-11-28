@@ -16,10 +16,12 @@ import {
   BASE_COLOR_SCOPE,
   colorKey,
   ligneEnMajuscules,
+  lignesDuTexte,
   prixDuCadreCents,
 } from "@memoryline/types";
 import {
   STEPS,
+  ETAPES_AFFICHE_A_MOTIF,
   SLOTS,
   type Step,
   type Slot,
@@ -30,6 +32,10 @@ import {
   emptyState,
   stateFromConfig,
   configFromState,
+  couleurDuMotif,
+  couleursDuMotif,
+  miseEnPageDuMotif,
+  placementsAffiche,
   etalonDeLaVue,
   createConfiguratorStore,
   createSvgCache,
@@ -47,6 +53,8 @@ import {
 import { PosterPreview } from "./components/PosterPreview";
 import { ApercuAuMur } from "./components/ApercuAuMur";
 import { StepBackgroundText } from "./components/StepBackgroundText";
+import type { CouleurDeMotif } from "./components/ChoixMotif";
+import { proportionDuSvg } from "./mise-en-page-motif";
 import { StepCharacters } from "./components/StepCharacters";
 import { StepFormat } from "./components/StepFormat";
 import {
@@ -171,6 +179,39 @@ export interface ConfiguratorProps {
    * (20/11) : sans cela, l'aperçu du module y montrerait « Memory Line ».
    */
   sansTexte?: boolean;
+  /**
+   * Le jeu de motifs que la fiche propose (28/11, affiche éphémère du stand
+   * de Mulhouse) : le slug d'un type d'affiche dont les personnages sont les
+   * motifs, rangés par catégorie. Avec lui, quatre étapes au lieu de trois
+   * (28/11) : « 1. Motif et fond » (le motif, sa couleur, le fond),
+   * « 2. Texte » (sa place en haut ou en bas, les lignes, leurs polices,
+   * tailles et couleur), « 3. Personnages » — de dos, assis sur le muret —
+   * et « 4. Format ». Absent ou nul : affiche classique, rien ne change.
+   */
+  vueMotifs?: string | null;
+  /**
+   * La palette des couleurs du motif (28/11, réglage « motifs.couleurs » du
+   * back-office, BO › Personnages › Couleurs des motifs), noms dans la langue
+   * de la page : seulement celles qui sont activées, dans leur ordre. Absente
+   * ou vide : le motif garde les couleurs de son dessin, sans choix.
+   */
+  couleursMotif?: readonly CouleurDeMotif[] | null;
+}
+
+/** Le muret des affiches de dos, quand la fiche n'en donne pas (pdf.ts fait de même). */
+const MURET_PAR_DEFAUT = "/assets/muret_officiel.svg";
+
+/**
+ * La ligne 1 peut-elle recevoir le nom du motif choisi ? Oui si elle est vide,
+ * si elle porte le texte par défaut du produit, ou le nom qu'un motif y a
+ * déjà mis (`nomAuto`) ; jamais si le client y a écrit autre chose (28/11).
+ */
+function ligne1Libre(valeur: string, defaut: string | null | undefined, nomAuto: string | null): boolean {
+  const v = valeur.trim();
+  if (!v) return true;
+  const d = (defaut ?? "").trim();
+  if (d && (v === d || v === d.toLocaleUpperCase())) return true;
+  return nomAuto !== null && valeur === nomAuto;
 }
 
 /** Formate un prix en centimes -> "23 €" (FR), « €23 » (EN)… selon la locale. */
@@ -188,20 +229,57 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   /** Locale d'affichage des montants (« fr-FR » si l'hôte n'en donne pas). */
   const locale = () => msg().locale;
   const STEP_LABELS = (): Record<Step, string> => ({
-    background: msg().etapeFond,
+    // Sur une affiche à motifs, la première étape n'a plus le texte (28/11) :
+    // « Motif et fond », le texte a la sienne.
+    background: props.vueMotifs ? msg().etapeMotifFond : msg().etapeFond,
+    texte: msg().etapeTexte,
     characters: msg().etapePersonnages,
     format: msg().etapeFormat,
   });
   /**
    * Les étapes de cette ouverture : celles de l'hôte (`etapes`), sinon les
-   * trois. Une liste vide vaut absente : sans aucune étape, le module ne
-   * saurait ni où commencer ni quoi montrer.
+   * trois — les quatre d'une affiche à motifs (28/11). Une liste vide vaut
+   * absente : sans aucune étape, le module ne saurait ni où commencer ni
+   * quoi montrer.
    */
   const etapes = (): readonly Step[] =>
-    props.etapes && props.etapes.length > 0 ? props.etapes : STEPS;
+    props.etapes && props.etapes.length > 0
+      ? props.etapes
+      : props.vueMotifs
+        ? ETAPES_AFFICHE_A_MOTIF
+        : STEPS;
+
+  const characterById = (
+    id: string | number,
+  ): CharacterDTO | undefined =>
+    props.characters.find((c) => String(c.id) === String(id));
+
+  /**
+   * Un MOTIF (affiche à motifs, 28/11) : un personnage du jeu de motifs de la
+   * fiche, ou de tout type d'affiche « motifs-… ». Jamais proposé comme
+   * personnage, sur aucune affiche.
+   */
+  const estMotif = (c: CharacterDTO | undefined): boolean =>
+    !!c &&
+    ((!!props.vueMotifs && c.orientation === props.vueMotifs) ||
+      (c.orientation ?? "").startsWith("motifs-"));
+
+  /** Les motifs proposés, dans l'ordre de l'API : catégorie, puis rang (BO). */
+  const motifsProposes = (choisi: string | number | null | undefined): CharacterDTO[] =>
+    props.vueMotifs
+      ? props.characters.filter(
+          (c) =>
+            c.orientation === props.vueMotifs &&
+            !c.archived &&
+            (c.active !== false || (choisi != null && String(c.id) === String(choisi))),
+        )
+      : [];
 
   const initialState: ConfiguratorState = props.initialConfig
-    ? stateFromConfig(props.initialConfig)
+    ? stateFromConfig(
+        props.initialConfig,
+        props.vueMotifs ? (id) => estMotif(characterById(id)) : undefined,
+      )
     : emptyState();
 
   // Pré-remplissage depuis les réglages par défaut du produit (lignes de texte
@@ -215,6 +293,53 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     // filtrer sur une paire figée aurait ignoré tout nouveau type.
     if (props.defaults.view) initialState.view = props.defaults.view;
     if (props.defaults.format) initialState.format = props.defaults.format;
+  }
+
+  /*
+   * Affiche à motifs (28/11). Le nom du motif choisi s'écrit sur la ligne 1
+   * (Alexandra : « par défaut quand on en sélectionne un ça met dans le titre
+   * 1 ce que c'est »), dans la langue du client et en capitales comme toute
+   * ligne 1 — sauf si le client y a écrit autre chose. `nomAuto` retient le
+   * nom ainsi posé (il n'est pas enregistré) : changer de motif le remplace.
+   */
+  let nomAutoInitial: string | null = null;
+  if (props.vueMotifs) {
+    const ligne1 = initialState.lignes[0];
+    // Les personnages d'une affiche à motifs sont TOUJOURS ceux du type
+    // d'affiche de la fiche, de dos sur le muret (28/11, Alexandra : « c'est
+    // perso sur le muret tout le temps »). Une ligne rouverte sans
+    // personnage a enregistré une vue sans muret (configFromState) : on
+    // reprend celle de la fiche, sinon on proposerait des personnages de face.
+    if (props.defaults?.view) initialState.view = props.defaults.view;
+    if (props.initialConfig) {
+      // Rouverte depuis le panier : le texte en bas se reconnaît à ses lignes
+      // posées (le texte en haut n'en pose jamais) ; leurs places, le module
+      // les recalcule.
+      initialState.texteEnBas = lignesDuTexte(props.initialConfig.texts).some(
+        (b) => typeof b?.y === "number",
+      );
+      for (const l of initialState.lignes) {
+        delete l.x;
+        delete l.y;
+      }
+      const motif = initialState.motif ? characterById(initialState.motif.characterId) : undefined;
+      if (motif && ligne1 && ligne1.value === motif.name.toLocaleUpperCase())
+        nomAutoInitial = ligne1.value;
+    } else {
+      // En ajout : le premier motif est déjà choisi, l'aperçu n'est jamais
+      // vide, dans la première couleur de la palette.
+      const premier = motifsProposes(null)[0];
+      if (premier) {
+        initialState.motif = {
+          ...defaultCharacter(premier, 0),
+          colors: couleursDuMotif(premier, props.couleursMotif?.[0]?.hex),
+        };
+        if (ligne1 && ligne1Libre(ligne1.value, props.defaults?.lignes?.[0], null)) {
+          ligne1.value = premier.name.toLocaleUpperCase();
+          nomAutoInitial = ligne1.value;
+        }
+      }
+    }
   }
 
   // Un état neuf, comme celui d'une réouverture, commence au fond. Le module
@@ -233,11 +358,6 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   const { state, mutate } = createConfiguratorStore(initialState);
   const { cache, fetchSvg } = createSvgCache(props.assetBaseUrl);
 
-  const characterById = (
-    id: string | number,
-  ): CharacterDTO | undefined =>
-    props.characters.find((c) => String(c.id) === String(id));
-
   /**
    * Personnages proposés à l'ajout, filtrés par l'orientation de l'AFFICHE :
    * une affiche de dos ne propose que les persos de dos (et inversement). Évite
@@ -251,8 +371,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   const visibleCharacters = createMemo<CharacterDTO[]>(() => {
     const view = state.view;
     const surLAffiche = new Set(state.characters.map((c) => String(c.characterId)));
+    // Les motifs (28/11) ne sont jamais des personnages : retirés avant le
+    // filtre par type d'affiche ET du repli sur la liste entière.
     const proposes = props.characters.filter(
-      (c) => c.active !== false || surLAffiche.has(String(c.id)),
+      (c) => !estMotif(c) && (c.active !== false || surLAffiche.has(String(c.id))),
     );
     const matching = proposes.filter(
       (c) => (c.orientation ?? "front") === view,
@@ -279,6 +401,55 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   const slotsDe = (base: CharacterDTO): SlotVariants =>
     slotsForCharacter(variantesDeVue(props.slots, base.orientation ?? state.view), base);
 
+  /* --------------------- le motif (affiche à motifs, 28/11) --------------------- */
+
+  /** Les motifs proposés, rangés par catégorie (un masqué reste s'il est choisi). */
+  const motifs = createMemo<CharacterDTO[]>(() => motifsProposes(state.motif?.characterId));
+  /** Le dessin du motif choisi. */
+  const baseDuMotif = (): CharacterDTO | undefined =>
+    state.motif ? characterById(state.motif.characterId) : undefined;
+  /** Sa couleur (« #RRGGBB ») : celle de sa silhouette, ou celle du dessin. */
+  const couleurMotif = (): string => couleurDuMotif(state.motif?.colors, baseDuMotif());
+  /** Le nom qu'un motif a écrit sur la ligne 1, tant que le client n'y a pas touché. */
+  const [nomAuto, setNomAuto] = createSignal<string | null>(nomAutoInitial);
+
+  /**
+   * Choisir un motif : il remplace le précédent, dans la même couleur (une
+   * couleur de la palette ; à défaut, celles de son dessin), et son nom
+   * s'écrit sur la ligne 1 si elle est libre (ligne1Libre).
+   */
+  function choisirMotif(base: CharacterDTO) {
+    const libre = ligne1Libre(state.lignes[0]?.value ?? "", props.defaults?.lignes?.[0], nomAuto());
+    const couleur = props.couleursMotif?.find((c) => c.hex.toUpperCase() === couleurMotif())?.hex;
+    mutate((s) => {
+      s.motif = { ...defaultCharacter(base, 0), colors: couleursDuMotif(base, couleur) };
+    });
+    if (libre) {
+      const nom = base.name.toLocaleUpperCase();
+      setTextValue(0, nom);
+      setNomAuto(nom);
+    }
+  }
+  /** La couleur du motif, choisie dans la palette (28/11). */
+  function setCouleurMotif(hex: string) {
+    mutate((s) => {
+      if (!s.motif) return;
+      const base = characterById(s.motif.characterId);
+      s.motif.colors = base ? couleursDuMotif(base, hex) : {};
+    });
+  }
+  /** Le texte en haut ou en bas de l'affiche. */
+  function setTexteEnBas(enBas: boolean) {
+    mutate((s) => {
+      s.texteEnBas = enBas;
+    });
+  }
+  /** Hauteur ÷ largeur du dessin du motif, lue dans son SVG (1 tant qu'il n'est pas arrivé). */
+  const proportion = (): number => {
+    const b = baseDuMotif();
+    return (b ? proportionDuSvg(cache.raw[b.baseSvgUrl]) : null) ?? 1;
+  };
+
   // Présélection du fond du produit : à l'ouverture, l'aperçu montre déjà
   // l'affiche de la fiche (1er fond renvoyé = fond de la ville du produit).
   createEffect(() => {
@@ -292,6 +463,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
   //  - toutes les bases + toutes les variantes du slot quand on édite (galeries).
   createEffect(() => {
     const variants = slotVariants();
+    // Le motif choisi (affiche à motifs, 28/11) : son dessin, pour l'aperçu et
+    // pour sa proportion (la taille qu'il prend).
+    const motif = baseDuMotif();
+    if (motif) void fetchSvg(motif.baseSvgUrl);
     // Personnages présents (base + variantes choisies) : chacun résout ses
     // variantes dans le jeu COMPLET de sa vue (comme PosterPreview), pas dans
     // le jeu filtré du perso en cours d'édition.
@@ -308,6 +483,10 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
     // variantes du slot courant (galeries vêtements/pantalon/cheveux/accessoires).
     if (state.editingIndex !== null) {
       for (const base of props.characters) {
+        // Pas les motifs (28/11) : ils ne sont jamais dans la galerie des
+        // personnages, et les 47 dessins pèseraient près de 2 Mo à chaque
+        // édition, sur toutes les affiches.
+        if (estMotif(base)) continue;
         void fetchSvg(base.baseSvgUrl);
         // Un personnage livré avec une tenue se montre habillé dans la
         // galerie (cf. tenueDeVignette) : ses pièces viennent avec.
@@ -359,14 +538,51 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
    */
   const etalon = createMemo(() => etalonDeLaVue(props.characters, state.view));
 
+  /**
+   * La mise en page d'une affiche à motifs (28/11) : la place du motif entre
+   * le texte et les personnages assis sur le muret, et le bas du texte posé
+   * en bas — celles-là mêmes qui partent dans la configuration
+   * (configFromState). Null sur toutes les autres affiches.
+   */
+  const miseEnPage = createMemo(() =>
+    props.vueMotifs
+      ? miseEnPageDuMotif(
+          state,
+          characterById,
+          placementsAffiche(state, characterById, etalon()),
+          proportion(),
+        )
+      : null,
+  );
+  /** Le motif tel que l'aperçu le dessine, à sa place. */
+  const motifDessine = createMemo(() => {
+    const motif = state.motif;
+    const place = miseEnPage()?.motif;
+    return motif && place ? { character: motif, base: baseDuMotif(), place } : null;
+  });
+
+  /**
+   * Le décor d'avant-plan, adresse complète. Sur une affiche à motifs de dos,
+   * le muret d'office quand la fiche n'en donne pas (28/11) : c'est celui que
+   * le panier et le fichier d'impression posent alors (pdf.ts) — l'aperçu doit
+   * le montrer aussi. Les autres affiches : le décor de la fiche, tel quel.
+   */
+  const decor = (): string | undefined => {
+    const url =
+      props.foregroundUrl ||
+      (props.vueMotifs && state.view === "back" ? MURET_PAR_DEFAUT : "");
+    if (!url) return undefined;
+    return url.startsWith("http") ? url : props.assetBaseUrl.replace(/\/$/, "") + url;
+  };
+
   function submit() {
     // La même composition qu'à l'écran part dans la commande — places, échelles
     // (taille propre de chacun comprise), décalages du back-office et ordre de
     // dessin : c'est ce que le PDF d'impression relit, sans rien recalculer.
     // L'affiche imprimée ne peut donc pas différer de celle que le client a
-    // composée.
+    // composée. Le motif aussi, avec la proportion de son dessin.
     props.onSubmit(
-      configFromState(state, props.product.id, characterById, etalon()),
+      configFromState(state, props.product.id, characterById, etalon(), proportion()),
     );
   }
 
@@ -832,13 +1048,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           characterById={characterById}
           slots={props.slots}
           cache={cache}
-          foregroundUrl={
-            props.foregroundUrl
-              ? props.foregroundUrl.startsWith("http")
-                ? props.foregroundUrl
-                : props.assetBaseUrl.replace(/\/$/, "") + props.foregroundUrl
-              : undefined
-          }
+          foregroundUrl={decor()}
           assetBaseUrl={props.assetBaseUrl}
           cadre={cadreChoisi() ?? null}
           messages={msg()}
@@ -851,6 +1061,8 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
           // restent, comme toujours (voir ConfiguratorProps).
           filigrane={props.filigrane}
           sansTexte={props.sansTexte}
+          motif={motifDessine()}
+          basDuTexteEnBas={miseEnPage()?.basDuTexte}
         />
         {/* L'affiche au mur, à l'échelle (26/11). Pas sur l'affiche tirée
             d'une photo, qui n'ouvre ici que ses personnages (sansTexte) :
@@ -896,17 +1108,21 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
                 characterById={characterById}
                 slots={props.slots}
                 cache={cache}
-                foregroundUrl={
-                  props.foregroundUrl
-                    ? props.foregroundUrl.startsWith("http")
-                      ? props.foregroundUrl
-                      : props.assetBaseUrl.replace(/\/$/, "") + props.foregroundUrl
-                    : undefined
-                }
+                foregroundUrl={decor()}
                 assetBaseUrl={props.assetBaseUrl}
                 cadre={cadreChoisi() ?? null}
                 messages={msg()}
                 filigrane={props.filigrane}
+                // Les personnages à LEUR place, celle de l'aperçu d'à côté
+                // (28/11) : sans composer, ce second aperçu les dessinait aux
+                // places de départ de l'état (au milieu de l'affiche, à
+                // l'échelle 1) — un personnage géant flottant devant le
+                // décor, sur toutes les affiches, au lieu d'être assis sur le
+                // muret comme dans l'aperçu.
+                recomposer
+                etalon={etalon()}
+                motif={motifDessine()}
+                basDuTexteEnBas={miseEnPage()?.basDuTexte}
                 auMur
               />
             )}
@@ -941,7 +1157,7 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             nulle part, et sa place revient aux personnages. */}
         <Show when={etapes().length > 1}>
           <div
-            class="ml-cfg-etapes"
+            class={props.vueMotifs ? "ml-cfg-etapes ml-cfg-etapes-quatre" : "ml-cfg-etapes"}
             style={{
               display: "flex",
               "flex-wrap": "nowrap",
@@ -994,16 +1210,29 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
                     "text-overflow": "ellipsis",
                   }}
                 >
-                  {i + 1}. {STEP_LABELS()[s]}
+                  {/* Quatre étapes (affiche à motifs, 28/11) : le numéro et le
+                      nom séparés, pour qu'un téléphone puisse ne montrer que
+                      le numéro des étapes qu'on n'est pas en train de faire
+                      (`.ml-cfg-etape-nom`, global.css du site) — quatre noms
+                      entiers ne tiennent pas sur une rangée de 390 px. Le
+                      nom reste lu par le lecteur d'écran. */}
+                  <Show when={props.vueMotifs} fallback={<>{i + 1}. {STEP_LABELS()[s]}</>}>
+                    <span class="ml-cfg-etape-num">{i + 1}.</span>
+                    <span class="ml-cfg-etape-nom"> {STEP_LABELS()[s]}</span>
+                  </Show>
                 </span>
               </button>
             ))}
           </div>
         </Show>
 
-        <Show when={state.step === "background"}>
+        {/* L'étape du fond — et, sur une affiche à motifs, celle du texte, à
+            part (28/11, « 2. Texte ») : le même composant, coupé en deux.
+            Sans vueMotifs, une seule étape, celle de toujours. */}
+        <Show when={state.step === "background" || state.step === "texte"}>
           <StepBackgroundText
             state={state}
+            partie={props.vueMotifs ? (state.step === "texte" ? "texte" : "fond") : "tout"}
             backgrounds={props.backgrounds}
             assetBaseUrl={props.assetBaseUrl}
             onSelectBackground={selectBackground}
@@ -1011,6 +1240,16 @@ export function Configurator(props: ConfiguratorProps): JSX.Element {
             onTextStyle={setTextStyle}
             onTextFont={setTextFont}
             onTextTaille={setTextTaille}
+            // L'affiche à motifs (28/11) : le choix du motif, rangé par
+            // catégories, sa couleur et la place du texte. Rien sans vueMotifs.
+            motifs={props.vueMotifs ? motifs() : undefined}
+            motifChoisi={state.motif?.characterId}
+            onChoisirMotif={props.vueMotifs ? choisirMotif : undefined}
+            couleursMotif={props.couleursMotif ?? []}
+            couleurMotif={couleurMotif()}
+            onCouleurMotif={props.vueMotifs ? setCouleurMotif : undefined}
+            texteEnBas={state.texteEnBas}
+            onTexteEnBas={props.vueMotifs ? setTexteEnBas : undefined}
             messages={msg()}
           />
         </Show>

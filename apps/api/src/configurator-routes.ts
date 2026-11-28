@@ -43,6 +43,7 @@ import { supprimerPourToujours } from "./suppression.js";
 import { commandesQuiEmpechent, enBref } from "./usages-commandes.js";
 import { decorsParLeNom } from "./decors.js";
 import { empriseDuPersonnage, preparerLesEmprises } from "./emprise-personnages.js";
+import { etatDuStand } from "./affiches-de-stand.js";
 import {
   avecBordereauReel,
   etapeDeLaCommande,
@@ -6162,11 +6163,25 @@ export function mountConfiguratorRoutes(app: Hono) {
       .from(schema.products)
       .where(eq(schema.products.id, id));
     if (!product) return c.notFound();
-    const backgrounds = await db
-      .select()
-      .from(schema.backgrounds)
-      .where(eq(schema.backgrounds.productId, id))
-      .orderBy(asc(schema.backgrounds.position));
+    const [backgrounds, stands] = await Promise.all([
+      db
+        .select()
+        .from(schema.backgrounds)
+        .where(eq(schema.backgrounds.productId, id))
+        .orderBy(asc(schema.backgrounds.position)),
+      // Tous les stands, archivés compris : la fiche dit à quel stand l'affiche
+      // est rattachée et s'il est encore en service (28/11). Jamais leur code.
+      db
+        .select({
+          id: schema.stands.id,
+          nom: schema.stands.nom,
+          dateFin: schema.stands.dateFin,
+          actif: schema.stands.actif,
+          archivedAt: schema.stands.archivedAt,
+        })
+        .from(schema.stands)
+        .orderBy(asc(schema.stands.nom), asc(schema.stands.id)),
+    ]);
     return c.json({
       id: product.id,
       slug: product.slug,
@@ -6181,6 +6196,16 @@ export function mountConfiguratorRoutes(app: Hono) {
       aiEnabled: product.aiEnabled,
       aiStylePrompt: product.aiStylePrompt,
       skyEnabled: product.skyEnabled,
+      // L'affiche éphémère d'un stand (28/11) : le jeu de motifs proposé au
+      // client, et le stand dont elle suit la vie (affiches-de-stand.ts).
+      vueMotifs: product.vueMotifs ?? null,
+      standId: product.standId ?? null,
+      stands: stands.map((s) => ({
+        id: s.id,
+        nom: s.nom,
+        dateFin: s.dateFin,
+        etat: etatDuStand(s),
+      })),
       backgrounds,
     });
   });
@@ -6201,6 +6226,27 @@ export function mountConfiguratorRoutes(app: Hono) {
       set.defaultView = await typeAfficheValide(b.defaultView);
     if (b.foregroundUrl !== undefined)
       set.foregroundUrl = b.foregroundUrl || null;
+    // Le jeu de motifs au choix du client (28/11) : un type d'affiche qui
+    // existe, ou rien (affiche classique).
+    if (b.vueMotifs !== undefined)
+      set.vueMotifs = b.vueMotifs ? await typeAfficheValide(b.vueMotifs) : null;
+    // Le stand de rattachement (28/11) : vide = affiche ordinaire. Un stand
+    // disparu entre-temps est refusé plutôt que rattaché dans le vide — la
+    // règle cacherait l'affiche sans que la fiche dise pourquoi.
+    if (b.standId !== undefined) {
+      if (b.standId === null || b.standId === "") set.standId = null;
+      else {
+        const standId = Number(b.standId);
+        const [stand] = Number.isInteger(standId)
+          ? await db
+              .select({ id: schema.stands.id })
+              .from(schema.stands)
+              .where(eq(schema.stands.id, standId))
+          : [];
+        if (!stand) return c.json({ error: "Ce stand n'existe plus. Rechargez la page." }, 400);
+        set.standId = stand.id;
+      }
+    }
     const [row] = await db
       .update(schema.products)
       .set(set)

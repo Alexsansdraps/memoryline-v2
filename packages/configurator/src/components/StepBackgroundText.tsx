@@ -13,14 +13,26 @@ import {
   type CouleurTexteAffiche,
   type PoliceAffiche,
 } from "@memoryline/types";
-import type { ConfiguratorState } from "../store";
+import type { CharacterDTO, ConfiguratorState } from "../store";
 import { Field, PastilleCouleur } from "./ui";
 import { ZoneDefilante } from "./Defilement";
+import { ChoixMotif, TitreDeChoix, type CouleurDeMotif } from "./ChoixMotif";
 import type { MessagesConfigurateur } from "../messages";
 
-/** Étape 1 : fond + les trois lignes de texte. */
+/**
+ * Étape 1 : fond + les trois lignes de texte.
+ *
+ * Sur une affiche à motifs (28/11, Alexandra : « Faut faire un 2. texte »),
+ * le même écran se coupe en deux étapes (`partie`) :
+ *   - « fond » : « 1. Motif et fond » — le motif, sa couleur, le fond ;
+ *   - « texte » : « 2. Texte » — la place du texte (en haut, en bas), les
+ *     lignes, leurs polices, leurs tailles et leur couleur.
+ * « tout » (par défaut) : l'écran de toujours, pour toutes les autres affiches.
+ */
 export function StepBackgroundText(props: {
   state: ConfiguratorState;
+  /** La partie montrée (voir plus haut) ; absente : tout, comme avant. */
+  partie?: "tout" | "fond" | "texte";
   backgrounds: BackgroundDTO[];
   assetBaseUrl: string;
   onSelectBackground: (bg: BackgroundDTO) => void;
@@ -33,9 +45,34 @@ export function StepBackgroundText(props: {
   onTextFont: (ligne: number, font: string) => void;
   /** 27/11 : taille d'UNE ligne, petit / moyen / grand. */
   onTextTaille?: (ligne: number, taille: "s" | "m" | "l") => void;
+  /**
+   * L'affiche à motifs (28/11, stand de Mulhouse) : les motifs proposés,
+   * rangés par catégorie, le choisi, sa couleur, et la place du texte. Tous
+   * facultatifs : sans `motifs`, l'étape est celle de toutes les affiches.
+   */
+  motifs?: readonly CharacterDTO[];
+  motifChoisi?: string | number;
+  onChoisirMotif?: (motif: CharacterDTO) => void;
+  /** La palette du back-office (couleurs activées, noms traduits). */
+  couleursMotif?: readonly CouleurDeMotif[];
+  /** La couleur du motif choisi, « #RRGGBB ». */
+  couleurMotif?: string;
+  onCouleurMotif?: (hex: string) => void;
+  texteEnBas?: boolean;
+  onTexteEnBas?: (enBas: boolean) => void;
   messages: MessagesConfigurateur;
 }) {
   const m = () => props.messages;
+  /** Ce que cette étape montre : le fond (et le motif), le texte, ou les deux. */
+  const montreFond = () => (props.partie ?? "tout") !== "texte";
+  const montreTexte = () => (props.partie ?? "tout") !== "fond";
+  /** Le titre de l'étape, qui suit la partie montrée. */
+  const titre = () =>
+    props.partie === "fond"
+      ? m().etapeMotifFond
+      : props.partie === "texte"
+        ? m().etapeTexte
+        : m().etapeFond;
   /** Nom traduit d'une police ; l'identifiant enregistré ne change pas. */
   const nomPolice = (police: PoliceAffiche) =>
     m().libellesPolices[police.id] ?? police.libelle;
@@ -147,13 +184,27 @@ export function StepBackgroundText(props: {
   return (
     <div class="ml-cfg-step">
       <h3 style={{ "font-weight": "700", "margin-bottom": "10px" }}>
-        {m().etapeFond}
+        {titre()}
       </h3>
+
+      {/* Le motif, rangé par catégories (affiche à motifs, 28/11). */}
+      <Show when={montreFond() && props.motifs && props.motifs.length > 0 && props.onChoisirMotif}>
+        <ChoixMotif
+          motifs={props.motifs ?? []}
+          choisi={props.motifChoisi}
+          onChoisir={(c) => props.onChoisirMotif?.(c)}
+          couleurs={props.couleursMotif ?? []}
+          couleur={props.couleurMotif ?? ""}
+          onCouleur={(c) => props.onCouleurMotif?.(c)}
+          assetBaseUrl={props.assetBaseUrl}
+          messages={m()}
+        />
+      </Show>
 
       {/* Galerie de fonds : affichée UNIQUEMENT si le produit a plusieurs
           variantes de fond. Avec un seul fond (cas normal), l'affiche est fixée
           par le produit → pas de choix proposé au client. */}
-      <Show when={props.backgrounds.length > 1}>
+      <Show when={montreFond() && props.backgrounds.length > 1}>
         <Field label={m().choisirFond}>
           <div
             style={{
@@ -207,6 +258,46 @@ export function StepBackgroundText(props: {
             </For>
           </div>
         </Field>
+      </Show>
+
+      {/* Le texte : toute l'étape « 2. Texte » d'une affiche à motifs, la
+          seconde moitié de l'étape 1 partout ailleurs. */}
+      <Show when={montreTexte()}>
+      {/* La place du texte, en haut ou en bas (affiche à motifs, 28/11). */}
+      <Show when={props.onTexteEnBas}>
+        <div role="group" aria-label={m().textePlace} style={{ "margin-bottom": "12px" }}>
+          <TitreDeChoix>{m().textePlace}</TitreDeChoix>
+          <div style={{ display: "flex", gap: "8px", "flex-wrap": "wrap" }}>
+            <For each={[false, true] as const}>
+              {(enBas) => {
+                const actif = () => (props.texteEnBas ?? false) === enBas;
+                return (
+                  <button
+                    type="button"
+                    class="ml-choix"
+                    aria-pressed={actif()}
+                    onClick={() => props.onTexteEnBas?.(enBas)}
+                    style={{
+                      flex: "0 0 auto",
+                      border: actif() ? "2px solid #4f46e5" : "1px solid #d1d5db",
+                      background: "#fff",
+                      color: "#1f2937",
+                      "border-radius": "8px",
+                      padding: "6px 14px",
+                      cursor: "pointer",
+                      "font-size": "14px",
+                      "font-weight": "600",
+                      "line-height": "1.5",
+                      "white-space": "nowrap",
+                    }}
+                  >
+                    {enBas ? m().texteBas : m().texteHaut}
+                  </button>
+                );
+              }}
+            </For>
+          </div>
+        </div>
       </Show>
 
       {/* Les lignes de l'affiche : même champ pour toutes, aucune n'est le
@@ -307,6 +398,7 @@ export function StepBackgroundText(props: {
           </div>
         </Field>
       </div>
+      </Show>
     </div>
   );
 }

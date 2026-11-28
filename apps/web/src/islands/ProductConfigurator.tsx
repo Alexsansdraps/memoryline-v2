@@ -98,6 +98,16 @@ export interface ProductConfiguratorProps {
   prices?: Partial<Record<string, number>>;
   /** Décor d'avant-plan du produit. */
   foregroundUrl?: string | null;
+  /**
+   * Le jeu de motifs que la fiche propose (28/11, affiche du stand de
+   * Mulhouse). Null ou absent : affiche classique.
+   */
+  vueMotifs?: string | null;
+  /**
+   * La palette des couleurs du motif (28/11, réglage du back-office), noms
+   * dans la langue de la page. Seulement sur une affiche à motifs.
+   */
+  couleursMotif?: { id: string; nom: string; hex: string }[] | null;
   /** Réglages par défaut du produit (pré-remplissage), une entrée par ligne. */
   defaults?: { lignes?: (string | null)[]; view?: string | null };
   /** Le format coché d'emblée sur la fiche — le moins cher, en général. */
@@ -409,8 +419,12 @@ export default function ProductConfigurator(
         {/* Cachée et non démontée quand elle est fermée (voir `monte`). Pas de
             fermeture au clic à côté : un doigt qui glisse hors de la fenêtre
             sur une tablette la refermait en pleine composition. */}
+        {/* Une affiche à motifs s'ouvre en PLEIN ÉCRAN, sur le site comme à
+            la tablette, ordinateur et téléphone (28/11, Alexandra : « et
+            mettre en plein écran la popup ») : `ml-modal-plein-ecran`,
+            global.css. Les autres gardent leur fenêtre. */}
         <div
-          class="ml-modal-overlay"
+          class={`ml-modal-overlay${props.vueMotifs ? " ml-modal-plein-ecran" : ""}`}
           role="dialog"
           aria-modal="true"
           aria-label={tr("produit.personnaliser")}
@@ -502,6 +516,8 @@ export default function ProductConfigurator(
                 cadresProposes={props.cadresProposes}
                 quantite={quantite()}
                 foregroundUrl={props.foregroundUrl}
+                vueMotifs={props.vueMotifs ?? null}
+                couleursMotif={props.couleursMotif ?? null}
                 defaults={{
                   ...props.defaults,
                   // Le format n'est repris qu'à l'AJOUT : rouvrir une ligne du

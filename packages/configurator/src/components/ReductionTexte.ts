@@ -57,13 +57,26 @@ export function createReductionDesLignes(
       // Calque caché (aperçu replié sur un téléphone) : rien à mesurer, on
       // garde ce qu'on savait ; l'observateur de taille relancera la mesure.
       if (!(place > 0)) return;
+      // L'échelle à laquelle le calque est DESSINÉ (28/11, Alexandra : « titre
+      // croppé à droite » dans « Voir sur un mur »). `place` est une largeur
+      // de mise en page, alors que la mesure des lignes, plus bas, est celle
+      // de l'écran — transformations comprises. L'affiche au mur est
+      // dessinée à 480 px puis réduite d'un bloc (ApercuAuMur, `scale`) : ses
+      // lignes, mesurées trois fois plus petites qu'elles ne sont, n'étaient
+      // jamais réduites et sortaient de l'affiche. On ramène la mesure à
+      // l'échelle de la mise en page ; sans transformation, rien ne change
+      // (l'écart d'arrondi entre les deux largeurs reste sous 1 %).
+      const dessinee = couche.getBoundingClientRect().width;
+      if (!(dessinee > 0)) return;
+      const brute = dessinee / couche.offsetWidth;
+      const echelle = Number.isFinite(brute) && Math.abs(brute - 1) > 0.01 ? brute : 1;
       for (const ligne of Array.from(couche.querySelectorAll("[data-rang-texte]"))) {
         const rang = Number((ligne as HTMLElement).dataset.rangTexte);
         let large = 0;
         for (const morceau of Array.from(ligne.querySelectorAll("[data-sous-ligne]"))) {
           const plage = document.createRange();
           plage.selectNodeContents(morceau);
-          large = Math.max(large, plage.getBoundingClientRect().width);
+          large = Math.max(large, plage.getBoundingClientRect().width / echelle);
         }
         if (!(large > 0)) continue;
         // La largeur qu'elle aurait sans réduction : à une taille près, elle

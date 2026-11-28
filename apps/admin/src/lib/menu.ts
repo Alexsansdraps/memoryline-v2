@@ -124,6 +124,10 @@ export const MENU: GroupeNav[] = [
           // personnages. C'est pourtant lui qui rend utilisable une pièce
           // fraîchement créée, décochée partout par défaut.
           { href: "/personnages/correspondances", label: "Pièces par personnage", icon: "🧩", owner: true },
+          // La palette des motifs (28/11) : les motifs de l'affiche du stand
+          // sont des personnages d'un jeu « Motifs… », c'est ici qu'on les
+          // cherche.
+          { href: "/motifs-couleurs", label: "Couleurs des motifs", icon: "🖍️", owner: true },
         ],
       },
       {

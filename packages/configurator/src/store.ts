@@ -16,6 +16,7 @@ import type {
 } from "@memoryline/types";
 import {
   ORDRE_CALQUES,
+  BASE_COLOR_SCOPE,
   colorKey,
   couleursDuGroupePourScope,
   dessinAvecImage,
@@ -36,12 +37,26 @@ import {
   compositionDeLaVue,
   hauteurDuDessin,
   NUANCIERS_PAR_DEFAUT,
+  POSTER_VIEW_DEFAUT,
   type NuancierBase,
 } from "@memoryline/types";
+import {
+  basDuTexteEnBas,
+  placementDuMotif,
+  placesTexteEnBas,
+} from "./mise-en-page-motif";
 
 /** Étapes du flow configurateur (§18.2 F). */
 export const STEPS = ["background", "characters", "format"] as const;
-export type Step = (typeof STEPS)[number];
+/**
+ * Les étapes d'une affiche À MOTIF (28/11, Alexandra : « Faut faire un 2.
+ * texte ») : « 1. Motif et fond », « 2. Texte », « 3. Personnages »,
+ * « 4. Format ». Le texte, sa place, ses polices, ses tailles et sa couleur
+ * quittent l'étape du fond pour la leur. Toutes les autres affiches gardent
+ * les trois étapes de STEPS.
+ */
+export const ETAPES_AFFICHE_A_MOTIF = ["background", "texte", "characters", "format"] as const;
+export type Step = (typeof STEPS)[number] | (typeof ETAPES_AFFICHE_A_MOTIF)[number];
 
 /* -------------------------------------------------------------------------- */
 /*  Nouveau contrat API (GET /characters)                                      */
@@ -131,6 +146,11 @@ export interface CharacterDTO {
   slug: string;
   name: string;
   category: string | null;
+  /**
+   * L'identifiant de sa catégorie (BO › Personnages) : range sans confondre
+   * deux catégories qui porteraient le même nom. Absent d'une API ancienne.
+   */
+  categoryId?: number | null;
   position: number;
   archived: boolean;
   /**
@@ -324,6 +344,20 @@ export interface ConfiguratorState {
   characters: WorkingCharacter[];
   /** index du personnage en cours d'édition, sinon null. */
   editingIndex: number | null;
+  /**
+   * Le motif choisi par le client, sur une affiche à motifs (28/11, stand de
+   * Mulhouse) : un « personnage » du jeu de motifs du produit, hors de la
+   * liste des personnages. Il part dans la configuration EN TÊTE de
+   * `characters` (position 0), avec la place que lui donne la mise en page
+   * (mise-en-page-motif.ts). Null partout ailleurs.
+   */
+  motif: WorkingCharacter | null;
+  /**
+   * Le texte en bas de l'affiche plutôt qu'en haut (affiche à motifs, 28/11) :
+   * chaque ligne part alors avec sa place (x/y), et les personnages remontent
+   * au-dessus d'elle. Faux partout ailleurs : le texte s'empile en haut.
+   */
+  texteEnBas: boolean;
 }
 
 const DEFAULT_TEXT_COLOR = COULEUR_TEXTE_DEFAUT; // blanc (charte affiches)
@@ -337,6 +371,14 @@ export interface LigneTexte {
   font: string;
   /** 27/11 : petit / moyen / grand, propre à la ligne ; absent = moyen. */
   taille?: "s" | "m" | "l";
+  /**
+   * La place ENREGISTRÉE de la ligne (son centre, en fractions de l'affiche),
+   * relue d'une configuration — une ligne posée en bas sur une affiche à
+   * motifs (28/11). Seul l'aperçu la lit (panier, commande) ; le module, lui,
+   * recalcule les places à chaque changement.
+   */
+  x?: number;
+  y?: number;
 }
 
 /**
@@ -378,11 +420,27 @@ function emptyState(): ConfiguratorState {
     },
     characters: [],
     editingIndex: null,
+    motif: null,
+    texteEnBas: false,
   };
 }
 
-/** Construit l'état de travail depuis un PosterConfig (réouverture panier §18.3). */
-export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
+/**
+ * Construit l'état de travail depuis un PosterConfig (réouverture panier §18.3).
+ *
+ * `estMotif` (affiche à motifs, 28/11) : dit si un personnage de la
+ * configuration est un MOTIF. Le premier qui l'est devient `motif` et sort de
+ * la liste des personnages. Absent (panier, commande, toutes les autres
+ * affiches) : la configuration se relit comme avant, le motif reste dans
+ * `characters` et se dessine à sa place enregistrée. `texteEnBas` n'est
+ * JAMAIS déduit ici : c'est le module qui le fait, pour un produit à motifs
+ * seulement (une affiche IA à lignes posées rouvrirait sinon ses
+ * personnages décalés).
+ */
+export function stateFromConfig(
+  cfg: PosterConfig,
+  estMotif?: (typeId: string | number) => boolean,
+): ConfiguratorState {
   const base = emptyState();
   base.backgroundId = cfg.backgroundId;
   base.backgroundUrl = cfg.backgroundUrl;
@@ -391,10 +449,14 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
   base.view = cfg.view ?? "front";
   // Une commande d'avant les trois lignes porte un titre et un sous-titre :
   // lignesDuTexte() les rend ici en lignes 1 et 2, sans qu'on ait à le savoir.
+  // Une ligne posée garde sa place (x/y) : l'aperçu du panier la dessine là.
   base.lignes = lignesDuTexte(cfg.texts).map((bloc, i) => ({
     value: bloc?.value ?? "",
     font: bloc?.font ?? policeDefautLigne(i),
     ...(bloc?.taille && bloc.taille !== "m" ? { taille: bloc.taille } : {}),
+    ...(typeof bloc?.x === "number" && typeof bloc?.y === "number"
+      ? { x: bloc.x, y: bloc.y }
+      : {}),
   }));
   // Style partagé, lu sur la première ligne remplie. Une couleur libre choisie
   // avant le passage aux deux pastilles est CONSERVÉE telle quelle : la
@@ -405,7 +467,7 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
     color: src?.color ?? DEFAULT_TEXT_COLOR,
     size: src?.size ?? DEFAULT_TEXT_SIZE,
   };
-  base.characters = cfg.characters.map((c, i) => {
+  const tous: WorkingCharacter[] = cfg.characters.map((c, i) => {
     const assets: Partial<Record<Slot, string | number>> = {};
     for (const slot of SLOTS) {
       const v = c.assets[slot];
@@ -422,6 +484,11 @@ export function stateFromConfig(cfg: PosterConfig): ConfiguratorState {
       colors: { ...(c.colors ?? {}) },
     };
   });
+  // Affiche à motifs : le motif quitte la liste des personnages (il a son
+  // propre choix, à l'étape du fond), couleurs comprises.
+  const rangMotif = estMotif ? tous.findIndex((c) => estMotif(c.characterId)) : -1;
+  if (rangMotif >= 0) base.motif = tous.splice(rangMotif, 1)[0] ?? null;
+  base.characters = tous;
   return base;
 }
 
@@ -552,14 +619,76 @@ export function placementsAffiche(
   });
 }
 
+/** Les lignes réellement écrites, dans l'ordre (celles que l'on dessine et enregistre). */
+function lignesRemplies(lignes: readonly LigneTexte[] | undefined): LigneTexte[] {
+  return (lignes ?? []).filter((l) => l.value.trim() !== "");
+}
+
+/**
+ * Le haut du DESSIN de chaque personnage, en fraction de la hauteur de
+ * l'affiche, aux places `places` (celles de placementsAffiche) : le haut de
+ * son cadre, descendu comme à l'affichage (bottomPct), plus le vide au-dessus
+ * du dessin (emprise). C'est la ligne que ni le motif ni le texte d'une
+ * affiche à motifs ne doivent franchir (28/11).
+ */
+export function hautsDesPersonnages(
+  characters: readonly WorkingCharacter[],
+  personnage: (id: string | number) => CharacterDTO | undefined,
+  places: readonly PlacementPersonnage[],
+): number[] {
+  return places.map((p, i) => {
+    const c = characters[i];
+    const base = c ? personnage(c.characterId) : undefined;
+    const h = hauteurCadre(p.scale);
+    return p.y - h / 2 + (1 - (base?.bottomPct ?? 1)) * h + (base?.emprise?.haut ?? 0) * h;
+  });
+}
+
+/**
+ * La mise en page d'une affiche à motifs (28/11), voir mise-en-page-motif.ts :
+ *   - `motif` : sa place (centre et échelle, lus comme ceux d'un personnage),
+ *     ou null sans motif ;
+ *   - `basDuTexte` : où s'arrête le texte quand il est EN BAS — au-dessus des
+ *     têtes des personnages assis sur le muret, ou au bas de l'affiche sans
+ *     personne.
+ * `places` : celles de placementsAffiche ; `proportion` : hauteur ÷ largeur
+ * du dessin du motif (1 tant qu'il n'est pas arrivé). L'aperçu du module et
+ * la configuration enregistrée lisent ces mêmes nombres.
+ */
+export function miseEnPageDuMotif(
+  state: Pick<ConfiguratorState, "motif" | "characters" | "lignes" | "texteEnBas">,
+  personnage: (id: string | number) => CharacterDTO | undefined,
+  places: readonly PlacementPersonnage[],
+  proportion: number,
+): { motif: { x: number; y: number; scale: number } | null; basDuTexte: number } {
+  const hauts = hautsDesPersonnages(state.characters, personnage, places);
+  return {
+    motif: state.motif
+      ? placementDuMotif({
+          lignes: lignesRemplies(state.lignes),
+          enBas: state.texteEnBas,
+          hautsPersonnages: hauts,
+          proportion,
+          facteur: personnage(state.motif.characterId)?.facteurTaille,
+        })
+      : null,
+    basDuTexte: basDuTexteEnBas(hauts),
+  };
+}
+
 /** Sérialise l'état de travail vers un PosterConfig propre (schemaVersion 1). */
 export function configFromState(
   state: ConfiguratorState,
   productId: string | number | undefined,
   personnage: (id: string | number) => CharacterDTO | undefined,
   etalon?: number | null,
+  /** Affiche à motifs : hauteur ÷ largeur du dessin du motif (1 à défaut). */
+  proportionMotif = 1,
 ): PosterConfig {
   const placement = placementsAffiche(state, personnage, etalon);
+  const miseEnPage = miseEnPageDuMotif(state, personnage, placement, proportionMotif);
+  // Le motif passe sous tous les personnages : il est dessiné le premier.
+  const decalagePlan = state.motif ? 1 : 0;
   const characters: Character[] = state.characters.map((c, i) => {
     const p = placement[i] ?? { x: c.x, y: c.y, scale: c.scale, plan: c.position };
     // assets : slot -> variantId, sans les slots vides.
@@ -572,8 +701,9 @@ export function configFromState(
       typeId: c.characterId,
       // L'ordre de DESSIN, et non le rang dans la liste : de face, les petits
       // passent devant les grands quel que soit leur rang. Le fichier
-      // d'impression empile dans cet ordre ; le panier aussi.
-      position: p.plan,
+      // d'impression empile dans cet ordre ; le panier aussi. Derrière le
+      // motif, s'il y en a un (il prend le rang 0).
+      position: p.plan + decalagePlan,
       x: p.x,
       y: p.y,
       scale: p.scale,
@@ -585,15 +715,40 @@ export function configFromState(
     if (c.placementManuel) perso.placementManuel = true;
     return perso;
   });
+  // Le motif (affiche à motifs, 28/11) part EN TÊTE, comme un personnage sans
+  // pièce : le panier, la caisse et le fichier d'impression le dessinent ainsi,
+  // à la place que la mise en page lui a donnée.
+  const motif = miseEnPage.motif;
+  if (state.motif && motif)
+    characters.unshift({
+      typeId: state.motif.characterId,
+      position: 0,
+      x: motif.x,
+      y: motif.y,
+      scale: motif.scale,
+      assets: {},
+      colors: { ...state.motif.colors },
+    });
+  // Une affiche à motifs SANS personnage n'a pas de muret, comme toute
+  // affiche de dos sans personne à y asseoir (28/11). Le panier et le fichier
+  // d'impression posent le décor dès que la configuration porte un
+  // « personnage » — et le motif en est un pour eux — et, sans décor écrit,
+  // retombent sur le muret pour une vue de dos (pdf.ts, CartIsland) : la
+  // configuration dit donc « pas de décor » (chaîne vide, que la fiche ne
+  // remplace pas, ConfiguratorIsland) et une vue sans muret. La vue n'y sert
+  // plus à rien d'autre : sans personnage, aucune pièce à choisir, et le
+  // module rouvert reprend la vue de la fiche.
+  const sansDecor = !!state.motif && state.characters.length === 0;
   return {
     schemaVersion: 1,
     productId,
     backgroundId: state.backgroundId,
     backgroundUrl: state.backgroundUrl,
+    ...(sansDecor ? { foregroundUrl: "" } : {}),
     format: state.format,
-    view: state.view,
+    view: sansDecor ? POSTER_VIEW_DEFAUT : state.view,
     frameId: state.frameId,
-    texts: { lines: lignesEnregistrees(state) },
+    texts: { lines: lignesEnregistrees(state, miseEnPage.basDuTexte) },
     characters,
   };
 }
@@ -607,18 +762,24 @@ export function configFromState(
  * remplies. La POLICE reste propre à chaque ligne ; couleur et taille sont
  * communes (charte : un seul coloris de texte sur l'affiche).
  */
-function lignesEnregistrees(state: ConfiguratorState): TextBlock[] {
-  const remplies = state.lignes
-    .filter((l) => l.value.trim() !== "")
-    .map((l) => ({
-      value: l.value,
-      font: l.font,
-      color: state.textStyle.color,
-      size: state.textStyle.size,
-      // 27/11 : la taille de la ligne n'est écrite que si elle n'est pas
-      // « moyen » — une ligne d'avant garde ainsi la même empreinte.
-      ...(l.taille && l.taille !== "m" ? { taille: l.taille } : {}),
-    }));
+function lignesEnregistrees(state: ConfiguratorState, basDuTexte: number): TextBlock[] {
+  const ecrites = lignesRemplies(state.lignes);
+  // Texte en bas (affiche à motifs, 28/11) : chaque ligne part avec sa place,
+  // que pdf.ts sait déjà poser — le bloc s'arrête au-dessus des têtes des
+  // personnages (`basDuTexte`, miseEnPageDuMotif). En haut, jamais de place :
+  // l'empilement d'aujourd'hui, et la même empreinte pour toutes les
+  // affiches d'avant.
+  const places = state.texteEnBas ? placesTexteEnBas(ecrites, basDuTexte) : [];
+  const remplies = ecrites.map((l, rang) => ({
+    value: l.value,
+    font: l.font,
+    color: state.textStyle.color,
+    size: state.textStyle.size,
+    // 27/11 : la taille de la ligne n'est écrite que si elle n'est pas
+    // « moyen » — une ligne d'avant garde ainsi la même empreinte.
+    ...(l.taille && l.taille !== "m" ? { taille: l.taille } : {}),
+    ...(places[rang] ? { x: places[rang]!.x, y: places[rang]!.y } : {}),
+  }));
   // Passage par textesDepuisLignes() : c'est lui qui dit la forme enregistrée,
   // et il borne au passage le nombre de lignes.
   return (textesDepuisLignes(remplies).lines ?? []).filter(
@@ -688,6 +849,99 @@ export function defaultCharacter(
     assets,
     colors,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Couleur d'un motif (affiche à motifs, 28/11)                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Le trait sombre des motifs, tel que dessiné (.st0 des motif-*.svg) : la
+ * couleur d'origine de leur silhouette, et celle que prennent leurs détails
+ * sur une couleur claire. Le serveur connaît la même valeur
+ * (apps/api/src/motifs-couleurs.ts).
+ */
+export const TRAIT_DES_MOTIFS = "#2B2B2B";
+
+/** « #abc » ou « #aabbcc » → « #AABBCC » ; null si ce n'est pas une couleur. */
+function hexa6(hex: string): string | null {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const h = m[1]!.length === 3 ? m[1]!.replace(/./g, (c) => c + c) : m[1]!;
+  return `#${h.toUpperCase()}`;
+}
+
+/** Une couleur très claire (les intérieurs crème #FFF8EC des motifs, un blanc). */
+function tresClaire(hex: string): boolean {
+  const h = hexa6(hex);
+  return !!h && [1, 3, 5].every((i) => parseInt(h.slice(i, i + 2), 16) >= 0xe6);
+}
+
+/** Luminance relative d'une couleur (WCAG 2), de 0 (noir) à 1 (blanc). */
+function luminance(hex: string): number {
+  const h = hexa6(hex) ?? TRAIT_DES_MOTIFS;
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** Contraste (WCAG 2) entre deux couleurs, de 1 à 21. */
+function contraste(a: string, b: string): number {
+  const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m) as [number, number];
+  return (x + 0.05) / (y + 0.05);
+}
+
+/**
+ * Les couleurs d'un motif peint dans `couleur` (une couleur de la palette du
+ * back-office, réglage « motifs.couleurs » — 28/11, Alexandra : « faut qu'on
+ * puisse mettre des couleurs pour les images dans le BO »), sous le scope de
+ * sa base :
+ *   - la silhouette (.st0) prend la couleur ;
+ *   - les intérieurs crème restent crème tant qu'ils se lisent mieux sur elle
+ *     que le trait sombre d'origine ; sur une couleur claire (crème, or, bleu
+ *     ciel…), ils passent au trait sombre — crème sur crème, le dessin
+ *     disparaîtrait ;
+ *   - les autres zones (les façades colorées des maisons) gardent leurs
+ *     couleurs.
+ * Sans couleur : {} — les couleurs du dessin.
+ *
+ * Écrites dans la configuration, ces couleurs sont celles que l'aperçu
+ * montre, que le panier redessine et que le fichier d'impression relit
+ * (recolorSvg) : rien n'est recalculé ailleurs.
+ */
+export function couleursDuMotif(
+  base: Pick<CharacterDTO, "baseColorZones">,
+  couleur: string | null | undefined,
+): Record<string, string> {
+  const c = couleur ? hexa6(couleur) : null;
+  if (!c) return {};
+  const out: Record<string, string> = { [colorKey(BASE_COLOR_SCOPE, "st0")]: c };
+  for (const [zone, hex] of Object.entries(base.baseColorZones ?? {})) {
+    if (zone === "st0" || !tresClaire(hex)) continue;
+    const details = contraste(c, hex) >= contraste(c, TRAIT_DES_MOTIFS) ? hex : TRAIT_DES_MOTIFS;
+    // Le crème qui reste crème n'est pas écrit : c'est déjà celui du dessin.
+    if (hexa6(details) !== hexa6(hex)) out[colorKey(BASE_COLOR_SCOPE, zone)] = details;
+  }
+  return out;
+}
+
+/**
+ * La couleur d'un motif, relue dans ses couleurs (un panier rouvert) : celle
+ * de sa silhouette, en « #RRGGBB », ou celle de son dessin quand rien n'est
+ * écrit. Une ancienne ligne « en blanc » (avant la palette) rend « #FFFFFF ».
+ */
+export function couleurDuMotif(
+  colors: Record<string, string> | undefined,
+  base?: Pick<CharacterDTO, "baseColorZones">,
+): string {
+  const ecrite = colors?.[colorKey(BASE_COLOR_SCOPE, "st0")];
+  return (
+    (ecrite ? hexa6(ecrite) : null) ??
+    hexa6(base?.baseColorZones?.st0 ?? "") ??
+    TRAIT_DES_MOTIFS
+  );
 }
 
 /* -------------------------------------------------------------------------- */

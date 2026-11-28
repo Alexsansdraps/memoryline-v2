@@ -841,6 +841,20 @@
       "when": 1795300000000,
       "tag": "0120_ciel_theme_noel",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1795310000000,
+      "tag": "0121_affiche_stand_mulhouse",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1795320000000,
+      "tag": "0122_affiche_stand_mulhouse_reglages",
+      "breakpoints": true
     }
   ]
 }

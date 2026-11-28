@@ -138,6 +138,8 @@ import { mountContact } from "./contact.js";
 import { mountPlanDuSite } from "./plan-du-site.js";
 import { dimensionsDuVisuel } from "./dimensions-visuels.js";
 import { maillageDeLaFiche } from "./maillage.js";
+import { enVente, standDuProduitEnService } from "./affiches-de-stand.js";
+import { couleursPubliques, lireCouleursMotifs } from "./motifs-couleurs.js";
 import {
   genreDuRayon,
   languesDeLaCollection,
@@ -784,7 +786,8 @@ export { villeDuNom };
  */
 app.get("/villes", async (c) => {
   const genre = (c.req.query("genre") ?? "").trim();
-  const filtres = [eq(schema.products.status, "active")];
+  // En vente : « active », et son stand en service s'il en a un (affiches-de-stand.ts).
+  const filtres = [enVente()];
   if (genre === "personnalisable" || genre === "prete_a_imprimer")
     filtres.push(eq(schema.products.kind, genre));
   const collection = (c.req.query("collection") ?? "").trim();
@@ -834,7 +837,10 @@ app.get("/products", async (c) => {
   const offset = Math.max(Math.trunc(Number(c.req.query("offset") ?? 0)) || 0, 0);
   const langue = langueDemandee(c);
 
-  const filtres = [eq(schema.products.status, "active")];
+  // En vente : « active », et son stand en service s'il en a un — une affiche
+  // de stand sort d'elle-même du catalogue, des rayons et de la recherche
+  // quand son stand est désactivé, archivé ou terminé (affiches-de-stand.ts).
+  const filtres = [enVente()];
   const genre = (c.req.query("genre") ?? "").trim();
   if (genre === "personnalisable" || genre === "prete_a_imprimer")
     filtres.push(eq(schema.products.kind, genre));
@@ -867,7 +873,7 @@ app.get("/products", async (c) => {
     const candidats = await db
       .select({ id: schema.products.id, name: schema.products.name })
       .from(schema.products)
-      .where(eq(schema.products.status, "active"));
+      .where(enVente());
     const cherchee = aplatir(ville);
     const ids = candidats
       .filter((p) => aplatir(villeDuNom(p.name)) === cherchee)
@@ -1020,7 +1026,9 @@ app.get("/collections", async (c) => {
       schema.products,
       and(
         eq(schema.products.id, schema.productCollections.productId),
-        eq(schema.products.status, "active"),
+        // En vente (stand en service compris) : un rayon que le stand a vidé
+        // sort du menu, comme un rayon sans affiche.
+        enVente(),
       ),
     )
     .where(
@@ -1075,6 +1083,10 @@ app.get("/products/:slug", async (c) => {
   // Les listes, elles, ne retiennent que « active ».
   if (!brut || (brut.status !== "active" && brut.status !== "masque"))
     return brut?.status === "archived" ? c.json({ error: "archivee" }, 410) : c.notFound();
+  // Une affiche de stand (28/11) dont le stand est désactivé, archivé, supprimé
+  // ou terminé n'existe plus pour le site : 404, comme une adresse inconnue.
+  // Un stand fermé pour la nuit ne change rien (affiches-de-stand.ts).
+  if (brut.standId != null && !(await standDuProduitEnService(brut.id))) return c.notFound();
   const langue = langueDemandee(c);
   const product = traduire(brut, langue);
   /*
@@ -1191,6 +1203,20 @@ app.get("/products/:slug", async (c) => {
     // Résolu ici, une fois : le site, le panier et le PDF n'ont plus à
     // connaître la règle.
     foregroundUrl: product.foregroundUrl ?? vue?.foregroundUrl ?? null,
+    /**
+     * Le jeu de motifs que la fiche propose (28/11, affiche du stand de
+     * Mulhouse) : le slug d'un type d'affiche dont les personnages sont les
+     * motifs. Null : affiche classique. Champ AJOUTÉ, rien d'autre ne change.
+     */
+    vueMotifs: product.vueMotifs ?? null,
+    /**
+     * La palette des couleurs du motif (28/11, réglage « motifs.couleurs »,
+     * motifs-couleurs.ts) : les couleurs activées, le nom dans la langue
+     * demandée. Seulement sur une affiche à motifs ; null ailleurs.
+     */
+    couleursMotif: product.vueMotifs
+      ? couleursPubliques(await lireCouleursMotifs(), langue)
+      : null,
     variants: variants.map((v) => ({
       format: v.format,
       priceCents: v.priceCents,

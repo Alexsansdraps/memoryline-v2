@@ -1,0 +1,127 @@
+[
+  {
+    "id": "mulhouse",
+    "noms": {
+      "fr": "Mulhouse",
+      "en": "Mulhouse",
+      "de": "Mulhouse",
+      "it": "Mulhouse",
+      "es": "Mulhouse",
+      "ja": "Mulhouse",
+      "zh": "Mulhouse"
+    },
+    "motifs": [
+      "hotel-de-ville",
+      "temple-saint-etienne",
+      "tour-de-l-europe",
+      "tour-bollwerk",
+      "tour-ronde",
+      "klapperstein",
+      "chapelle",
+      "maisons-ouvrieres"
+    ]
+  },
+  {
+    "id": "textile-musees",
+    "noms": {
+      "fr": "Textile et musées",
+      "en": "Textiles & Museums",
+      "de": "Textil & Museen",
+      "it": "Tessile e musei",
+      "es": "Textil y museos",
+      "ja": "織物と博物館",
+      "zh": "纺织与博物馆"
+    },
+    "motifs": [
+      "usine-textile",
+      "metier-a-tisser",
+      "tampon-textile",
+      "bobine-et-tissu",
+      "tissu-fleuri",
+      "locomotive",
+      "voiture-ancienne"
+    ]
+  },
+  {
+    "id": "strasbourg-colmar",
+    "noms": {
+      "fr": "Strasbourg et Colmar",
+      "en": "Strasbourg & Colmar",
+      "de": "Straßburg & Colmar",
+      "it": "Strasburgo e Colmar",
+      "es": "Estrasburgo y Colmar",
+      "ja": "ストラスブールとコルマール",
+      "zh": "斯特拉斯堡与科尔马"
+    },
+    "motifs": []
+  },
+  {
+    "id": "maisons-alsace",
+    "noms": {
+      "fr": "Maisons d'Alsace",
+      "en": "Alsatian Houses",
+      "de": "Elsässer Häuser",
+      "it": "Case d'Alsazia",
+      "es": "Casas de Alsacia",
+      "ja": "アルザスの家",
+      "zh": "阿尔萨斯民居"
+    },
+    "motifs": [
+      "maisons-alsaciennes"
+    ]
+  },
+  {
+    "id": "noel",
+    "noms": {
+      "fr": "Noël",
+      "en": "Christmas",
+      "de": "Weihnachten",
+      "it": "Natale",
+      "es": "Navidad",
+      "ja": "クリスマス",
+      "zh": "圣诞"
+    },
+    "motifs": [
+      "chalet-de-noel",
+      "sapin",
+      "etoile",
+      "lanterne",
+      "couronne-avent",
+      "poinsettia"
+    ]
+  },
+  {
+    "id": "gourmandises",
+    "noms": {
+      "fr": "Gourmandises",
+      "en": "Treats",
+      "de": "Leckereien",
+      "it": "Golosità",
+      "es": "Dulces",
+      "ja": "お菓子",
+      "zh": "美食"
+    },
+    "motifs": [
+      "bonhomme-pain-epice",
+      "coeur-pain-epice",
+      "kougelhopf",
+      "bretzel"
+    ]
+  },
+  {
+    "id": "alsace",
+    "noms": {
+      "fr": "Alsace",
+      "en": "Alsace",
+      "de": "Elsass",
+      "it": "Alsazia",
+      "es": "Alsacia",
+      "ja": "アルザス",
+      "zh": "阿尔萨斯"
+    },
+    "motifs": [
+      "cigogne",
+      "vignoble"
+    ]
+  }
+]

@@ -1,0 +1,484 @@
+[
+  {
+    "id": "cathedrale-strasbourg",
+    "fichier": "motif-cathedrale-strasbourg.svg",
+    "categorie": "strasbourg-colmar",
+    "nom": "Cathédrale de Strasbourg",
+    "noms": {
+      "fr": "Cathédrale de Strasbourg",
+      "en": "Strasbourg Cathedral",
+      "de": "Straßburger Münster",
+      "it": "Cattedrale di Strasburgo",
+      "es": "Catedral de Estrasburgo",
+      "ja": "ストラスブール大聖堂",
+      "zh": "斯特拉斯堡大教堂"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 3 r1c1"
+  },
+  {
+    "id": "petite-france",
+    "fichier": "motif-petite-france.svg",
+    "categorie": "strasbourg-colmar",
+    "nom": "La Petite France",
+    "noms": {
+      "fr": "La Petite France",
+      "en": "La Petite France",
+      "de": "La Petite France",
+      "it": "La Petite France",
+      "es": "La Petite France",
+      "ja": "プティット・フランス",
+      "zh": "小法兰西"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#E9C46A",
+      "st2": "#E8A598",
+      "st3": "#9CC3D5",
+      "st4": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "façade de la grande maison d'angle à gauche, jaune ocre",
+      "st2": "façade de la maison du milieu, rose saumon",
+      "st3": "façade de la petite maison de droite, derrière le pont, bleu ciel",
+      "st4": "blancs intérieurs (crème)"
+    },
+    "source": "planche 3 r1c2"
+  },
+  {
+    "id": "ponts-couverts",
+    "fichier": "motif-ponts-couverts.svg",
+    "categorie": "strasbourg-colmar",
+    "nom": "Les Ponts couverts",
+    "noms": {
+      "fr": "Les Ponts couverts",
+      "en": "Ponts Couverts",
+      "de": "Gedeckte Brücken",
+      "it": "Ponts Couverts",
+      "es": "Ponts Couverts",
+      "ja": "ポン・クヴェール",
+      "zh": "斯特拉斯堡廊桥"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 3 r1c3"
+  },
+  {
+    "id": "tram-strasbourg",
+    "fichier": "motif-tram-strasbourg.svg",
+    "categorie": "strasbourg-colmar",
+    "nom": "Tram de Strasbourg",
+    "noms": {
+      "fr": "Tram de Strasbourg",
+      "en": "Strasbourg Tram",
+      "de": "Straßburger Straßenbahn",
+      "it": "Tram di Strasburgo",
+      "es": "Tranvía de Estrasburgo",
+      "ja": "ストラスブールのトラム",
+      "zh": "斯特拉斯堡有轨电车"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 5 r4c1"
+  },
+  {
+    "id": "petite-venise",
+    "fichier": "motif-petite-venise.svg",
+    "categorie": "strasbourg-colmar",
+    "nom": "La Petite Venise",
+    "noms": {
+      "fr": "La Petite Venise",
+      "en": "Little Venice",
+      "de": "Klein-Venedig",
+      "it": "Piccola Venezia",
+      "es": "Pequeña Venecia",
+      "ja": "プティット・ヴニーズ",
+      "zh": "小威尼斯"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#E8A598",
+      "st2": "#9CC3D5",
+      "st3": "#E9C46A",
+      "st4": "#E8A598",
+      "st5": "#9CC3D5",
+      "st6": "#E9C46A",
+      "st7": "#E8A598",
+      "st8": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "façade de la maison du fond, à gauche, rose saumon",
+      "st2": "façade de la deuxième maison du fond, bleu ciel",
+      "st3": "façade de la troisième maison du fond, jaune ocre",
+      "st4": "façade de la quatrième maison du fond, rose saumon",
+      "st5": "façade de la longue maison au toit en croupe, bleu ciel",
+      "st6": "façade de la grande maison à pignon, jaune ocre",
+      "st7": "façade de la maison-tour à droite, rose saumon",
+      "st8": "blancs intérieurs (crème)"
+    },
+    "source": "planche 3 r4c3"
+  },
+  {
+    "id": "maison-tourelle",
+    "fichier": "motif-maison-tourelle.svg",
+    "categorie": "maisons-alsace",
+    "nom": "Maison à tourelle",
+    "noms": {
+      "fr": "Maison à tourelle",
+      "en": "House with a Turret",
+      "de": "Haus mit Türmchen",
+      "it": "Casa con torretta",
+      "es": "Casa con torreta",
+      "ja": "小塔のある家",
+      "zh": "带小塔楼的房子"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#E9C46A"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "façade de la maison, jaune ocre"
+    },
+    "source": "planche 3 r2c3"
+  },
+  {
+    "id": "maison-colombages",
+    "fichier": "motif-maison-colombages.svg",
+    "categorie": "maisons-alsace",
+    "nom": "Maison à colombages",
+    "noms": {
+      "fr": "Maison à colombages",
+      "en": "Half-Timbered House",
+      "de": "Fachwerkhaus",
+      "it": "Casa a graticcio",
+      "es": "Casa de entramado",
+      "ja": "木骨造りの家",
+      "zh": "半木结构房屋"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#E8A598"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "façade de la maison, rose saumon"
+    },
+    "source": "planche 4 r2c3"
+  },
+  {
+    "id": "maison-pignon-redents",
+    "fichier": "motif-maison-pignon-redents.svg",
+    "categorie": "maisons-alsace",
+    "nom": "Maison à pignon à redents",
+    "noms": {
+      "fr": "Maison à pignon à redents",
+      "en": "House with a Stepped Gable",
+      "de": "Haus mit Treppengiebel",
+      "it": "Casa con frontone a gradoni",
+      "es": "Casa con hastial escalonado",
+      "ja": "階段状の破風の家",
+      "zh": "阶梯山墙房屋"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#9CC3D5",
+      "st2": "#E9C46A"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "façade de la grande maison à pignon à redents, bleu ciel",
+      "st2": "façade de la petite maison à colombages accolée à droite, jaune ocre"
+    },
+    "source": "planche 3 r2c4"
+  },
+  {
+    "id": "couronne-bougies",
+    "fichier": "motif-couronne-bougies.svg",
+    "categorie": "noel",
+    "nom": "Couronne de l'Avent",
+    "noms": {
+      "fr": "Couronne de l'Avent",
+      "en": "Advent Wreath",
+      "de": "Adventskranz",
+      "it": "Corona dell'Avvento",
+      "es": "Corona de Adviento",
+      "ja": "アドベントリース",
+      "zh": "将临期花环"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 5 r4c4"
+  },
+  {
+    "id": "coeur-vichy",
+    "fichier": "motif-coeur-vichy.svg",
+    "categorie": "noel",
+    "nom": "Cœur vichy",
+    "noms": {
+      "fr": "Cœur vichy",
+      "en": "Gingham Heart",
+      "de": "Kariertes Herz",
+      "it": "Cuore a quadretti",
+      "es": "Corazón de cuadros",
+      "ja": "ギンガムチェックのハート",
+      "zh": "格纹爱心"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC",
+      "st2": "#95918B"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)",
+      "st2": "carreaux mi-teinte du vichy"
+    },
+    "source": "planche 4 r4c4"
+  },
+  {
+    "id": "maison-enneigee",
+    "fichier": "motif-maison-enneigee.svg",
+    "categorie": "noel",
+    "nom": "Maison enneigée",
+    "noms": {
+      "fr": "Maison enneigée",
+      "en": "Snowy House",
+      "de": "Verschneites Haus",
+      "it": "Casa innevata",
+      "es": "Casa nevada",
+      "ja": "雪の積もった家",
+      "zh": "雪中的房子"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#E8A598",
+      "st2": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "façade de la maison, rose saumon",
+      "st2": "blancs intérieurs (crème)"
+    },
+    "source": "planche 5 r2c1"
+  },
+  {
+    "id": "boule-de-noel",
+    "fichier": "motif-boule-de-noel.svg",
+    "categorie": "noel",
+    "nom": "Boule de Noël",
+    "noms": {
+      "fr": "Boule de Noël",
+      "en": "Christmas Bauble",
+      "de": "Weihnachtskugel",
+      "it": "Pallina di Natale",
+      "es": "Bola de Navidad",
+      "ja": "クリスマスボール",
+      "zh": "圣诞球"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 5 r2c4"
+  },
+  {
+    "id": "bougie-de-noel",
+    "fichier": "motif-bougie-de-noel.svg",
+    "categorie": "noel",
+    "nom": "Bougie de Noël",
+    "noms": {
+      "fr": "Bougie de Noël",
+      "en": "Christmas Candle",
+      "de": "Weihnachtskerze",
+      "it": "Candela di Natale",
+      "es": "Vela de Navidad",
+      "ja": "クリスマスキャンドル",
+      "zh": "圣诞蜡烛"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 5 r3c6"
+  },
+  {
+    "id": "bredele",
+    "fichier": "motif-bredele.svg",
+    "categorie": "gourmandises",
+    "nom": "Bredele",
+    "noms": {
+      "fr": "Bredele",
+      "en": "Bredele Cookies",
+      "de": "Bredele",
+      "it": "Biscotti bredele",
+      "es": "Galletas bredele",
+      "ja": "クリスマスクッキー",
+      "zh": "圣诞饼干"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 3 r3c3"
+  },
+  {
+    "id": "coeur-cigognes",
+    "fichier": "motif-coeur-cigognes.svg",
+    "categorie": "gourmandises",
+    "nom": "Cœur aux cigognes",
+    "noms": {
+      "fr": "Cœur aux cigognes",
+      "en": "Heart with Storks",
+      "de": "Herz mit Störchen",
+      "it": "Cuore con cicogne",
+      "es": "Corazón con cigüeñas",
+      "ja": "コウノトリのハート",
+      "zh": "白鹳爱心"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 5 r2c5"
+  },
+  {
+    "id": "vin-chaud",
+    "fichier": "motif-vin-chaud.svg",
+    "categorie": "gourmandises",
+    "nom": "Vin chaud",
+    "noms": {
+      "fr": "Vin chaud",
+      "en": "Mulled Wine",
+      "de": "Glühwein",
+      "it": "Vin brulé",
+      "es": "Vino caliente",
+      "ja": "ホットワイン",
+      "zh": "热红酒"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 5 r3c1"
+  },
+  {
+    "id": "cigogne-debout",
+    "fichier": "motif-cigogne-debout.svg",
+    "categorie": "alsace",
+    "nom": "Cigogne",
+    "noms": {
+      "fr": "Cigogne",
+      "en": "Stork",
+      "de": "Storch",
+      "it": "Cicogna",
+      "es": "Cigüeña",
+      "ja": "コウノトリ",
+      "zh": "白鹳"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 3 r3c1"
+  },
+  {
+    "id": "grappe-raisin",
+    "fichier": "motif-grappe-raisin.svg",
+    "categorie": "alsace",
+    "nom": "Grappe de raisin",
+    "noms": {
+      "fr": "Grappe de raisin",
+      "en": "Bunch of Grapes",
+      "de": "Weintraube",
+      "it": "Grappolo d'uva",
+      "es": "Racimo de uvas",
+      "ja": "ブドウの房",
+      "zh": "葡萄串"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 5 r2c6"
+  },
+  {
+    "id": "noeud-alsacien",
+    "fichier": "motif-noeud-alsacien.svg",
+    "categorie": "alsace",
+    "nom": "Nœud alsacien",
+    "noms": {
+      "fr": "Nœud alsacien",
+      "en": "Alsatian Bow",
+      "de": "Elsässer Schleife",
+      "it": "Fiocco alsaziano",
+      "es": "Lazo alsaciano",
+      "ja": "アルザスのリボン",
+      "zh": "阿尔萨斯蝴蝶结"
+    },
+    "zones": {
+      "st0": "#2B2B2B",
+      "st1": "#FFF8EC"
+    },
+    "zones_noms": {
+      "st0": "silhouette (trait sombre)",
+      "st1": "blancs intérieurs (crème)"
+    },
+    "source": "planche 5 r4c5"
+  }
+]

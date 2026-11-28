@@ -38,6 +38,13 @@ export interface ConfiguratorIslandProps {
   prices?: Partial<Record<string, number>>;
   /** Décor d'avant-plan du produit (muret/banc…), rendu au 1er plan. */
   foregroundUrl?: string | null;
+  /**
+   * Le jeu de motifs que la fiche propose (28/11, affiche du stand de
+   * Mulhouse) : transmis tel quel au configurateur. Null : affiche classique.
+   */
+  vueMotifs?: string | null;
+  /** La palette des couleurs du motif (28/11), transmise telle quelle. */
+  couleursMotif?: { id: string; nom: string; hex: string }[] | null;
   /** Réglages par défaut du produit (pré-remplissage), une entrée par ligne. */
   defaults?: {
     lignes?: (string | null)[];
@@ -138,8 +145,11 @@ export default function ConfiguratorIsland(
     setError(null);
     try {
       // Le décor d'avant-plan est un réglage produit : on l'injecte dans le
-      // snapshot pour que le PDF d'impression le rende aussi.
-      if (props.foregroundUrl) config = { ...config, foregroundUrl: props.foregroundUrl };
+      // snapshot pour que le PDF d'impression le rende aussi. Sauf quand le
+      // module l'a déjà écrit lui-même : une affiche à motifs sans personnage
+      // n'a pas de muret (28/11), et le dit par un décor vide (configFromState).
+      if (props.foregroundUrl && config.foregroundUrl === undefined)
+        config = { ...config, foregroundUrl: props.foregroundUrl };
       // Une ligne rouverte depuis le panier peut porter un cadre choisi avant
       // que le site ne les retire : la rubrique n'est plus là pour l'enlever,
       // on ne le renvoie pas.
@@ -275,6 +285,8 @@ export default function ConfiguratorIsland(
               sansPrixCadres={props.sansPrixCadres}
               apercuMur={props.apercuMur}
               foregroundUrl={props.foregroundUrl}
+              vueMotifs={props.vueMotifs ?? null}
+              couleursMotif={props.couleursMotif ?? null}
               defaults={props.defaults}
               initialConfig={props.initialConfig}
               assetBaseUrl={PUBLIC_API_URL}

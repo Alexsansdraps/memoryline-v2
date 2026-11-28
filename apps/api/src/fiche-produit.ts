@@ -316,6 +316,10 @@ export function mountFicheProduit(app: Hono): void {
           defaultLine3: source.defaultLine3,
           defaultView: source.defaultView,
           foregroundUrl: source.foregroundUrl,
+          // L'affiche éphémère d'un stand (28/11) se copie avec son jeu de
+          // motifs et son stand : la copie disparaît avec lui, comme l'original.
+          vueMotifs: source.vueMotifs,
+          standId: source.standId,
           translations: source.translations,
           vendor: source.vendor,
           productType: source.productType,

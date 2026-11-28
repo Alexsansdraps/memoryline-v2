@@ -1,0 +1,135 @@
+[
+ {
+  "id": "uni-rouge-noel",
+  "fichier": "fond-noel-uni-rouge-noel-v1.svg",
+  "nom": "Rouge Noël (uni)",
+  "genre": "uni",
+  "position": 0
+ },
+ {
+  "id": "uni-vert-sapin",
+  "fichier": "fond-noel-uni-vert-sapin-v1.svg",
+  "nom": "Vert sapin (uni)",
+  "genre": "uni",
+  "position": 1
+ },
+ {
+  "id": "uni-bleu-nuit",
+  "fichier": "fond-noel-uni-bleu-nuit-v1.svg",
+  "nom": "Bleu nuit (uni)",
+  "genre": "uni",
+  "position": 2
+ },
+ {
+  "id": "uni-bordeaux",
+  "fichier": "fond-noel-uni-bordeaux-v1.svg",
+  "nom": "Bordeaux (uni)",
+  "genre": "uni",
+  "position": 3
+ },
+ {
+  "id": "uni-creme",
+  "fichier": "fond-noel-uni-creme-v1.svg",
+  "nom": "Crème (uni)",
+  "genre": "uni",
+  "position": 4
+ },
+ {
+  "id": "uni-ocre",
+  "fichier": "fond-noel-uni-ocre-v1.svg",
+  "nom": "Ocre (uni)",
+  "genre": "uni",
+  "position": 5
+ },
+ {
+  "id": "uni-rose-saumon",
+  "fichier": "fond-noel-uni-rose-saumon-v1.svg",
+  "nom": "Rose saumon (uni)",
+  "genre": "uni",
+  "position": 6
+ },
+ {
+  "id": "uni-bleu-ciel",
+  "fichier": "fond-noel-uni-bleu-ciel-v1.svg",
+  "nom": "Bleu ciel (uni)",
+  "genre": "uni",
+  "position": 7
+ },
+ {
+  "id": "degrade-nuit-d-hiver",
+  "fichier": "fond-noel-degrade-nuit-d-hiver-v1.svg",
+  "nom": "Nuit d'hiver (dégradé)",
+  "genre": "degrade",
+  "position": 8
+ },
+ {
+  "id": "degrade-braise",
+  "fichier": "fond-noel-degrade-braise-v1.svg",
+  "nom": "Braise (dégradé)",
+  "genre": "degrade",
+  "position": 9
+ },
+ {
+  "id": "degrade-foret",
+  "fichier": "fond-noel-degrade-foret-v1.svg",
+  "nom": "Forêt (dégradé)",
+  "genre": "degrade",
+  "position": 10
+ },
+ {
+  "id": "degrade-crepuscule",
+  "fichier": "fond-noel-degrade-crepuscule-v1.svg",
+  "nom": "Crépuscule (dégradé)",
+  "genre": "degrade",
+  "position": 11
+ },
+ {
+  "id": "degrade-neige",
+  "fichier": "fond-noel-degrade-neige-v1.svg",
+  "nom": "Neige (dégradé)",
+  "genre": "degrade",
+  "position": 12
+ },
+ {
+  "id": "degrade-aube",
+  "fichier": "fond-noel-degrade-aube-v1.svg",
+  "nom": "Aube rosée (dégradé)",
+  "genre": "degrade",
+  "position": 13
+ },
+ {
+  "id": "repete-flocons",
+  "fichier": "fond-noel-repete-flocons-v1.svg",
+  "nom": "Flocons",
+  "genre": "motif",
+  "position": 14
+ },
+ {
+  "id": "repete-vichy-rouge",
+  "fichier": "fond-noel-repete-vichy-rouge-v1.svg",
+  "nom": "Vichy rouge",
+  "genre": "motif",
+  "position": 15
+ },
+ {
+  "id": "repete-etoiles",
+  "fichier": "fond-noel-repete-etoiles-v1.svg",
+  "nom": "Étoiles dorées",
+  "genre": "motif",
+  "position": 16
+ },
+ {
+  "id": "repete-coeurs",
+  "fichier": "fond-noel-repete-coeurs-v1.svg",
+  "nom": "Cœurs alsaciens",
+  "genre": "motif",
+  "position": 17
+ },
+ {
+  "id": "repete-pois-neige",
+  "fichier": "fond-noel-repete-pois-neige-v1.svg",
+  "nom": "Pois de neige",
+  "genre": "motif",
+  "position": 18
+ }
+]

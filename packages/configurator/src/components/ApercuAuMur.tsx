@@ -255,7 +255,11 @@ function AfficheALEchelle(props: { format: PosterFormat; affiche: () => JSX.Elem
           visibility: echelle() ? "visible" : "hidden",
         }}
       >
-        {props.affiche()}
+        {/* Posée une fois sa place mesurée (28/11) : l'aperçu mesure ses
+            lignes pour réduire celles qui dépassent, et doit les mesurer à
+            l'échelle où elles sont dessinées, pas à l'échelle nulle du
+            premier instant (cf. ReductionTexte). */}
+        <Show when={echelle() > 0}>{props.affiche()}</Show>
       </div>
       {/* Le reflet de la lumière sur le papier, par-dessus tout. */}
       <div

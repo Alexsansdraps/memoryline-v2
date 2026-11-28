@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Scripts de vérification de l affiche du stand de Mulhouse (lancés dans le conteneur memoryline-api) : modules ES, comme apps/api."
+}

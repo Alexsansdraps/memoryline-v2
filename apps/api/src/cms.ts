@@ -52,6 +52,7 @@ import { languesDeLaPage } from "./referencement.js";
 import { dimensionsDuVisuel } from "./dimensions-visuels.js";
 import { texteDansLaLangue, traductionDe } from "./traductions.js";
 import { villeDuNom } from "./ville-du-nom.js";
+import { enVente } from "./affiches-de-stand.js";
 import { numeroDuStand, RAYONS_FUSIONNES } from "@memoryline/types";
 
 /**
@@ -921,7 +922,8 @@ async function produitsDuneReference(
       translations: schema.products.translations,
     })
     .from(schema.products)
-    .where(and(eq(schema.products.status, "active"), filtre))
+    // En vente : « active », et son stand en service s'il en a un (affiches-de-stand.ts).
+    .where(and(enVente(), filtre))
     .orderBy(...ordre)
     .limit(limite);
 }
@@ -957,7 +959,9 @@ async function affichesChoisiesEnVente(references: readonly string[]): Promise<L
       translations: schema.products.translations,
     })
     .from(schema.products)
-    .where(and(eq(schema.products.status, "active"), inArray(schema.products.id, ids)));
+    // Une affiche de stand (28/11) quitte aussi la page du stand et la
+    // tablette quand son stand n'est plus en service (affiches-de-stand.ts).
+    .where(and(enVente(), inArray(schema.products.id, ids)));
   return dansLOrdreChoisi(lignes, references);
 }
 

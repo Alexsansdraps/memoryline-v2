@@ -11,14 +11,17 @@ import {
   type PlacementPersonnage,
   type SlotsDTO,
   type SvgCache,
+  type WorkingCharacter,
   variantesDeVue,
 } from "../store";
+import { placesTexteEnBas } from "../mise-en-page-motif";
 import {
   espaceAvantLigne,
   espacementDeLigne,
   familleCss,
   HAUT_DU_TEXTE,
   interligneDeLigne,
+  INTERLIGNE_LIGNE_POSEE,
   MARGE_DU_TEXTE,
   morceauxDeTexte,
   policeParId,
@@ -158,6 +161,25 @@ export function PosterPreview(props: {
    * garde le français.
    */
   messages?: Partial<MessagesConfigurateur>;
+  /**
+   * Le motif d'une affiche à motifs (28/11, stand de Mulhouse), dans le
+   * module : dessiné comme un personnage, à la place que la mise en page lui
+   * donne (mise-en-page-motif.ts), devant le décor et derrière les
+   * personnages. Au panier, il n'arrive pas par ici : c'est la première
+   * entrée de `characters`, à sa place enregistrée.
+   */
+  motif?: {
+    character: WorkingCharacter;
+    base: CharacterDTO | undefined;
+    place: { x: number; y: number; scale: number };
+  } | null;
+  /**
+   * Où s'arrête le texte posé EN BAS d'une affiche à motifs, dans le module
+   * (28/11) : au-dessus des têtes des personnages assis sur le muret
+   * (miseEnPageDuMotif). Absent : au bas de l'affiche. Le panier n'en a pas
+   * besoin : ses lignes portent leur place.
+   */
+  basDuTexteEnBas?: number;
 }) {
   const m = () => messagesAvecDefauts(props.messages);
 
@@ -218,14 +240,35 @@ export function PosterPreview(props: {
     });
   });
 
-  /** Le calque des lignes de texte, que mesure la réduction ci-dessous. */
+  /**
+   * Les lignes POSÉES (28/11, affiche à motifs) : une ligne qui porte sa place
+   * enregistrée (panier, commande) se dessine là ; dans le module, le texte
+   * mis en bas pose chaque ligne à la place que la mise en page lui donne
+   * (placesTexteEnBas, la même que celle qui part dans la configuration).
+   * Les autres s'empilent en haut, comme toujours : une affiche classique
+   * n'a jamais de ligne posée, et son aperçu ne change pas.
+   */
+  const placesEnBas = createMemo(() =>
+    props.state.texteEnBas ? placesTexteEnBas(lignesADessiner(), props.basDuTexteEnBas) : [],
+  );
+  const placeDeLigne = (ligne: LigneTexte, rang: number): { x: number; y: number } | null =>
+    typeof ligne.x === "number" && typeof ligne.y === "number"
+      ? { x: ligne.x, y: ligne.y }
+      : (placesEnBas()[rang] ?? null);
+
+  /** Les calques des lignes de texte (empilées, posées), que mesure la réduction ci-dessous. */
   let coucheTexte: HTMLDivElement | undefined;
+  let couchePosee: HTMLDivElement | undefined;
   /** Une ligne trop longue pour le bloc est réduite, comme à l'impression. */
   const reductionDeLigne = createReductionDesLignes(
-    () => [coucheTexte],
+    () => [coucheTexte, couchePosee],
     // La taille choisie compte (27/11) : passer en « grand » peut faire
-    // déborder une ligne qui tenait, il faut alors la remesurer.
-    () => lignesADessiner().map((l) => `${l.font}\u0000${l.value}\u0000${l.taille ?? "m"}`).join("\n"),
+    // déborder une ligne qui tenait, il faut alors la remesurer. Une ligne
+    // qui passe d'un calque à l'autre aussi (28/11).
+    () =>
+      lignesADessiner()
+        .map((l, rang) => `${l.font}\u0000${l.value}\u0000${l.taille ?? "m"}\u0000${placeDeLigne(l, rang) ? "posee" : ""}`)
+        .join("\n"),
   );
 
   /** La couleur du cadre, ou rien du tout s'il n'y en a pas. */
@@ -575,6 +618,40 @@ export function PosterPreview(props: {
         </div>
       </Show>
 
+      {/* Le motif d'une affiche à motifs (28/11), dans le module : la même
+          boîte qu'un personnage (cadre 1:2, largeur 0,22 × échelle), centrée
+          sur sa place, comme le fichier d'impression la pose. Devant le décor
+          (z 5), derrière les personnages (z 10 et plus). */}
+      <Show when={props.motif}>
+        {(motif) => {
+          const largeurPct = () => CHAR_BASE_WIDTH * motif().place.scale * 100;
+          const descentePct = () => (1 - (motif().base?.bottomPct ?? 1)) * largeurPct() * Math.SQRT2;
+          return (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: `${motif().place.x * 100}%`,
+                top: `${motif().place.y * 100 + descentePct()}%`,
+                width: `${largeurPct()}%`,
+                transform: "translate(-50%, -50%)",
+                "aspect-ratio": "1 / 2",
+                "z-index": "9",
+                "pointer-events": "none",
+              }}
+            >
+              <CharacterStack
+                character={motif().character}
+                base={motif().base}
+                slots={variantesDeVue(props.slots, motif().base?.orientation)}
+                cache={props.cache}
+                assetBaseUrl={props.assetBaseUrl}
+              />
+            </div>
+          );
+        }}
+      </Show>
+
       {/* Couche personnages — composition automatique, ou places enregistrées */}
       <For each={props.state.characters}>
         {(c, i) => {
@@ -704,7 +781,10 @@ export function PosterPreview(props: {
           <For each={lignesADessiner()}>
             {(ligne, rang) => {
               const police = () => policeParId(ligne.font, policeDefautLigne(rang()));
+              // Une ligne posée (28/11) sort de l'empilement, qui continue
+              // sans elle ; son rang reste le sien, comme dans pdf.ts.
               return (
+                <Show when={!placeDeLigne(ligne, rang())}>
                 <div
                   data-rang-texte={rang()}
                   style={{
@@ -746,12 +826,77 @@ export function PosterPreview(props: {
                     )}
                   </For>
                 </div>
+                </Show>
               );
             }}
           </For>
         </div>
 
-        {/* La police de l'affiche arrive : une roue à la place du texte. */}
+        {/* Les lignes POSÉES (28/11, texte en bas d'une affiche à motifs) :
+            chacune centrée sur sa place (x/y), comme le fichier d'impression
+            la pose (pdf.ts, buildTextSvg) — même largeur de bloc, même unité
+            de taille que l'empilement, interligne d'une ligne posée. Calque
+            vide sur toutes les autres affiches. Calqué sur AfficheIA. */}
+        <div
+          ref={couchePosee}
+          style={{
+            position: "absolute",
+            inset: "0",
+            "pointer-events": "none",
+            padding: `0 ${MARGE_DU_TEXTE * 100}%`,
+            "container-type": "inline-size",
+            "z-index": "200",
+            visibility: policesPretes() ? "visible" : "hidden",
+          }}
+        >
+          <For each={lignesADessiner()}>
+            {(ligne, rang) => {
+              const police = () => policeParId(ligne.font, policeDefautLigne(rang()));
+              return (
+                <Show when={placeDeLigne(ligne, rang())}>
+                  {(place) => (
+                    <div
+                      data-rang-texte={rang()}
+                      style={{
+                        position: "absolute",
+                        left: `${place().x * 100}%`,
+                        top: `${place().y * 100}%`,
+                        transform: "translate(-50%, -50%)",
+                        // Les morceaux d'une ligne coupée à la main, centrés
+                        // l'un sous l'autre, comme à l'impression.
+                        "text-align": "center",
+                        "white-space": "nowrap",
+                        "font-family": familleCss(police()),
+                        color: props.state.textStyle.color,
+                        "font-size": `${tailleDeLigneCqw(rang()) * reductionDeLigne(rang()) * facteurTailleLigne(ligne.taille)}cqw`,
+                        "line-height": String(INTERLIGNE_LIGNE_POSEE),
+                        "letter-spacing": `${espacementDeLigne(rang())}em`,
+                        opacity: texteVide() ? "0.5" : "1",
+                      }}
+                    >
+                      <For each={sousLignes(ligne.value)}>
+                        {(sousLigne) => (
+                          <div data-sous-ligne>
+                            <For each={morceauxDeTexte(sousLigne, police())}>
+                              {(morceau) => (
+                                <span style={{ "font-family": familleCss(morceau.police) }}>
+                                  {morceau.texte}
+                                </span>
+                              )}
+                            </For>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  )}
+                </Show>
+              );
+            }}
+          </For>
+        </div>
+
+        {/* La police de l'affiche arrive : une roue à la place du texte —
+            en bas quand le texte y est posé (28/11). */}
         <Show when={!policesPretes()}>
           <div
             role="status"
@@ -760,10 +905,10 @@ export function PosterPreview(props: {
               position: "absolute",
               left: "0",
               right: "0",
-              top: `${HAUT_DU_TEXTE * 100}%`,
+              top: `${(lignesADessiner().map((l, rang) => placeDeLigne(l, rang)).find(Boolean)?.y ?? HAUT_DU_TEXTE) * 100}%`,
               display: "flex",
               "justify-content": "center",
-              "padding-top": "4%",
+              "padding-top": lignesADessiner().some((l, rang) => placeDeLigne(l, rang)) ? "0" : "4%",
               "pointer-events": "none",
               "z-index": "201",
             }}
