@@ -184,11 +184,13 @@ const PIECES: Piece[] = [
         <For each={[126, 130, 134]}>
           {(y) => <line x1="45.5" x2="72.5" y1={y} y2={y} stroke="#8d7150" stroke-opacity="0.5" stroke-width="0.4" />}
         </For>
-        {/* Coupe et plante */}
+        {/* Coupe et plante. La plante est 8 cm plus à gauche (28/11, Alexandra :
+            « attention ça mord sur la plante ») : sa feuille la plus à droite
+            s'arrête à x = 54,2 cm, l'A3 encadrée commence à 57,15 cm. */}
         <path d="M86 80 Q94 74 102 80 Z" fill="#e9e1d4" />
-        <rect x="46" y="68" width="10" height="12" rx="1.5" fill="#f1ede6" />
-        <path d="M51 68 C47 58 42 56 38 54 M51 68 C52 56 56 52 60 48 M51 68 C50 60 50 56 51 50" stroke="#5f7a55" stroke-width="0.7" fill="none" />
-        <For each={[[38, 54], [41, 57], [60, 48], [57, 51], [51, 50], [50, 56]]}>
+        <rect x="38" y="68" width="10" height="12" rx="1.5" fill="#f1ede6" />
+        <path d="M43 68 C39 58 34 56 30 54 M43 68 C44 56 48 52 52 48 M43 68 C42 60 42 56 43 50" stroke="#5f7a55" stroke-width="0.7" fill="none" />
+        <For each={[[30, 54], [33, 57], [52, 48], [49, 51], [43, 50], [42, 56]]}>
           {([cx, cy]) => <ellipse cx={cx} cy={cy} rx="2.2" ry="1.1" fill="#6f8b62" />}
         </For>
         {/* Patère */}
@@ -447,7 +449,7 @@ export function ApercuAuMur(props: {
             </button>
           </div>
 
-          {/* Les pièces, puis « Mon mur » ; le format à droite. */}
+          {/* Les pièces ; le format à droite. */}
           <div style={{ display: "flex", "flex-wrap": "wrap", gap: "8px", "margin-bottom": "12px" }}>
             <For each={PIECES}>
               {(p) => (
@@ -461,14 +463,8 @@ export function ApercuAuMur(props: {
                 </button>
               )}
             </For>
-            <button
-              type="button"
-              aria-pressed={choix() === "photo"}
-              onClick={() => setChoix("photo")}
-              style={onglet(choix() === "photo")}
-            >
-              {m().murPhoto}
-            </button>
+            {/* Plus de « Mon mur » (28/11, Alexandra : « enlève "mon mur" ») :
+                seules les trois pièces dessinées sont proposées. */}
             <span style={{ flex: "1" }} />
             <span role="group" aria-label={m().etapeFormat} style={{ display: "inline-flex", gap: "6px" }}>
               <For each={POSTER_FORMATS}>
