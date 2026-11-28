@@ -919,6 +919,14 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
    * puis UNE scène — plus de mélange à huit ni de glisser-déposer. Les tracés
    * viennent de la 2e planche d'ombres d'Alexandra (apps/api/src/ciel-ombres-2.ts) ;
    * les dix d'avant restent connues de l'API pour les ciels déjà créés.
+   *
+   * Les familles du 28/11 (Alexandra : « il faut que tu prennes ce qui n'existe
+   * pas encore [...] une femme avec 2 filles, une femme avec 2 garçons [...] un
+   * homme seul avec ses 2 enfants ») : 21 scènes de plus, et l'onglet « En
+   * famille » partagé en trois — maman et enfants, papa et enfants, deux parents
+   * et enfants —, du plus simple au plus nombreux ; les familles avec un animal
+   * vont dans « Avec un animal », à la suite de leur animal (travaux/ombres/TRI.md).
+   * Même ordre que GROUPES_OMBRES (ciel-ombres-2.ts, travaux/ombres/ecrire-ombres.py).
    */
   const GROUPES_SILHOUETTES = {
     seul: [
@@ -948,16 +956,39 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       "couple-hommes-epaule",
       "couple-hommes-front",
     ],
-    famille: [
-      "famille-homme-bebe-femme",
-      "famille-papa-bebe",
-      "famille-quatre",
-      "famille-maman-montre-ciel",
-      "famille-papa-ado",
-      "famille-epaules-bebe",
+    maman: [
       "famille-femme-enfant",
+      "famille-maman-montre-ciel",
+      "maman-fille-garcon",
+      "maman-deux-filles",
+      "maman-deux-garcons",
+      "maman-fille-ado",
+      "maman-deux-filles-garcon",
+      "maman-fille-deux-garcons",
+      "maman-trois-garcons",
+    ],
+    papa: [
+      "famille-papa-bebe",
+      "papa-garcon",
+      "famille-papa-ado",
       "famille-homme-deux-bebes",
+      "papa-fille-garcon",
+      "papa-deux-garcons",
+      "famille-epaules-bebe",
+      "papa-trois-enfants",
+    ],
+    // Papa et maman, deux mamans, deux papas.
+    parents: [
+      "famille-homme-bebe-femme",
+      "parents-fille",
+      "parents-garcon",
+      "deux-mamans-fille",
+      "deux-mamans-garcon",
       "famille-deux-hommes-enfant",
+      "parents-fille-garcon",
+      "famille-quatre",
+      "deux-mamans-fille-garcon",
+      "parents-trois-enfants",
     ],
     // Deux chevaux seulement (27/11 au soir, Alexandra : « ça sert à rien d'en
     // avoir plein », puis « non c bien une femme avec un cheval couché et un
@@ -971,9 +1002,12 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
       "homme-grand-chien",
       "enfant-chien",
       "deux-enfants-chien",
+      "papa-enfant-chien",
       "femme-chat",
       "homme-chat",
       "femme-chat-chien",
+      "papa-trois-enfants-chat",
+      "parents-deux-garcons-chat",
       "femme-lapin",
       "homme-deux-lapins",
       "femme-cheval-couche",
@@ -2169,7 +2203,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
     // nouvelles ombres). Avant, `?v=assises` (les vignettes montraient encore les
     // silhouettes debout) : la réponse reste une heure en cache, l'adresse
     // neuve passe outre l'ancienne liste.
-    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=ombres-groupes-4`)
+    void fetch(`${PUBLIC_API_URL}/ia/ciel/silhouettes?v=ombres-groupes-5`)
       .then((r) => r.json())
       .then((data: { silhouettes?: { id: string; d: string; gauche: number; droite: number; haut: number }[] }) =>
         setFormesSilhouettes(Object.fromEntries((data.silhouettes ?? []).map((s) => [s.id, s]))),
@@ -2244,7 +2278,7 @@ export default function AfficheIA(props: AfficheIAProps): JSX.Element {
           )}
         </For>
       </div>
-      {/* 1. Qui : quatre onglets. */}
+      {/* 1. Qui : six onglets (28/11 : la famille partagée en maman, papa, parents). */}
       <div role="tablist" aria-label={tr("ia.perso.titre")} class="mt-2 flex flex-wrap gap-2">
         <For each={Object.keys(GROUPES_SILHOUETTES) as GroupeSilhouettes[]}>
           {(g) => (

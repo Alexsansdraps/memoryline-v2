@@ -1,0 +1,443 @@
+[
+  {
+    "id": "femme-ondulee",
+    "nom": "Femme aux cheveux ondulés",
+    "lot": "seul",
+    "largeurCm": 56,
+    "hauteurCm": 89
+  },
+  {
+    "id": "femme-bouclee-courte",
+    "nom": "Femme aux cheveux courts bouclés",
+    "lot": "seul",
+    "largeurCm": 41,
+    "hauteurCm": 88
+  },
+  {
+    "id": "femme-carre",
+    "nom": "Femme au carré",
+    "lot": "seul",
+    "largeurCm": 52,
+    "hauteurCm": 85
+  },
+  {
+    "id": "femme-tres-longs-boucles",
+    "nom": "Femme aux longues boucles",
+    "lot": "seul",
+    "largeurCm": 51,
+    "hauteurCm": 91
+  },
+  {
+    "id": "femme-chignon-haut",
+    "nom": "Femme au chignon haut",
+    "lot": "seul",
+    "largeurCm": 45,
+    "hauteurCm": 92
+  },
+  {
+    "id": "enfant-boucle",
+    "nom": "Enfant",
+    "lot": "seul",
+    "largeurCm": 32,
+    "hauteurCm": 60
+  },
+  {
+    "id": "homme-boucle",
+    "nom": "Homme aux cheveux bouclés",
+    "lot": "seul",
+    "largeurCm": 57,
+    "hauteurCm": 91
+  },
+  {
+    "id": "homme-capuche",
+    "nom": "Homme en sweat à capuche",
+    "lot": "seul",
+    "largeurCm": 62,
+    "hauteurCm": 92
+  },
+  {
+    "id": "homme-court",
+    "nom": "Homme aux cheveux courts",
+    "lot": "seul",
+    "largeurCm": 54,
+    "hauteurCm": 92
+  },
+  {
+    "id": "homme-casquette",
+    "nom": "Homme à la casquette",
+    "lot": "seul",
+    "largeurCm": 60,
+    "hauteurCm": 91
+  },
+  {
+    "id": "femme-longs",
+    "nom": "Femme aux cheveux longs",
+    "lot": "seul",
+    "largeurCm": 49,
+    "hauteurCm": 91
+  },
+  {
+    "id": "homme-bonnet-laine",
+    "nom": "Homme au bonnet",
+    "lot": "seul",
+    "largeurCm": 66,
+    "hauteurCm": 92
+  },
+  {
+    "id": "femme-queue-de-cheval",
+    "nom": "Femme à la queue de cheval",
+    "lot": "seul",
+    "largeurCm": 54,
+    "hauteurCm": 87
+  },
+  {
+    "id": "enfant-casquette",
+    "nom": "Enfant à casquette",
+    "lot": "seul",
+    "largeurCm": 51,
+    "hauteurCm": 59
+  },
+  {
+    "id": "fillette-couettes",
+    "nom": "Fillette à couettes",
+    "lot": "seul",
+    "largeurCm": 47,
+    "hauteurCm": 57
+  },
+  {
+    "id": "fillette-cheveux-longs",
+    "nom": "Fillette aux cheveux longs",
+    "lot": "seul",
+    "largeurCm": 47,
+    "hauteurCm": 60
+  },
+  {
+    "id": "fillette-chignon",
+    "nom": "Fillette au chignon",
+    "lot": "seul",
+    "largeurCm": 44,
+    "hauteurCm": 63
+  },
+  {
+    "id": "couple-homme-femme",
+    "nom": "Homme et femme",
+    "lot": "couple",
+    "largeurCm": 117,
+    "hauteurCm": 91
+  },
+  {
+    "id": "couple-femmes-queue",
+    "nom": "Deux femmes",
+    "lot": "couple",
+    "largeurCm": 100,
+    "hauteurCm": 86
+  },
+  {
+    "id": "couple-hommes-epaule",
+    "nom": "Deux hommes, bras sur l'épaule",
+    "lot": "couple",
+    "largeurCm": 110,
+    "hauteurCm": 92
+  },
+  {
+    "id": "couple-hommes-front",
+    "nom": "Deux hommes, front contre front",
+    "lot": "couple",
+    "largeurCm": 99,
+    "hauteurCm": 89
+  },
+  {
+    "id": "couple-femmes-chignon",
+    "nom": "Deux femmes, tête contre tête",
+    "lot": "couple",
+    "largeurCm": 90,
+    "hauteurCm": 89
+  },
+  {
+    "id": "couple-frises",
+    "nom": "Couple aux cheveux bouclés",
+    "lot": "couple",
+    "largeurCm": 102,
+    "hauteurCm": 97
+  },
+  {
+    "id": "famille-epaules-bebe",
+    "nom": "Parent, enfant sur les épaules et bébé",
+    "lot": "famille",
+    "largeurCm": 90,
+    "hauteurCm": 103
+  },
+  {
+    "id": "famille-femme-enfant",
+    "nom": "Maman et enfant",
+    "lot": "famille",
+    "largeurCm": 73,
+    "hauteurCm": 84
+  },
+  {
+    "id": "famille-homme-deux-bebes",
+    "nom": "Papa et deux bébés",
+    "lot": "famille",
+    "largeurCm": 112,
+    "hauteurCm": 90
+  },
+  {
+    "id": "famille-homme-bebe-femme",
+    "nom": "Papa, bébé et maman",
+    "lot": "famille",
+    "largeurCm": 127,
+    "hauteurCm": 79
+  },
+  {
+    "id": "famille-deux-hommes-enfant",
+    "nom": "Deux papas et leur enfant",
+    "lot": "famille",
+    "largeurCm": 111,
+    "hauteurCm": 84
+  },
+  {
+    "id": "famille-papa-bebe",
+    "nom": "Papa et bébé",
+    "lot": "famille",
+    "largeurCm": 89,
+    "hauteurCm": 75
+  },
+  {
+    "id": "famille-quatre",
+    "nom": "Famille de quatre",
+    "lot": "famille",
+    "largeurCm": 160,
+    "hauteurCm": 91
+  },
+  {
+    "id": "famille-maman-montre-ciel",
+    "nom": "Maman et enfant qui montre le ciel",
+    "lot": "famille",
+    "largeurCm": 99,
+    "hauteurCm": 76
+  },
+  {
+    "id": "famille-papa-ado",
+    "nom": "Papa et ado",
+    "lot": "famille",
+    "largeurCm": 106,
+    "hauteurCm": 87
+  },
+  {
+    "id": "enfant-chien",
+    "nom": "Enfant et son chien",
+    "lot": "animal",
+    "largeurCm": 81,
+    "hauteurCm": 76
+  },
+  {
+    "id": "femme-chien",
+    "nom": "Femme et son chien",
+    "lot": "animal",
+    "largeurCm": 79,
+    "hauteurCm": 84
+  },
+  {
+    "id": "homme-chat",
+    "nom": "Homme et son chat",
+    "lot": "animal",
+    "largeurCm": 85,
+    "hauteurCm": 90
+  },
+  {
+    "id": "femme-lapin",
+    "nom": "Femme et son lapin",
+    "lot": "animal",
+    "largeurCm": 74,
+    "hauteurCm": 88
+  },
+  {
+    "id": "homme-cheval",
+    "nom": "Homme et son cheval",
+    "lot": "animal",
+    "largeurCm": 135,
+    "hauteurCm": 98
+  },
+  {
+    "id": "homme-deux-lapins",
+    "nom": "Homme et ses deux lapins",
+    "lot": "animal",
+    "largeurCm": 114,
+    "hauteurCm": 91
+  },
+  {
+    "id": "femme-cheval-couche",
+    "nom": "Femme et cheval couché",
+    "lot": "animal",
+    "largeurCm": 163,
+    "hauteurCm": 108
+  },
+  {
+    "id": "femme-cheval-debout",
+    "nom": "Femme debout et cheval",
+    "lot": "animal",
+    "largeurCm": 138,
+    "hauteurCm": 123
+  },
+  {
+    "id": "homme-chien",
+    "nom": "Homme et son chien",
+    "lot": "animal",
+    "largeurCm": 98,
+    "hauteurCm": 87
+  },
+  {
+    "id": "femme-chat",
+    "nom": "Femme et son chat",
+    "lot": "animal",
+    "largeurCm": 88,
+    "hauteurCm": 88
+  },
+  {
+    "id": "femme-petit-chien",
+    "nom": "Femme et petit chien",
+    "lot": "animal",
+    "largeurCm": 92,
+    "hauteurCm": 89
+  },
+  {
+    "id": "homme-petit-chien",
+    "nom": "Homme et petit chien",
+    "lot": "animal",
+    "largeurCm": 97,
+    "hauteurCm": 90
+  },
+  {
+    "id": "homme-grand-chien",
+    "nom": "Homme et grand chien",
+    "lot": "animal",
+    "largeurCm": 104,
+    "hauteurCm": 88
+  },
+  {
+    "id": "fillette-cheval",
+    "nom": "Fillette et cheval",
+    "lot": "animal",
+    "largeurCm": 121,
+    "hauteurCm": 84
+  },
+  {
+    "id": "deux-enfants-chien",
+    "nom": "Deux enfants et un chien",
+    "lot": "animal",
+    "largeurCm": 133,
+    "hauteurCm": 70
+  },
+  {
+    "id": "femme-chat-chien",
+    "nom": "Femme, chat et chien",
+    "lot": "animal",
+    "largeurCm": 120,
+    "hauteurCm": 79
+  },
+  {
+    "id": "chien-et-cheval",
+    "nom": "Chien et cheval",
+    "lot": "animaux",
+    "largeurCm": 113,
+    "hauteurCm": 90
+  },
+  {
+    "id": "chien-assis",
+    "nom": "Chien",
+    "lot": "animaux",
+    "largeurCm": 44,
+    "hauteurCm": 60
+  },
+  {
+    "id": "chat-assis",
+    "nom": "Chat",
+    "lot": "animaux",
+    "largeurCm": 24,
+    "hauteurCm": 47
+  },
+  {
+    "id": "lapin",
+    "nom": "Lapin",
+    "lot": "animaux",
+    "largeurCm": 21,
+    "hauteurCm": 47
+  },
+  {
+    "id": "deux-lapins",
+    "nom": "Deux lapins",
+    "lot": "animaux",
+    "largeurCm": 44,
+    "hauteurCm": 51
+  },
+  {
+    "id": "femme-cheveux-longs",
+    "nom": "Femme aux cheveux longs",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 67,
+    "hauteurCm": 89
+  },
+  {
+    "id": "femme-chignon",
+    "nom": "Femme au chignon",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 44,
+    "hauteurCm": 89
+  },
+  {
+    "id": "homme-manteau",
+    "nom": "Homme en sweat",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 61,
+    "hauteurCm": 94
+  },
+  {
+    "id": "homme-bonnet",
+    "nom": "Homme au bonnet",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 52,
+    "hauteurCm": 88
+  },
+  {
+    "id": "enfant",
+    "nom": "Enfant",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 43,
+    "hauteurCm": 62
+  },
+  {
+    "id": "enfant-sur-epaules",
+    "nom": "Enfant sur les épaules",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 61,
+    "hauteurCm": 108
+  },
+  {
+    "id": "adulte-bebe",
+    "nom": "Adulte et bébé",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 50,
+    "hauteurCm": 84
+  },
+  {
+    "id": "chien",
+    "nom": "Chien assis",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 35,
+    "hauteurCm": 72
+  },
+  {
+    "id": "chat",
+    "nom": "Chat assis",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 39,
+    "hauteurCm": 52
+  },
+  {
+    "id": "couple",
+    "nom": "Couple",
+    "lot": "ancienne (plus proposée)",
+    "largeurCm": 94,
+    "hauteurCm": 89
+  }
+]

@@ -1030,8 +1030,9 @@ export function mountCielRoutes(app: Hono): void {
     c.json(
       {
         silhouettes: SILHOUETTES_ASSISES.map(({ id, d, gauche, droite, haut }) => ({ id, d, gauche, droite, haut })),
-        // Les scènes proposées, par groupe (27/11 au soir : « trop de
-        // possibilités ») : seul·e, en couple, en famille, avec un animal.
+        // Les scènes, par groupe (27/11 au soir : « trop de possibilités ») :
+        // seul·e, en couple, maman, papa ou parents et enfants (28/11), avec un
+        // animal ; la fiche a sa propre liste (GROUPES_SILHOUETTES).
         groupes: GROUPES_OMBRES.map((g) => ({ id: g, scenes: OMBRES_2.filter((o) => o.groupe === g).map((o) => o.id) })),
       },
       200,

@@ -1,0 +1,1444 @@
+{
+ "date": "2026-11-28",
+ "demande": "« il faut que tu prennes ce qui n'existe pas encore [...] une femme avec 2 enfants, une femme avec 2 filles, une femme avec 2 garçons, une femme avec un garçon et une fille, un homme seul avec ses 2 enfants, etc. Vraiment, être précis quand même. »",
+ "planches": {
+  "A": "Documents/memory-line/protos/ombres-familles-a.png (= Téléchargements/Galerie de silhouettes familiales inclusives.png), 6 x 5 scènes",
+  "B": "Documents/memory-line/protos/ombres-familles-b.png (= Téléchargements/Planche de silhouettes familiales diverses.png), 6 x 6 scènes"
+ },
+ "regle": "clé = membres sans ordre (miroir possible) ; écartée si la clé existe déjà ; « enfant » de sexe non lisible couvert par les versions fille et garçon ; une scène par clé nouvelle, la plus lisible en vignette (104 x 56 px)",
+ "compte": {
+  "cases": 66,
+  "gardees": 21,
+  "ecartees": 45
+ },
+ "gardees": [
+  {
+   "case": "B r1c1",
+   "id": "maman-fille-garcon",
+   "cle": "femme+fille+garcon",
+   "onglet": "maman",
+   "json": "travaux/ombres/planche-B/case-r1c1.json",
+   "idProvisoire": "famille-maman-fille-garcon",
+   "certitude": "sure",
+   "largeurCm": 134,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "tailleCm": 90
+    },
+    {
+     "type": "fille",
+     "detail": "couettes",
+     "tailleCm": 57
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "tailleCm": 66
+    }
+   ],
+   "noms": {
+    "fr": "Maman, une fille et un garçon",
+    "en": "Mum, a girl and a boy",
+    "de": "Mama, Tochter und Sohn",
+    "it": "Mamma, una figlia e un figlio",
+    "es": "Mamá, una hija y un hijo",
+    "ja": "ママと女の子と男の子",
+    "zh": "妈妈、女儿和儿子"
+   },
+   "candidates": [
+    "A r3c5",
+    "A r4c4",
+    "B r1c1",
+    "B r2c4"
+   ],
+   "pourquoi": "les couettes disent « fille » même en vignette, le garçon aux cheveux courts aussi ; scène compacte (134 cm)"
+  },
+  {
+   "case": "B r1c3",
+   "id": "maman-deux-filles",
+   "cle": "femme+fille+fille",
+   "onglet": "maman",
+   "json": "travaux/ombres/planche-B/case-r1c3.json",
+   "idProvisoire": "famille-maman-deux-filles-couettes",
+   "certitude": "sure",
+   "largeurCm": 133,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "tailleCm": 90
+    },
+    {
+     "type": "fille",
+     "detail": "couettes",
+     "tailleCm": 58
+    },
+    {
+     "type": "fille",
+     "detail": "couettes",
+     "tailleCm": 60
+    }
+   ],
+   "noms": {
+    "fr": "Maman et ses deux filles",
+    "en": "Mum and her two girls",
+    "de": "Mama und ihre beiden Töchter",
+    "it": "Mamma e le sue due figlie",
+    "es": "Mamá y sus dos hijas",
+    "ja": "ママと女の子ふたり",
+    "zh": "妈妈和两个女儿"
+   },
+   "candidates": [
+    "A r5c4",
+    "B r1c3",
+    "B r2c2"
+   ],
+   "pourquoi": "deux paires de couettes : on lit deux filles au premier coup d'œil"
+  },
+  {
+   "case": "B r2c1",
+   "id": "maman-deux-garcons",
+   "cle": "femme+garcon+garcon",
+   "onglet": "maman",
+   "json": "travaux/ombres/planche-B/case-r2c1.json",
+   "idProvisoire": "famille-maman-deux-garcons-2",
+   "certitude": "sure",
+   "largeurCm": 140,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "tailleCm": 90
+    },
+    {
+     "type": "garcon",
+     "detail": "petit, cheveux courts",
+     "tailleCm": 57
+    },
+    {
+     "type": "garcon",
+     "detail": "grand, cheveux courts, tête tournée",
+     "tailleCm": 71
+    }
+   ],
+   "noms": {
+    "fr": "Maman et ses deux garçons",
+    "en": "Mum and her two boys",
+    "de": "Mama und ihre beiden Söhne",
+    "it": "Mamma e i suoi due figli",
+    "es": "Mamá y sus dos hijos",
+    "ja": "ママと男の子ふたり",
+    "zh": "妈妈和两个儿子"
+   },
+   "candidates": [
+    "A r5c3",
+    "B r1c5",
+    "B r2c1"
+   ],
+   "pourquoi": "deux garçons aux cheveux courts bien séparés, du plus petit au plus grand ; en B r1c5 le petit bouclé peut passer pour une fille, en A r5c3 les deux se collent"
+  },
+  {
+   "case": "A r6c5",
+   "id": "maman-fille-ado",
+   "cle": "femme+ado+fille",
+   "onglet": "maman",
+   "json": "travaux/ombres/planche-A/case-r6c5.json",
+   "idProvisoire": "a-r6c5-femme-fille-ado-garcon",
+   "certitude": "probable",
+   "largeurCm": 157,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "taille": 1.0
+    },
+    {
+     "type": "fille",
+     "detail": "cheveux longs",
+     "taille": 0.75
+    },
+    {
+     "type": "ado-garcon",
+     "detail": "cheveux bouclés en bataille",
+     "taille": 0.88
+    }
+   ],
+   "noms": {
+    "fr": "Maman, une fille et un ado",
+    "en": "Mum, a girl and a teen",
+    "de": "Mama, Tochter und Teenager",
+    "it": "Mamma, una figlia e un ragazzo",
+    "es": "Mamá, una hija y un adolescente",
+    "ja": "ママと女の子と10代の子",
+    "zh": "妈妈、女儿和少年"
+   },
+   "candidates": [
+    "A r4c1",
+    "A r4c5",
+    "A r6c5"
+   ],
+   "pourquoi": "la fille aux cheveux longs se lit sans hésiter (au carré en A r4c5) ; l'ado reste plus petit que la maman (0,88)"
+  },
+  {
+   "case": "A r3c1",
+   "id": "maman-deux-filles-garcon",
+   "cle": "femme+fille+fille+garcon",
+   "onglet": "maman",
+   "json": "travaux/ombres/planche-A/case-r3c1.json",
+   "idProvisoire": "a-r3c1-femme-fille-fille-garcon",
+   "certitude": "probable",
+   "largeurCm": 170,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "taille": 1.0
+    },
+    {
+     "type": "fille",
+     "detail": "cheveux mi-longs bouclés",
+     "taille": 0.58
+    },
+    {
+     "type": "fille",
+     "detail": "cheveux mi-longs bouclés",
+     "taille": 0.58
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts, grand frère",
+     "taille": 0.77
+    }
+   ],
+   "noms": {
+    "fr": "Maman, deux filles et un garçon",
+    "en": "Mum, two girls and a boy",
+    "de": "Mama, zwei Töchter und ein Sohn",
+    "it": "Mamma, due figlie e un figlio",
+    "es": "Mamá, dos hijas y un hijo",
+    "ja": "ママと女の子ふたりと男の子",
+    "zh": "妈妈、两个女儿和儿子"
+   },
+   "candidates": [
+    "A r3c1"
+   ],
+   "pourquoi": "seule case de cette composition ; deux petites aux cheveux mi-longs et un grand frère"
+  },
+  {
+   "case": "A r3c3",
+   "id": "maman-fille-deux-garcons",
+   "cle": "femme+fille+garcon+garcon",
+   "onglet": "maman",
+   "json": "travaux/ombres/planche-A/case-r3c3.json",
+   "idProvisoire": "a-r3c3-femme-garcon-fille-garcon",
+   "certitude": "probable",
+   "largeurCm": 179,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "taille": 1.0
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "taille": 0.74
+    },
+    {
+     "type": "fille",
+     "detail": "carré",
+     "taille": 0.62
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux bouclés, grand frère",
+     "taille": 0.82
+    }
+   ],
+   "noms": {
+    "fr": "Maman, une fille et deux garçons",
+    "en": "Mum, a girl and two boys",
+    "de": "Mama, eine Tochter und zwei Söhne",
+    "it": "Mamma, una figlia e due figli",
+    "es": "Mamá, una hija y dos hijos",
+    "ja": "ママと女の子と男の子ふたり",
+    "zh": "妈妈、女儿和两个儿子"
+   },
+   "candidates": [
+    "A r3c3"
+   ],
+   "pourquoi": "seule case de cette composition ; la fille au carré, plus petite, entre ses deux frères"
+  },
+  {
+   "case": "A r3c2",
+   "id": "maman-trois-garcons",
+   "cle": "femme+garcon+garcon+garcon",
+   "onglet": "maman",
+   "json": "travaux/ombres/planche-A/case-r3c2.json",
+   "idProvisoire": "a-r3c2-femme-garcon-garcon-garcon",
+   "certitude": "probable",
+   "largeurCm": 162,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs, profil, main ou mèche devant le menton",
+     "taille": 1.0
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "taille": 0.64
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "taille": 0.61
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts, grand frère",
+     "taille": 0.83
+    }
+   ],
+   "noms": {
+    "fr": "Maman et ses trois garçons",
+    "en": "Mum and her three boys",
+    "de": "Mama und ihre drei Söhne",
+    "it": "Mamma e i suoi tre figli",
+    "es": "Mamá y sus tres hijos",
+    "ja": "ママと男の子3人",
+    "zh": "妈妈和三个儿子"
+   },
+   "candidates": [
+    "A r3c2",
+    "A r5c1",
+    "A r6c3",
+    "B r5c3"
+   ],
+   "pourquoi": "trois têtes bien séparées, deux petits et un grand ; en A r5c1 et A r6c3 deux garçons se chevauchent, en B r5c3 ce sont des triplés"
+  },
+  {
+   "case": "B r3c4",
+   "id": "papa-garcon",
+   "cle": "homme+garcon",
+   "onglet": "papa",
+   "json": "travaux/ombres/planche-B/case-r3c4.json",
+   "idProvisoire": "famille-papa-petit-garcon",
+   "certitude": "sure",
+   "largeurCm": 118,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "homme",
+     "detail": "cheveux courts",
+     "tailleCm": 90
+    },
+    {
+     "type": "garcon",
+     "detail": "petit, cheveux courts bouclés",
+     "tailleCm": 54
+    }
+   ],
+   "noms": {
+    "fr": "Papa et son petit garçon",
+    "en": "Dad and his little boy",
+    "de": "Papa und sein kleiner Sohn",
+    "it": "Papà e il suo bambino",
+    "es": "Papá y su hijo pequeño",
+    "ja": "パパと小さな男の子",
+    "zh": "爸爸和小男孩"
+   },
+   "candidates": [
+    "B r3c4",
+    "B r3c6"
+   ],
+   "pourquoi": "le petit garçon (0,6 du papa) ; le grand garçon de B r3c6 (0,77) a presque la taille de l'ado de famille-papa-ado (0,80)"
+  },
+  {
+   "case": "B r3c1",
+   "id": "papa-deux-garcons",
+   "cle": "homme+garcon+garcon",
+   "onglet": "papa",
+   "json": "travaux/ombres/planche-B/case-r3c1.json",
+   "idProvisoire": "famille-papa-deux-garcons",
+   "certitude": "sure",
+   "largeurCm": 139,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "homme",
+     "detail": "cheveux courts",
+     "tailleCm": 90
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "tailleCm": 63
+    },
+    {
+     "type": "garcon",
+     "detail": "petit, cheveux courts bouclés",
+     "tailleCm": 54
+    }
+   ],
+   "noms": {
+    "fr": "Papa et ses deux garçons",
+    "en": "Dad and his two boys",
+    "de": "Papa und seine beiden Söhne",
+    "it": "Papà e i suoi due figli",
+    "es": "Papá y sus dos hijos",
+    "ja": "パパと男の子ふたり",
+    "zh": "爸爸和两个儿子"
+   },
+   "candidates": [
+    "B r3c1"
+   ],
+   "pourquoi": "seule case nette (en B r3c3 le 2e enfant, bouclé, n'a pas de sexe lisible) ; ces garçons (0,6 et 0,7 du papa) sont plus grands que les « deux bébés » existants (0,50 et 0,54)"
+  },
+  {
+   "case": "B r3c2",
+   "id": "papa-fille-garcon",
+   "cle": "homme+fille+garcon",
+   "onglet": "papa",
+   "json": "travaux/ombres/planche-B/case-r3c2.json",
+   "idProvisoire": "famille-papa-fille-garcon",
+   "certitude": "sure",
+   "largeurCm": 141,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "homme",
+     "detail": "cheveux courts",
+     "tailleCm": 90
+    },
+    {
+     "type": "fille",
+     "detail": "couettes",
+     "tailleCm": 56
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "tailleCm": 64
+    }
+   ],
+   "noms": {
+    "fr": "Papa, une fille et un garçon",
+    "en": "Dad, a girl and a boy",
+    "de": "Papa, Tochter und Sohn",
+    "it": "Papà, una figlia e un figlio",
+    "es": "Papá, una hija y un hijo",
+    "ja": "パパと女の子と男の子",
+    "zh": "爸爸、女儿和儿子"
+   },
+   "candidates": [
+    "B r3c2"
+   ],
+   "pourquoi": "seule case nette : couettes pour la fille, cheveux courts pour le garçon"
+  },
+  {
+   "case": "B r5c2",
+   "id": "papa-trois-enfants",
+   "cle": "homme+fille+garcon+bebe",
+   "onglet": "papa",
+   "json": "travaux/ombres/planche-B/case-r5c2.json",
+   "idProvisoire": "famille-papa-trois-enfants",
+   "certitude": "sure",
+   "largeurCm": 158,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "homme",
+     "detail": "cheveux courts",
+     "tailleCm": 90
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts bouclés",
+     "tailleCm": 58
+    },
+    {
+     "type": "bebe",
+     "detail": "tout-petit",
+     "tailleCm": 40
+    },
+    {
+     "type": "fille",
+     "detail": "deux macarons",
+     "tailleCm": 56
+    }
+   ],
+   "noms": {
+    "fr": "Papa et ses trois enfants",
+    "en": "Dad and his three children",
+    "de": "Papa und seine drei Kinder",
+    "it": "Papà e i suoi tre bambini",
+    "es": "Papá y sus tres hijos",
+    "ja": "パパと子ども3人",
+    "zh": "爸爸和三个孩子"
+   },
+   "candidates": [
+    "B r5c2"
+   ],
+   "pourquoi": "seule case : un garçon, un bébé et une fille à macarons"
+  },
+  {
+   "case": "A r6c2",
+   "id": "deux-mamans-fille",
+   "cle": "femme+femme+fille",
+   "onglet": "parents",
+   "json": "travaux/ombres/planche-A/case-r6c2.json",
+   "idProvisoire": "a-r6c2-femme-fille-femme",
+   "certitude": "probable",
+   "largeurCm": 168,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "taille": 1.0
+    },
+    {
+     "type": "fille",
+     "detail": "cheveux longs",
+     "taille": 0.78
+    },
+    {
+     "type": "femme",
+     "detail": "carré",
+     "taille": 0.95
+    }
+   ],
+   "noms": {
+    "fr": "Deux mamans et leur fille",
+    "en": "Two mums and their daughter",
+    "de": "Zwei Mamas und ihre Tochter",
+    "it": "Due mamme e la loro figlia",
+    "es": "Dos mamás y su hija",
+    "ja": "ママふたりと女の子",
+    "zh": "两位妈妈和女儿"
+   },
+   "candidates": [
+    "A r1c1",
+    "A r6c2",
+    "B r1c4"
+   ],
+   "pourquoi": "la fille aux cheveux longs se lit, la 2e maman au carré aussi ; en A r1c1 l'enfant ne se lit pas fille en petit, en B r1c4 l'adulte afro peut passer pour un homme"
+  },
+  {
+   "case": "B r1c2",
+   "id": "deux-mamans-garcon",
+   "cle": "femme+femme+garcon",
+   "onglet": "parents",
+   "json": "travaux/ombres/planche-B/case-r1c2.json",
+   "idProvisoire": "famille-deux-mamans-garcon",
+   "certitude": "probable",
+   "largeurCm": 140,
+   "hauteurCm": 94,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "tailleCm": 90
+    },
+    {
+     "type": "garcon",
+     "detail": "petit, cheveux courts",
+     "tailleCm": 63
+    },
+    {
+     "type": "femme",
+     "detail": "chignon haut décoiffé, mèche dans le cou",
+     "tailleCm": 90
+    }
+   ],
+   "noms": {
+    "fr": "Deux mamans et leur garçon",
+    "en": "Two mums and their son",
+    "de": "Zwei Mamas und ihr Sohn",
+    "it": "Due mamme e il loro figlio",
+    "es": "Dos mamás y su hijo",
+    "ja": "ママふたりと男の子",
+    "zh": "两位妈妈和儿子"
+   },
+   "candidates": [
+    "A r1c3",
+    "A r1c5",
+    "B r1c2"
+   ],
+   "pourquoi": "2e maman au chignon décoiffé, mèche dans le cou, plus fine que celle de A r1c3 ; A r1c5 (adulte bouclé) peut être un papa"
+  },
+  {
+   "case": "A r1c2",
+   "id": "deux-mamans-fille-garcon",
+   "cle": "femme+femme+fille+garcon",
+   "onglet": "parents",
+   "json": "travaux/ombres/planche-A/case-r1c2.json",
+   "idProvisoire": "a-r1c2-femme-fille-femme-garcon",
+   "certitude": "probable",
+   "largeurCm": 167,
+   "hauteurCm": 94,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "taille": 1.0
+    },
+    {
+     "type": "fille",
+     "detail": "cheveux longs",
+     "taille": 0.72
+    },
+    {
+     "type": "femme",
+     "detail": "chignon haut défait, mèches",
+     "taille": 1.04
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts, épi",
+     "taille": 0.69
+    }
+   ],
+   "noms": {
+    "fr": "Deux mamans, une fille et un garçon",
+    "en": "Two mums, a girl and a boy",
+    "de": "Zwei Mamas, Tochter und Sohn",
+    "it": "Due mamme, una figlia e un figlio",
+    "es": "Dos mamás, una hija y un hijo",
+    "ja": "ママふたりと女の子と男の子",
+    "zh": "两位妈妈、女儿和儿子"
+   },
+   "candidates": [
+    "A r1c2",
+    "A r2c1",
+    "A r2c4",
+    "B r6c5"
+   ],
+   "pourquoi": "fille aux cheveux longs et 2e maman au chignon haut, lisibles en petit ; en A r2c1 la couette de la fille disparaît, A r2c4 et B r6c5 ont un adulte incertain"
+  },
+  {
+   "case": "B r4c3",
+   "id": "parents-fille",
+   "cle": "femme+homme+fille",
+   "onglet": "parents",
+   "json": "travaux/ombres/planche-B/case-r4c3.json",
+   "idProvisoire": "famille-papa-casquette-fille-maman",
+   "certitude": "probable",
+   "largeurCm": 163,
+   "hauteurCm": 97,
+   "membres": [
+    {
+     "type": "homme",
+     "detail": "casquette, visière à gauche",
+     "tailleCm": 97
+    },
+    {
+     "type": "fille",
+     "detail": "cheveux mi-longs ondulés",
+     "tailleCm": 65
+    },
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "tailleCm": 83
+    }
+   ],
+   "noms": {
+    "fr": "Papa, maman et leur fille",
+    "en": "Dad, mum and their daughter",
+    "de": "Papa, Mama und ihre Tochter",
+    "it": "Papà, mamma e la loro figlia",
+    "es": "Papá, mamá y su hija",
+    "ja": "パパとママと女の子",
+    "zh": "爸爸、妈妈和女儿"
+   },
+   "candidates": [
+    "B r4c3"
+   ],
+   "pourquoi": "seule case de cette composition. Douteuse au départ : la femme fait 0,86 du papa (maman ou grande sœur ?) ; c'est le rapport de la maman de B r6c4 (les mamans de la planche B font de 0,86 à 0,94 du papa), donc maman. Dans les deux lectures la composition est nouvelle"
+  },
+  {
+   "case": "B r6c3",
+   "id": "parents-garcon",
+   "cle": "femme+homme+garcon",
+   "onglet": "parents",
+   "json": "travaux/ombres/planche-B/case-r6c3.json",
+   "idProvisoire": "famille-maman-garcon-papa",
+   "certitude": "sure",
+   "largeurCm": 149,
+   "hauteurCm": 94,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "tailleCm": 86
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "tailleCm": 62
+    },
+    {
+     "type": "homme",
+     "detail": "cheveux courts ondulés",
+     "tailleCm": 94
+    }
+   ],
+   "noms": {
+    "fr": "Papa, maman et leur garçon",
+    "en": "Dad, mum and their son",
+    "de": "Papa, Mama und ihr Sohn",
+    "it": "Papà, mamma e il loro figlio",
+    "es": "Papá, mamá y su hijo",
+    "ja": "パパとママと男の子",
+    "zh": "爸爸、妈妈和儿子"
+   },
+   "candidates": [
+    "B r4c2",
+    "B r6c3",
+    "B r6c6"
+   ],
+   "pourquoi": "le garçon entre ses parents, le papa nettement plus grand ; en B r6c6 les parents se chevauchent, en B r4c2 la maman peut passer pour une grande sœur"
+  },
+  {
+   "case": "A r4c2",
+   "id": "parents-fille-garcon",
+   "cle": "femme+homme+fille+garcon",
+   "onglet": "parents",
+   "json": "travaux/ombres/planche-A/case-r4c2.json",
+   "idProvisoire": "a-r4c2-femme-fille-garcon-homme",
+   "certitude": "sure",
+   "largeurCm": 195,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "taille": 1.0
+    },
+    {
+     "type": "fille",
+     "detail": "cheveux mi-longs",
+     "taille": 0.65
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "taille": 0.66
+    },
+    {
+     "type": "homme",
+     "detail": "cheveux courts",
+     "taille": 0.98
+    }
+   ],
+   "noms": {
+    "fr": "Papa, maman, une fille et un garçon",
+    "en": "Dad, mum, a girl and a boy",
+    "de": "Papa, Mama, Tochter und Sohn",
+    "it": "Papà, mamma, una figlia e un figlio",
+    "es": "Papá, mamá, una hija y un hijo",
+    "ja": "パパとママと女の子と男の子",
+    "zh": "爸爸、妈妈、女儿和儿子"
+   },
+   "candidates": [
+    "A r2c2",
+    "A r2c3",
+    "A r4c2",
+    "A r4c3"
+   ],
+   "pourquoi": "la fille aux cheveux mi-longs se distingue du garçon ; en A r2c2 la fille au carré se lit garçon en vignette, en A r4c3 le garçon est à moitié caché. La plus large des gardées (195 cm)"
+  },
+  {
+   "case": "B r6c1",
+   "id": "parents-trois-enfants",
+   "cle": "femme+homme+garcon+enfant+enfant",
+   "onglet": "parents",
+   "json": "travaux/ombres/planche-B/case-r6c1.json",
+   "idProvisoire": "famille-cinq",
+   "certitude": "probable",
+   "largeurCm": 186,
+   "hauteurCm": 95,
+   "membres": [
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "tailleCm": 85
+    },
+    {
+     "type": "garcon",
+     "detail": "petit, cheveux courts",
+     "tailleCm": 56
+    },
+    {
+     "type": "homme",
+     "detail": "cheveux courts",
+     "tailleCm": 95
+    },
+    {
+     "type": "enfant",
+     "detail": "boucles volumineuses",
+     "tailleCm": 71
+    },
+    {
+     "type": "enfant",
+     "detail": "petit, boucles jusqu'à la nuque (peut-être une fille)",
+     "tailleCm": 49
+    }
+   ],
+   "noms": {
+    "fr": "Papa, maman et trois enfants",
+    "en": "Dad, mum and three children",
+    "de": "Papa, Mama und drei Kinder",
+    "it": "Papà, mamma e tre bambini",
+    "es": "Papá, mamá y tres hijos",
+    "ja": "パパとママと子ども3人",
+    "zh": "爸爸、妈妈和三个孩子"
+   },
+   "candidates": [
+    "B r6c1"
+   ],
+   "pourquoi": "seule case à cinq ; deux des enfants bouclés sans sexe lisible, d'où « trois enfants »"
+  },
+  {
+   "case": "B r5c5",
+   "id": "papa-enfant-chien",
+   "cle": "homme+enfant+chien",
+   "onglet": "animal",
+   "json": "travaux/ombres/planche-B/case-r5c5.json",
+   "idProvisoire": "famille-papa-enfant-chien",
+   "certitude": "probable",
+   "largeurCm": 162,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "homme",
+     "detail": "cheveux courts",
+     "tailleCm": 90
+    },
+    {
+     "type": "enfant",
+     "detail": "boucles volumineuses jusqu'à la mâchoire",
+     "tailleCm": 62
+    },
+    {
+     "type": "chien",
+     "detail": "assis, de profil, tourné vers eux",
+     "tailleCm": 52
+    }
+   ],
+   "noms": {
+    "fr": "Papa, un enfant et un chien",
+    "en": "Dad, a child and a dog",
+    "de": "Papa, ein Kind und ein Hund",
+    "it": "Papà, un bambino e un cane",
+    "es": "Papá, un niño y un perro",
+    "ja": "パパと子どもと犬",
+    "zh": "爸爸、孩子和狗"
+   },
+   "candidates": [
+    "B r5c5"
+   ],
+   "pourquoi": "seule case ; le chien assis de profil se lit très bien. Il y avait homme + chien et enfant + chien, pas les trois"
+  },
+  {
+   "case": "B r5c1",
+   "id": "papa-trois-enfants-chat",
+   "cle": "homme+garcon+garcon+bebe+chat",
+   "onglet": "animal",
+   "json": "travaux/ombres/planche-B/case-r5c1.json",
+   "idProvisoire": "famille-papa-chat-trois-enfants",
+   "certitude": "probable",
+   "largeurCm": 173,
+   "hauteurCm": 90,
+   "membres": [
+    {
+     "type": "homme",
+     "detail": "cheveux courts",
+     "tailleCm": 90
+    },
+    {
+     "type": "chat",
+     "detail": "assis, de dos, oreilles pointues",
+     "tailleCm": 43
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "tailleCm": 61
+    },
+    {
+     "type": "bebe",
+     "detail": "tout-petit, cheveux courts",
+     "tailleCm": 41
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts bouclés",
+     "tailleCm": 56
+    }
+   ],
+   "noms": {
+    "fr": "Papa, trois enfants et un chat",
+    "en": "Dad, three children and a cat",
+    "de": "Papa, drei Kinder und eine Katze",
+    "it": "Papà, tre bambini e un gatto",
+    "es": "Papá, tres niños y un gato",
+    "ja": "パパと子ども3人と猫",
+    "zh": "爸爸、三个孩子和猫"
+   },
+   "candidates": [
+    "B r5c1"
+   ],
+   "pourquoi": "seule case ; le chat, collé au papa, se reconnaît à ses oreilles pointues"
+  },
+  {
+   "case": "B r6c4",
+   "id": "parents-deux-garcons-chat",
+   "cle": "femme+homme+garcon+garcon+chat",
+   "onglet": "animal",
+   "json": "travaux/ombres/planche-B/case-r6c4.json",
+   "idProvisoire": "famille-chat-maman-papa-deux-garcons",
+   "certitude": "probable",
+   "largeurCm": 194,
+   "hauteurCm": 98,
+   "membres": [
+    {
+     "type": "chat",
+     "detail": "assis, de dos, oreilles pointues",
+     "tailleCm": 44
+    },
+    {
+     "type": "femme",
+     "detail": "cheveux longs ondulés",
+     "tailleCm": 83
+    },
+    {
+     "type": "garcon",
+     "detail": "petit, cheveux courts",
+     "tailleCm": 54
+    },
+    {
+     "type": "homme",
+     "detail": "cheveux bouclés",
+     "tailleCm": 97
+    },
+    {
+     "type": "garcon",
+     "detail": "cheveux courts",
+     "tailleCm": 71
+    }
+   ],
+   "noms": {
+    "fr": "Papa, maman, deux garçons et un chat",
+    "en": "Dad, mum, two boys and a cat",
+    "de": "Papa, Mama, zwei Söhne und eine Katze",
+    "it": "Papà, mamma, due figli e un gatto",
+    "es": "Papá, mamá, dos hijos y un gato",
+    "ja": "パパとママと男の子ふたりと猫",
+    "zh": "爸爸、妈妈、两个儿子和猫"
+   },
+   "candidates": [
+    "B r6c4"
+   ],
+   "pourquoi": "seule case ; le chat, bien détaché à gauche, se lit tout de suite"
+  }
+ ],
+ "ecartees": [
+  {
+   "case": "A r1c1",
+   "cle": "femme+femme+fille",
+   "raison": "même composition que A r6c2, gardée ; la petite couette sur le côté ne se voit plus en vignette, l'enfant se lit garçon",
+   "voir": "deux-mamans-fille"
+  },
+  {
+   "case": "A r1c3",
+   "cle": "femme+femme+garcon",
+   "raison": "même composition que B r1c2, gardée ; ici la 2e maman au chignon a une carrure plus masculine",
+   "voir": "deux-mamans-garcon"
+  },
+  {
+   "case": "A r1c4",
+   "cle": "femme+femme+fille+fille",
+   "raison": "douteuse et illisible en petit : l'adulte au carré à frange peut être un papa (ce serait famille-quatre, déjà au catalogue) et la 2e petite, aux couettes minuscules, se lit garçon. Deux mamans et deux filles reste à dessiner",
+   "voir": "famille-quatre"
+  },
+  {
+   "case": "A r1c5",
+   "cle": "femme+femme+garcon",
+   "raison": "douteuse : l'adulte aux boucles en boule peut être une maman ou un papa ; les deux lectures sont déjà gardées (B r1c2, B r6c3)",
+   "voir": "deux-mamans-garcon",
+   "autreLecture": "femme+homme+garcon"
+  },
+  {
+   "case": "A r2c1",
+   "cle": "femme+femme+fille+garcon",
+   "raison": "même composition que A r1c2, gardée ; la couette de la fille disparaît en vignette",
+   "voir": "deux-mamans-fille-garcon"
+  },
+  {
+   "case": "A r2c2",
+   "cle": "femme+homme+fille+garcon",
+   "raison": "même composition que A r4c2, gardée ; la fille au carré se lit garçon en vignette (le papa à casquette, lui, est très lisible)",
+   "voir": "parents-fille-garcon"
+  },
+  {
+   "case": "A r2c3",
+   "cle": "femme+homme+fille+garcon",
+   "raison": "douteuse (l'adulte bouclé peut être une maman) ; les deux lectures sont déjà gardées (A r4c2, A r1c2)",
+   "voir": "parents-fille-garcon",
+   "autreLecture": "femme+femme+fille+garcon"
+  },
+  {
+   "case": "A r2c4",
+   "cle": "femme+femme+fille+garcon",
+   "raison": "douteuse (2e adulte aux cheveux mi-longs) ; les deux lectures sont déjà gardées (A r1c2, A r4c2)",
+   "voir": "deux-mamans-fille-garcon",
+   "autreLecture": "femme+homme+fille+garcon"
+  },
+  {
+   "case": "A r2c5",
+   "cle": "femme+homme+fille+fille",
+   "raison": "papa, maman et deux filles : déjà au catalogue (famille-quatre)",
+   "voir": "famille-quatre"
+  },
+  {
+   "case": "A r3c4",
+   "cle": "femme+garcon+enfant",
+   "raison": "le petit bouclé peut être une fille ou un garçon : maman et deux enfants, couverte par maman-fille-garcon et maman-deux-garcons",
+   "voir": "maman-fille-garcon"
+  },
+  {
+   "case": "A r3c5",
+   "cle": "femme+fille+garcon",
+   "raison": "même composition que B r1c1, gardée ; la toute petite fille aux couettes basses (0,54) se lit mal",
+   "voir": "maman-fille-garcon"
+  },
+  {
+   "case": "A r4c1",
+   "cle": "femme+ado+fille",
+   "raison": "même composition que A r6c5, gardée ; le haut de la tête bouclée de l'ado sort un peu plat",
+   "voir": "maman-fille-ado"
+  },
+  {
+   "case": "A r4c3",
+   "cle": "femme+homme+fille+garcon",
+   "raison": "même composition que A r4c2, gardée ; le garçon est à moitié caché par l'épaule du papa",
+   "voir": "parents-fille-garcon"
+  },
+  {
+   "case": "A r4c4",
+   "cle": "femme+fille+garcon",
+   "raison": "même composition que B r1c1, gardée ; le petit bouclé se lit moins bien garçon",
+   "voir": "maman-fille-garcon"
+  },
+  {
+   "case": "A r4c5",
+   "cle": "femme+ado+fille",
+   "raison": "même composition que A r6c5, gardée ; la fille au carré se lit moins bien",
+   "voir": "maman-fille-ado"
+  },
+  {
+   "case": "A r5c1",
+   "cle": "femme+garcon+garcon+garcon",
+   "raison": "même composition que A r3c2, gardée ; les deux grands se chevauchent, on compte deux enfants",
+   "voir": "maman-trois-garcons"
+  },
+  {
+   "case": "A r5c2",
+   "cle": "femme+ado+garcon",
+   "raison": "douteuse : le grand (0,92 de la maman, carrure d'adulte) se lit papa ; papa, maman et garçon est déjà gardée (B r6c3)",
+   "voir": "parents-garcon",
+   "autreLecture": "femme+homme+garcon"
+  },
+  {
+   "case": "A r5c3",
+   "cle": "femme+garcon+garcon",
+   "raison": "même composition que B r2c1, gardée ; les deux garçons se collent",
+   "voir": "maman-deux-garcons"
+  },
+  {
+   "case": "A r5c4",
+   "cle": "femme+fille+fille",
+   "raison": "même composition que B r1c3, gardée (les couettes se lisent mieux que ces cheveux mi-longs)",
+   "voir": "maman-deux-filles"
+  },
+  {
+   "case": "A r5c5",
+   "cle": "femme+garcon+enfant",
+   "raison": "le petit (mèche ou couette ?) n'a pas de sexe lisible : couverte par maman-fille-garcon et maman-deux-garcons",
+   "voir": "maman-fille-garcon"
+  },
+  {
+   "case": "A r6c1",
+   "cle": "femme+garcon+enfant",
+   "raison": "l'enfant aux oreilles de chat n'a pas de sexe lisible : couverte par maman-fille-garcon et maman-deux-garcons",
+   "voir": "maman-fille-garcon"
+  },
+  {
+   "case": "A r6c3",
+   "cle": "femme+garcon+garcon+garcon",
+   "raison": "même composition que A r3c2, gardée ; le tout-petit est caché entre les deux autres",
+   "voir": "maman-trois-garcons"
+  },
+  {
+   "case": "A r6c4",
+   "cle": "femme+garcon+enfant",
+   "raison": "le grand bouclé n'a pas de sexe lisible : couverte par maman-deux-garcons et maman-fille-garcon",
+   "voir": "maman-deux-garcons"
+  },
+  {
+   "case": "B r1c4",
+   "cle": "femme+femme+fille",
+   "raison": "même composition que A r6c2, gardée ; l'adulte afro peut passer pour un papa",
+   "voir": "deux-mamans-fille",
+   "autreLecture": "femme+homme+fille"
+  },
+  {
+   "case": "B r1c5",
+   "cle": "femme+garcon+garcon",
+   "raison": "même composition que B r2c1, gardée ; le petit bouclé peut passer pour une fille",
+   "voir": "maman-deux-garcons"
+  },
+  {
+   "case": "B r1c6",
+   "cle": "femme+garcon+enfant",
+   "raison": "le grand aux boucles volumineuses n'a pas de sexe lisible : couverte par maman-deux-garcons et maman-fille-garcon",
+   "voir": "maman-deux-garcons"
+  },
+  {
+   "case": "B r2c2",
+   "cle": "femme+fille+fille",
+   "raison": "même composition que B r1c3, gardée",
+   "voir": "maman-deux-filles"
+  },
+  {
+   "case": "B r2c3",
+   "cle": "femme+garcon+enfant",
+   "raison": "le tout-petit bouclé n'a pas de sexe lisible : couverte par maman-deux-garcons et maman-fille-garcon",
+   "voir": "maman-deux-garcons"
+  },
+  {
+   "case": "B r2c4",
+   "cle": "femme+fille+garcon",
+   "raison": "même composition que B r1c1, gardée ; la grande fille aux cheveux longs peut passer pour une 2e maman",
+   "voir": "maman-fille-garcon"
+  },
+  {
+   "case": "B r2c5",
+   "cle": "femme+ado",
+   "raison": "douteuse : l'ado a la taille (0,94) et la carrure d'un adulte, en vignette on lit un couple homme-femme (déjà au catalogue). Prête si Alexandra veut une « Maman et son ado »",
+   "voir": "couple-homme-femme"
+  },
+  {
+   "case": "B r2c6",
+   "cle": "femme+ado",
+   "raison": "même lecture que B r2c5, garçon encore plus grand (0,99)",
+   "voir": "couple-homme-femme"
+  },
+  {
+   "case": "B r3c3",
+   "cle": "homme+garcon+enfant",
+   "raison": "l'enfant bouclé n'a pas de sexe lisible : couverte par papa-deux-garcons et papa-fille-garcon",
+   "voir": "papa-deux-garcons"
+  },
+  {
+   "case": "B r3c5",
+   "cle": "homme+fille",
+   "raison": "famille-papa-bebe montre déjà un papa et une petite fille au chignon, de la même taille (0,66 du papa, contre 0,67 ici). Prête si Alexandra veut une « Papa et sa fille » en plus",
+   "voir": "famille-papa-bebe"
+  },
+  {
+   "case": "B r3c6",
+   "cle": "homme+garcon",
+   "raison": "même composition que B r3c4, gardée ; ce grand garçon (0,77) a presque la taille de l'ado de famille-papa-ado (0,80)",
+   "voir": "papa-garcon"
+  },
+  {
+   "case": "B r4c1",
+   "cle": "homme+fille+enfant",
+   "raison": "l'enfant bouclé a exactement les boucles des petits garçons de la planche (B r1c5, B r3c1) : papa, fille et garçon, déjà gardée (B r3c2). « Papa et ses deux filles » ne se lit pas",
+   "voir": "papa-fille-garcon"
+  },
+  {
+   "case": "B r4c2",
+   "cle": "femme+homme+garcon",
+   "raison": "même composition que B r6c3, gardée ; la maman (0,86) peut passer pour une grande sœur",
+   "voir": "parents-garcon"
+  },
+  {
+   "case": "B r4c4",
+   "cle": "homme+homme+garcon",
+   "raison": "deux papas et un enfant : déjà au catalogue (famille-deux-hommes-enfant, enfant de sexe non lisible)",
+   "voir": "famille-deux-hommes-enfant"
+  },
+  {
+   "case": "B r4c5",
+   "cle": "homme+homme+fille",
+   "raison": "couverte par famille-deux-hommes-enfant (enfant de sexe non lisible) ; et le 2e homme (0,92) peut être un ado. Prête si Alexandra veut deux papas où l'enfant se voit",
+   "voir": "famille-deux-hommes-enfant"
+  },
+  {
+   "case": "B r4c6",
+   "cle": "homme+homme+garcon",
+   "raison": "comme B r4c4",
+   "voir": "famille-deux-hommes-enfant"
+  },
+  {
+   "case": "B r5c3",
+   "cle": "femme+garcon+garcon+garcon",
+   "raison": "même composition que A r3c2, gardée ; trois garçons identiques, comme des triplés",
+   "voir": "maman-trois-garcons"
+  },
+  {
+   "case": "B r5c4",
+   "cle": "femme+homme+garcon+doudou",
+   "raison": "la petite forme aux deux oreilles rondes est un ours en peluche vu de dos, pas un bébé ; sans lui c'est papa, maman et garçon, déjà gardée (B r6c3)",
+   "voir": "parents-garcon"
+  },
+  {
+   "case": "B r5c6",
+   "cle": "femme+homme+bebe",
+   "raison": "papa, bébé et maman : déjà au catalogue (famille-homme-bebe-femme)",
+   "voir": "famille-homme-bebe-femme"
+  },
+  {
+   "case": "B r6c2",
+   "cle": "femme+homme+ado+bebe",
+   "raison": "douteuse : trois silhouettes de taille adulte autour du bébé (ado ? 2e maman ? papa aux cheveux courts ?), on ne sait pas dire qui est qui",
+   "voir": null
+  },
+  {
+   "case": "B r6c5",
+   "cle": "femme+femme+fille+garcon",
+   "raison": "douteuse (deux mamans, maman et grande ado, ou papa aux cheveux mi-longs) ; les lectures possibles sont déjà gardées (A r1c2, A r4c2)",
+   "voir": "deux-mamans-fille-garcon",
+   "autreLecture": "femme+homme+fille+garcon"
+  },
+  {
+   "case": "B r6c6",
+   "cle": "femme+homme+garcon",
+   "raison": "même composition que B r6c3, gardée ; les deux parents se chevauchent",
+   "voir": "parents-garcon"
+  }
+ ],
+ "onglets": [
+  {
+   "id": "seul",
+   "libelles": {
+    "fr": "Seul·e",
+    "en": "On my own",
+    "de": "Allein",
+    "it": "Da solo",
+    "es": "Solo",
+    "ja": "ひとり",
+    "zh": "一个人"
+   },
+   "scenes": [
+    "femme-ondulee",
+    "femme-longs",
+    "femme-carre",
+    "femme-tres-longs-boucles",
+    "femme-bouclee-courte",
+    "femme-chignon-haut",
+    "femme-queue-de-cheval",
+    "homme-court",
+    "homme-boucle",
+    "homme-capuche",
+    "homme-casquette",
+    "homme-bonnet-laine",
+    "enfant-boucle",
+    "enfant-casquette",
+    "fillette-couettes",
+    "fillette-cheveux-longs",
+    "fillette-chignon"
+   ]
+  },
+  {
+   "id": "couple",
+   "libelles": {
+    "fr": "En couple",
+    "en": "As a couple",
+    "de": "Zu zweit",
+    "it": "In coppia",
+    "es": "En pareja",
+    "ja": "ふたり",
+    "zh": "情侣"
+   },
+   "scenes": [
+    "couple-homme-femme",
+    "couple-frises",
+    "couple-femmes-queue",
+    "couple-femmes-chignon",
+    "couple-hommes-epaule",
+    "couple-hommes-front"
+   ]
+  },
+  {
+   "id": "maman",
+   "libelles": {
+    "fr": "Maman et enfants",
+    "en": "Mum and kids",
+    "de": "Mama und Kinder",
+    "it": "Mamma e figli",
+    "es": "Mamá e hijos",
+    "ja": "ママと子どもたち",
+    "zh": "妈妈和孩子们"
+   },
+   "scenes": [
+    "famille-femme-enfant",
+    "famille-maman-montre-ciel",
+    "maman-fille-garcon",
+    "maman-deux-filles",
+    "maman-deux-garcons",
+    "maman-fille-ado",
+    "maman-deux-filles-garcon",
+    "maman-fille-deux-garcons",
+    "maman-trois-garcons"
+   ]
+  },
+  {
+   "id": "papa",
+   "libelles": {
+    "fr": "Papa et enfants",
+    "en": "Dad and kids",
+    "de": "Papa und Kinder",
+    "it": "Papà e figli",
+    "es": "Papá e hijos",
+    "ja": "パパと子どもたち",
+    "zh": "爸爸和孩子们"
+   },
+   "scenes": [
+    "famille-papa-bebe",
+    "papa-garcon",
+    "famille-papa-ado",
+    "famille-homme-deux-bebes",
+    "papa-fille-garcon",
+    "papa-deux-garcons",
+    "famille-epaules-bebe",
+    "papa-trois-enfants"
+   ]
+  },
+  {
+   "id": "parents",
+   "libelles": {
+    "fr": "Parents et enfants",
+    "en": "Parents and kids",
+    "de": "Eltern und Kinder",
+    "it": "Genitori e figli",
+    "es": "Padres e hijos",
+    "ja": "両親と子どもたち",
+    "zh": "父母和孩子们"
+   },
+   "scenes": [
+    "famille-homme-bebe-femme",
+    "parents-fille",
+    "parents-garcon",
+    "deux-mamans-fille",
+    "deux-mamans-garcon",
+    "famille-deux-hommes-enfant",
+    "parents-fille-garcon",
+    "famille-quatre",
+    "deux-mamans-fille-garcon",
+    "parents-trois-enfants"
+   ]
+  },
+  {
+   "id": "animal",
+   "libelles": {
+    "fr": "Avec un animal",
+    "en": "With a pet",
+    "de": "Mit Tier",
+    "it": "Con un animale",
+    "es": "Con una mascota",
+    "ja": "ペットと",
+    "zh": "和宠物"
+   },
+   "scenes": [
+    "femme-chien",
+    "homme-chien",
+    "femme-petit-chien",
+    "homme-petit-chien",
+    "homme-grand-chien",
+    "enfant-chien",
+    "deux-enfants-chien",
+    "papa-enfant-chien",
+    "femme-chat",
+    "homme-chat",
+    "femme-chat-chien",
+    "papa-trois-enfants-chat",
+    "parents-deux-garcons-chat",
+    "femme-lapin",
+    "homme-deux-lapins",
+    "femme-cheval-couche",
+    "homme-cheval"
+   ]
+  }
+ ],
+ "existantes": {
+  "famille-femme-enfant": {
+   "cle": "femme+garcon",
+   "lecture": "maman et un garçon (l'enfant a les cheveux courts)"
+  },
+  "famille-maman-montre-ciel": {
+   "cle": "femme+enfant",
+   "lecture": "maman et un enfant qui montre le ciel"
+  },
+  "famille-papa-bebe": {
+   "cle": "homme+fille",
+   "lecture": "nommée « Papa et bébé », mais c'est une petite fille au chignon, à 0,66 du papa"
+  },
+  "famille-homme-deux-bebes": {
+   "cle": "homme+bebe+bebe",
+   "lecture": "deux tout-petits à 0,50 et 0,54 du papa"
+  },
+  "famille-papa-ado": {
+   "cle": "homme+ado",
+   "lecture": "l'ado fait 0,80 du papa"
+  },
+  "famille-epaules-bebe": {
+   "cle": "homme+enfant+bebe",
+   "lecture": "pose à part : un enfant sur les épaules"
+  },
+  "famille-homme-bebe-femme": {
+   "cle": "femme+homme+bebe",
+   "lecture": "papa, bébé et maman"
+  },
+  "famille-deux-hommes-enfant": {
+   "cle": "homme+homme+enfant",
+   "lecture": "l'enfant, presque caché entre les deux papas, n'a pas de sexe lisible"
+  },
+  "famille-quatre": {
+   "cle": "femme+homme+fille+fille",
+   "lecture": "papa, maman et deux filles à couettes"
+  },
+  "couple-homme-femme": {
+   "cle": "femme+homme",
+   "lecture": "couple"
+  },
+  "couple-femmes-queue": {
+   "cle": "femme+femme",
+   "lecture": "couple"
+  },
+  "couple-hommes-epaule": {
+   "cle": "homme+homme",
+   "lecture": "couple"
+  }
+ },
+ "aVoir": [
+  "B r2c5 « Maman et son ado » : composition nouvelle mais l'ado a une taille et une carrure d'adulte, on lit un couple en vignette. Écartée ; le tracé est prêt si Alexandra la veut (id proposé maman-ado).",
+  "B r3c5 « Papa et sa fille » (fillette à queue de cheval) : écartée parce que famille-papa-bebe, nommée « Papa et bébé », montre en fait une petite fille au chignon de la même taille. Tracé prêt (id proposé papa-fille) si Alexandra la veut en plus.",
+  "B r4c5 « Deux papas et leur fille » : l'existante famille-deux-hommes-enfant cache presque l'enfant ; si Alexandra veut une scène deux papas où l'enfant se voit, B r4c5 (fille) et B r4c4 (garçon) sont prêtes.",
+  "Toujours sans dessin net : papa et ses deux filles, deux mamans et leurs deux filles, maman et sa fille seule, deux papas avec deux enfants."
+ ]
+}
